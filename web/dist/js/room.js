@@ -121,11 +121,7 @@ function drawRoom(state) {
 
   const side = el("aside", "side");
   side.append(
-    el(
-      "h3",
-      "",
-      `Round ${state.room.round} matches · ${(state.matches || []).length}`,
-    ),
+    el("h3", "", `Round ${state.room.round} matches · ${(state.matches || []).length}`),
   );
   const list = el("div", "match-list");
   if (!state.matches?.length) {

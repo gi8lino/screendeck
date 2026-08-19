@@ -33,7 +33,14 @@ export async function renderCreateRoom(navigation) {
   const error = el("p", "error");
   const submit = el("button", "btn primary", "Create room");
   submit.type = "submit";
-  form.append(nameRow, libRow, filters.personalBox, filters.box, error, submit);
+  form.append(
+    nameRow,
+    libRow,
+    filters.personalBox,
+    filters.box,
+    error,
+    submit,
+  );
   panel.append(form);
   root.append(panel);
 
