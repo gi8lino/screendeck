@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { renderGenreChoices, selectedGenres } from "./genres.js";
 import { saveSession } from "./state.js";
 import { backButton, el, root, showError, topbar } from "./ui.js";
 
@@ -32,7 +33,7 @@ export async function renderCreateRoom(navigation) {
   const error = el("p", "error");
   const submit = el("button", "btn primary", "Create room");
   submit.type = "submit";
-  form.append(nameRow, libRow, filters.box, error, submit);
+  form.append(nameRow, libRow, filters.personalBox, filters.box, error, submit);
   panel.append(form);
   root.append(panel);
 
@@ -65,6 +66,7 @@ export async function renderCreateRoom(navigation) {
         body: JSON.stringify({
           name: name.value,
           libraryKeys: selectedLibraries(),
+          genres: selectedGenres(filters.personalGenres),
           filters: filterValues(filters),
         }),
       });
@@ -78,20 +80,34 @@ export async function renderCreateRoom(navigation) {
   };
 }
 
-// createFilterFields creates the catalog filtering controls.
+// createFilterFields creates personal genre and room filtering controls.
 function createFilterFields() {
+  const personalBox = el("section", "filter-box preference-box");
+  personalBox.append(
+    el("div", "label", "Your genres"),
+    el(
+      "p",
+      "muted",
+      "Optional · these only filter your own swipe deck. Leave empty to see every room title.",
+    ),
+  );
+  const personalGenres = el("div", "genre-chips");
+  personalGenres.setAttribute("role", "group");
+  personalGenres.setAttribute("aria-label", "Your genres");
+  personalBox.append(personalGenres);
+
   const box = el("section", "filter-box");
-  box.append(el("div", "label", "Narrow the selection"));
+  box.append(el("div", "label", "Room filters"));
   const status = el(
     "p",
     "muted",
     "Choose at least one library to load its filters.",
   );
   const genreRow = el("div", "form-row compact");
-  genreRow.append(el("label", "", "Genres · select any that fit"));
+  genreRow.append(el("label", "", "Room genres · select any that fit"));
   const genres = el("div", "genre-chips");
   genres.setAttribute("role", "group");
-  genres.setAttribute("aria-label", "Genres");
+  genres.setAttribute("aria-label", "Room genres");
   genreRow.append(genres);
   const range = el("div", "range-grid");
   const yearFrom = numberField("From year", "1900");
@@ -106,7 +122,17 @@ function createFilterFields() {
     el("span", "", "Only include fully unwatched titles"),
   );
   box.append(status, genreRow, range, watched);
-  return { box, status, genres, yearFrom, yearTo, duration, watchedBox };
+  return {
+    personalBox,
+    personalGenres,
+    box,
+    status,
+    genres,
+    yearFrom,
+    yearTo,
+    duration,
+    watchedBox,
+  };
 }
 
 // numberField creates a labeled numeric input.
@@ -146,12 +172,10 @@ function renderLibraryChoices(libraries, checks, onChange) {
 
 // loadCatalogFilters retrieves available genres and year boundaries.
 async function loadCatalogFilters(libraryKeys, filters) {
-  const selectedGenres = new Set(
-    [...filters.genres.querySelectorAll('input[type="checkbox"]:checked')].map(
-      (input) => input.value,
-    ),
-  );
+  const selectedRoomGenres = selectedGenres(filters.genres);
+  const selectedPersonalGenres = selectedGenres(filters.personalGenres);
   filters.genres.replaceChildren();
+  filters.personalGenres.replaceChildren();
   if (!libraryKeys.length) {
     filters.status.textContent =
       "Choose at least one library to load its filters.";
@@ -163,22 +187,19 @@ async function loadCatalogFilters(libraryKeys, filters) {
       method: "POST",
       body: JSON.stringify({ libraryKeys }),
     });
-    options.genres.forEach((genre) => {
-      const label = el("label", "genre-chip");
-      const input = el("input");
-      input.type = "checkbox";
-      input.value = genre;
-      input.checked = selectedGenres.has(genre);
-      label.append(input, el("span", "", genre));
-      filters.genres.append(label);
-    });
+    renderGenreChoices(filters.genres, options.genres, selectedRoomGenres);
+    renderGenreChoices(
+      filters.personalGenres,
+      options.genres,
+      selectedPersonalGenres,
+    );
     filters.yearFrom.input.placeholder = options.minYear
       ? String(options.minYear)
       : "From";
     filters.yearTo.input.placeholder = options.maxYear
       ? String(options.maxYear)
       : "To";
-    filters.status.textContent = `${options.genres.length} genres available · leave filters empty to include everything.`;
+    filters.status.textContent = `${options.genres.length} genres available · leave room filters empty to include everything.`;
   } catch (error) {
     filters.status.textContent = error.message;
   }
@@ -187,9 +208,7 @@ async function loadCatalogFilters(libraryKeys, filters) {
 // filterValues returns normalized room filter values.
 function filterValues(filters) {
   return {
-    genres: [
-      ...filters.genres.querySelectorAll('input[type="checkbox"]:checked'),
-    ].map((input) => input.value),
+    genres: selectedGenres(filters.genres),
     yearFrom: Number(filters.yearFrom.input.value) || 0,
     yearTo: Number(filters.yearTo.input.value) || 0,
     maxDurationMinutes: Number(filters.duration.input.value) || 0,

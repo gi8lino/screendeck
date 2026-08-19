@@ -16,6 +16,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 		Name        string       `json:"name"`
 		LibraryKeys []string     `json:"libraryKeys"`
 		Filters     room.Filters `json:"filters"`
+		Genres      []string     `json:"genres"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -23,7 +24,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters)
+		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres)
 		if err != nil {
 			a.fail(r, w, err)
 			return
@@ -34,19 +35,35 @@ func (a *API) CreateRoom() http.HandlerFunc {
 
 // JoinRoom returns the room joining handler.
 func (a *API) JoinRoom() http.HandlerFunc {
-	type request struct{ Code, Name string }
+	type request struct {
+		Code   string   `json:"code"`
+		Name   string   `json:"name"`
+		Genres []string `json:"genres"`
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
 		if err := decode(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Join(r.Context(), input.Code, input.Name)
+		session, err := a.Rooms.Join(r.Context(), input.Code, input.Name, input.Genres)
 		if err != nil {
 			a.fail(r, w, err)
 			return
 		}
 		a.respond(w, http.StatusCreated, session)
+	}
+}
+
+// RoomGenres returns the personal genre choices available in a room.
+func (a *API) RoomGenres() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		genres, err := a.Rooms.Genres(r.Context(), r.PathValue("code"))
+		if err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		a.respond(w, http.StatusOK, map[string][]string{"genres": genres})
 	}
 }
 
@@ -84,6 +101,26 @@ func (a *API) Vote() http.HandlerFunc {
 			return
 		}
 		a.respond(w, http.StatusOK, map[string]bool{"matched": matched})
+	}
+}
+
+// NextRound returns the handler that narrows the deck to the current matches.
+func (a *API) NextRound() http.HandlerFunc {
+	type request struct {
+		Round int `json:"round"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var input request
+		if err := decode(r, &input); err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		result, err := a.Rooms.NextRound(r.Context(), r.PathValue("code"), participantToken(r), input.Round)
+		if err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		a.respond(w, http.StatusOK, result)
 	}
 }
 

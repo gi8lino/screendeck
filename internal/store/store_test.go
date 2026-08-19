@@ -153,3 +153,82 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 		t.Fatalf("state after leave = %#v, %v", state, err)
 	}
 }
+
+// TestAdvanceRoundNarrowsMatches verifies matches can repeatedly become the next deck until one title remains.
+func TestAdvanceRoundNarrowsMatches(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	movies := []plex.Item{
+		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+		{RatingKey: "c", Library: "1", Type: "movie", Title: "Gamma"},
+	}
+	if err := database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, movies); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := database.CreateRoom(ctx, Room{Code: "ROUND1", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b", "c"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.JoinRoom(ctx, "ROUND1", Participant{ID: "p2", Name: "Two"}, "hash2"); err != nil {
+		t.Fatal(err)
+	}
+	for _, participantID := range []string{"p1", "p2"} {
+		for _, movieID := range []string{"a", "b", "c"} {
+			if _, err := database.Vote(ctx, "ROUND1", participantID, movieID, true); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	state, err := database.RoomState(ctx, "ROUND1", "p1")
+	if err != nil || !state.RoundComplete || len(state.Matches) != 3 || state.Room.Round != 1 {
+		t.Fatalf("round one state=%#v err=%v", state, err)
+	}
+	round, titles, advanced, err := database.AdvanceRound(ctx, "ROUND1", "p1", 1)
+	if err != nil || !advanced || round != 2 || titles != 3 {
+		t.Fatalf("advance round one: round=%d titles=%d advanced=%v err=%v", round, titles, advanced, err)
+	}
+	state, err = database.RoomState(ctx, "ROUND1", "p1")
+	if err != nil || state.Room.Round != 2 || state.Progress.Voted != 0 || state.Progress.Total != 3 || len(state.Matches) != 0 {
+		t.Fatalf("round two initial state=%#v err=%v", state, err)
+	}
+	for _, movieID := range []string{"a", "b", "c"} {
+		if _, err := database.Vote(ctx, "ROUND1", "p1", movieID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, vote := range []struct {
+		movieID string
+		liked   bool
+	}{{"a", true}, {"b", true}, {"c", false}} {
+		if _, err := database.Vote(ctx, "ROUND1", "p2", vote.movieID, vote.liked); err != nil {
+			t.Fatal(err)
+		}
+	}
+	round, titles, advanced, err = database.AdvanceRound(ctx, "ROUND1", "p2", 2)
+	if err != nil || !advanced || round != 3 || titles != 2 {
+		t.Fatalf("advance round two: round=%d titles=%d advanced=%v err=%v", round, titles, advanced, err)
+	}
+	for _, movieID := range []string{"a", "b"} {
+		if _, err := database.Vote(ctx, "ROUND1", "p1", movieID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.Vote(ctx, "ROUND1", "p2", "a", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Vote(ctx, "ROUND1", "p2", "b", false); err != nil {
+		t.Fatal(err)
+	}
+	state, err = database.RoomState(ctx, "ROUND1", "p1")
+	if err != nil || !state.RoundComplete || len(state.Matches) != 1 || state.Matches[0].RatingKey != "a" {
+		t.Fatalf("final state=%#v err=%v", state, err)
+	}
+	if _, _, _, err := database.AdvanceRound(ctx, "ROUND1", "p1", 3); err == nil {
+		t.Fatal("expected another round with one match to fail")
+	}
+}

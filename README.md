@@ -11,9 +11,11 @@ It is designed for a home network: one Go process, one SQLite file, and no accou
 - Discovers accessible Plex servers and prefers their local non-relay connection.
 - Loads movie and TV-show libraries and metadata from Plex.
 - Filters rooms by library, genre, release year, maximum movie runtime, and watched state.
+- Lets each participant choose optional personal genres that only affect their own swipe deck.
 - Touch and mouse swipe interface, with accessible like/pass buttons.
 - Temporary rooms with anonymous display names.
-- Unanimous matches for two or more participants.
+- Unanimous matches for two or more participants, with an immediate animated match reveal for the deciding swipe.
+- Repeatable “Another round” narrowing that turns the current matches into the next deck until one title remains.
 - Live participant and match updates using Server-Sent Events.
 - Plex credentials remain on the server; posters are proxied and cached by the browser.
 - Embedded frontend, SQLite persistence, graceful shutdown, and a `/healthz` endpoint.
@@ -115,4 +117,4 @@ web                 embedded browser application
 
 ## Current scope
 
-Movies and top-level TV shows are supported. Individual seasons/episodes, configurable majority thresholds, permanent profiles, and direct playback are intentionally outside the current version.
+Movies and top-level TV shows are supported. Participants can apply personal genre preferences, and completed rounds can repeatedly narrow unanimous matches down to one title. Individual seasons/episodes, configurable majority thresholds, permanent profiles, and direct playback are intentionally outside the current version.

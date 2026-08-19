@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { renderGenreChoices, selectedGenres } from "./genres.js";
 import { saveSession } from "./state.js";
 import { backButton, el, root, showError, topbar } from "./ui.js";
 
@@ -31,24 +32,82 @@ export function renderJoinRoom(navigation, initialCode = "") {
   name.placeholder = "Deckard";
   name.autocomplete = "nickname";
   nameRow.append(name);
+
+  const genreBox = el("section", "filter-box preference-box");
+  genreBox.append(
+    el("div", "label", "Your genres"),
+    el(
+      "p",
+      "muted",
+      "Optional · pick what you personally want to swipe. Leave empty to see every title in the room.",
+    ),
+  );
+  const genreStatus = el(
+    "p",
+    "muted",
+    "Enter a valid room code to load genre choices.",
+  );
+  const genres = el("div", "genre-chips");
+  genres.setAttribute("role", "group");
+  genres.setAttribute("aria-label", "Your genres");
+  genreBox.append(genreStatus, genres);
+
   const error = el("p", "error");
   const submit = el("button", "btn primary", "Join room");
   submit.type = "submit";
-  form.append(codeRow, nameRow, error, submit);
+  form.append(codeRow, nameRow, genreBox, error, submit);
   panel.append(form);
   root.append(panel);
   if (initialCode) name.focus();
+
+  let genreTimer;
+  let loadedCode = "";
+  const loadGenres = async () => {
+    const roomCode = code.value.trim().toUpperCase();
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(roomCode)) {
+      loadedCode = "";
+      genres.replaceChildren();
+      genreStatus.textContent =
+        "Enter a valid room code to load genre choices.";
+      return;
+    }
+    const selected = selectedGenres(genres);
+    genreStatus.textContent = "Loading room genres…";
+    try {
+      const result = await api(
+        `/api/rooms/${encodeURIComponent(roomCode)}/genres`,
+      );
+      loadedCode = roomCode;
+      renderGenreChoices(genres, result.genres || [], selected);
+      genreStatus.textContent = result.genres?.length
+        ? `${result.genres.length} genres available.`
+        : "This room has no genre metadata; you’ll see every title.";
+    } catch (requestError) {
+      loadedCode = "";
+      genres.replaceChildren();
+      genreStatus.textContent = requestError.message;
+    }
+  };
+  code.addEventListener("input", () => {
+    code.value = code.value.toUpperCase();
+    clearTimeout(genreTimer);
+    genreTimer = setTimeout(loadGenres, 220);
+  });
+  if (initialCode) void loadGenres();
 
   form.onsubmit = async (event) => {
     event.preventDefault();
     error.textContent = "";
     submit.disabled = true;
     try {
+      const roomCode = code.value.trim().toUpperCase();
+      if (loadedCode !== roomCode) await loadGenres();
       const joined = await api("/api/rooms/join", {
         method: "POST",
         body: JSON.stringify({
-          code: code.value.toUpperCase(),
+          code: roomCode,
           name: name.value,
+          genres: selectedGenres(genres),
         }),
       });
       saveSession(joined);

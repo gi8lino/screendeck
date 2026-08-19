@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	mathrand "math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,22 +30,25 @@ type Store struct {
 
 type Room struct {
 	Code      string    `json:"code"`
+	Round     int       `json:"round"`
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 type Participant struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID     string   `json:"id"`
+	Name   string   `json:"name"`
+	Genres []string `json:"genres"`
 }
 
 type RoomState struct {
-	Room         Room          `json:"room"`
-	Me           Participant   `json:"me"`
-	Participants []Participant `json:"participants"`
-	Candidate    *plex.Item    `json:"candidate,omitempty"`
-	Matches      []plex.Item   `json:"matches"`
-	Progress     Progress      `json:"progress"`
+	Room          Room          `json:"room"`
+	Me            Participant   `json:"me"`
+	Participants  []Participant `json:"participants"`
+	Candidate     *plex.Item    `json:"candidate,omitempty"`
+	Matches       []plex.Item   `json:"matches"`
+	Progress      Progress      `json:"progress"`
+	RoundComplete bool          `json:"roundComplete"`
 }
 
 type Progress struct {
@@ -250,6 +254,7 @@ CREATE TABLE IF NOT EXISTS movies (
 CREATE INDEX IF NOT EXISTS movies_library_idx ON movies(library_key);
 CREATE TABLE IF NOT EXISTS rooms (
   code TEXT PRIMARY KEY,
+  round INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
@@ -264,6 +269,7 @@ CREATE TABLE IF NOT EXISTS participants (
   id TEXT PRIMARY KEY,
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  genres TEXT NOT NULL DEFAULT '[]',
   token_hash TEXT NOT NULL UNIQUE,
   joined_at INTEGER NOT NULL
 );
@@ -299,6 +305,12 @@ CREATE TABLE IF NOT EXISTS plex_auth (
 		return fmt.Errorf("migrate database: %w", err)
 	}
 	if err := s.ensureColumn(ctx, "movies", "media_type", "TEXT NOT NULL DEFAULT 'movie'"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "rooms", "round", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "participants", "genres", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
 		return err
 	}
 	return nil
@@ -369,15 +381,25 @@ genres=excluded.genres,viewed=excluded.viewed`)
 
 // CreateRoom persists a room, its owner, and eligible media items.
 func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, movieIDs []string) error {
+	if room.Round <= 0 {
+		room.Round = 1
+	}
+	if participant.Genres == nil {
+		participant.Genres = []string{}
+	}
+	participantGenres, err := json.Marshal(participant.Genres)
+	if err != nil {
+		return fmt.Errorf("encode participant genres: %w", err)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO rooms(code,created_at,expires_at) VALUES(?,?,?)`, room.Code, room.CreatedAt.Unix(), room.ExpiresAt.Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO rooms(code,round,created_at,expires_at) VALUES(?,?,?,?)`, room.Code, room.Round, room.CreatedAt.Unix(), room.ExpiresAt.Unix()); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,token_hash,joined_at) VALUES(?,?,?,?,?)`, participant.ID, room.Code, participant.Name, tokenHash, time.Now().Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,token_hash,joined_at) VALUES(?,?,?,?,?,?)`, participant.ID, room.Code, participant.Name, string(participantGenres), tokenHash, time.Now().Unix()); err != nil {
 		return err
 	}
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
@@ -395,32 +417,86 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 
 // JoinRoom persists a participant in an active room.
 func (s *Store) JoinRoom(ctx context.Context, code string, participant Participant, tokenHash string) error {
-	result, err := s.db.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,token_hash,joined_at)
-SELECT ?,code,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.ID, participant.Name, tokenHash, time.Now().Unix(), code, time.Now().Unix())
+	if participant.Genres == nil {
+		participant.Genres = []string{}
+	}
+	genres, err := json.Marshal(participant.Genres)
+	if err != nil {
+		return fmt.Errorf("encode participant genres: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,token_hash,joined_at)
+SELECT ?,code,?,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.ID, participant.Name, string(genres), tokenHash, time.Now().Unix(), code, time.Now().Unix())
 	if err != nil {
 		return err
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		return ErrNotFound
 	}
-	return nil
+	// A newly joined participant has not voted yet, so prior matches are no
+	// longer unanimous until that participant also likes them.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM matches
+WHERE room_code=? AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=matches.movie_id AND liked=1)
+  < (SELECT COUNT(*) FROM participants WHERE room_code=?)`, code, code, code); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ParticipantByToken authenticates and returns a room participant.
 func (s *Store) ParticipantByToken(ctx context.Context, code, tokenHash string) (Participant, error) {
 	var participant Participant
-	err := s.db.QueryRowContext(ctx, `SELECT id,name FROM participants WHERE room_code=? AND token_hash=?`, code, tokenHash).Scan(&participant.ID, &participant.Name)
+	var genres string
+	err := s.db.QueryRowContext(ctx, `SELECT id,name,genres FROM participants WHERE room_code=? AND token_hash=?`, code, tokenHash).Scan(&participant.ID, &participant.Name, &genres)
 	if errors.Is(err, sql.ErrNoRows) {
 		return participant, ErrNotFound
 	}
-	return participant, err
+	if err != nil {
+		return participant, err
+	}
+	decodeGenres(genres, &participant.Genres)
+	return participant, nil
+}
+
+// RoomGenres returns the genres represented by the current room deck.
+func (s *Store) RoomGenres(ctx context.Context, code string) ([]string, error) {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT CAST(j.value AS TEXT)
+FROM room_movies rm
+JOIN movies m ON m.rating_key=rm.movie_id
+JOIN json_each(m.genres) j
+WHERE rm.room_code=? AND trim(CAST(j.value AS TEXT))<>''
+ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE`, code)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var genres []string
+	for rows.Next() {
+		var genre string
+		if err := rows.Scan(&genre); err != nil {
+			return nil, err
+		}
+		genres = append(genres, genre)
+	}
+	return genres, rows.Err()
 }
 
 // RoomState returns the state of a room for one participant.
 func (s *Store) RoomState(ctx context.Context, code, participantID string) (RoomState, error) {
 	var state RoomState
 	var created, expires int64
-	err := s.db.QueryRowContext(ctx, `SELECT code,created_at,expires_at FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&state.Room.Code, &created, &expires)
+	err := s.db.QueryRowContext(ctx, `SELECT code,round,created_at,expires_at FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&state.Room.Code, &state.Room.Round, &created, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return state, ErrNotFound
 	}
@@ -428,22 +504,28 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 		return state, err
 	}
 	state.Room.CreatedAt, state.Room.ExpiresAt = time.Unix(created, 0).UTC(), time.Unix(expires, 0).UTC()
-	if err := s.db.QueryRowContext(ctx, `SELECT id,name FROM participants WHERE id=? AND room_code=?`, participantID, code).Scan(&state.Me.ID, &state.Me.Name); err != nil {
+	var meGenres string
+	if err := s.db.QueryRowContext(ctx, `SELECT id,name,genres FROM participants WHERE id=? AND room_code=?`, participantID, code).Scan(&state.Me.ID, &state.Me.Name, &meGenres); err != nil {
 		return state, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,name FROM participants WHERE room_code=? ORDER BY joined_at`, code)
+	decodeGenres(meGenres, &state.Me.Genres)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,name,genres FROM participants WHERE room_code=? ORDER BY joined_at`, code)
 	if err != nil {
 		return state, err
 	}
 	for rows.Next() {
 		var p Participant
-		if err := rows.Scan(&p.ID, &p.Name); err != nil {
+		var genres string
+		if err := rows.Scan(&p.ID, &p.Name, &genres); err != nil {
 			rows.Close()
 			return state, err
 		}
+		decodeGenres(genres, &p.Genres)
 		state.Participants = append(state.Participants, p)
 	}
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		return state, err
+	}
 
 	state.Candidate, err = s.nextMovie(ctx, code, participantID)
 	if err != nil {
@@ -453,18 +535,39 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 	if err != nil {
 		return state, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*), (SELECT COUNT(*) FROM room_movies WHERE room_code=?) FROM votes WHERE room_code=? AND participant_id=?`, code, code, participantID).Scan(&state.Progress.Voted, &state.Progress.Total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(v.movie_id),COUNT(rm.movie_id)
+FROM participants p
+JOIN room_movies rm ON rm.room_code=p.room_code
+JOIN movies m ON m.rating_key=rm.movie_id
+LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
+WHERE p.id=? AND p.room_code=?
+AND (json_array_length(p.genres)=0 OR EXISTS (
+  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+))`, participantID, code).Scan(&state.Progress.Voted, &state.Progress.Total); err != nil {
 		return state, err
 	}
+	remaining, err := s.roundRemaining(ctx, code)
+	if err != nil {
+		return state, err
+	}
+	state.RoundComplete = remaining == 0
 	return state, nil
 }
 
 // nextMovie returns the next unvoted media item for a participant.
 func (s *Store) nextMovie(ctx context.Context, code, participantID string) (*plex.Item, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed
-FROM room_movies rm JOIN movies m ON m.rating_key=rm.movie_id
-LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=?
-WHERE rm.room_code=? AND v.movie_id IS NULL ORDER BY rm.position LIMIT 1`, participantID, code)
+FROM participants p
+JOIN room_movies rm ON rm.room_code=p.room_code
+JOIN movies m ON m.rating_key=rm.movie_id
+LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
+WHERE p.id=? AND p.room_code=? AND v.movie_id IS NULL
+AND (json_array_length(p.genres)=0 OR EXISTS (
+  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+))
+ORDER BY rm.position LIMIT 1`, participantID, code)
 	movie, err := scanMovie(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -475,7 +578,7 @@ WHERE rm.room_code=? AND v.movie_id IS NULL ORDER BY rm.position LIMIT 1`, parti
 // matchMovies returns media liked by every active participant.
 func (s *Store) matchMovies(ctx context.Context, code string) ([]plex.Item, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed
-FROM matches x JOIN movies m ON m.rating_key=x.movie_id WHERE x.room_code=? ORDER BY x.matched_at DESC`, code)
+FROM matches x JOIN movies m ON m.rating_key=x.movie_id WHERE x.room_code=? ORDER BY x.matched_at DESC,m.title`, code)
 	if err != nil {
 		return nil, err
 	}
@@ -500,8 +603,15 @@ func scanMovie(row scanner) (*plex.Item, error) {
 	if err := row.Scan(&movie.RatingKey, &movie.Library, &movie.Type, &movie.GUID, &movie.Title, &movie.Year, &movie.Summary, &movie.Duration, &movie.Rating, &genres, &movie.Viewed); err != nil {
 		return nil, err
 	}
-	_ = json.Unmarshal([]byte(genres), &movie.Genres)
+	decodeGenres(genres, &movie.Genres)
 	return &movie, nil
+}
+
+// decodeGenres decodes a stored JSON genre list and falls back to an empty list.
+func decodeGenres(raw string, target *[]string) {
+	if json.Unmarshal([]byte(raw), target) != nil || *target == nil {
+		*target = []string{}
+	}
 }
 
 // Vote persists a participant vote and reports a unanimous match.
@@ -512,10 +622,14 @@ func (s *Store) Vote(ctx context.Context, code, participantID, movieID string, l
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(ctx, `INSERT INTO votes(room_code,participant_id,movie_id,liked,created_at)
-SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM participants WHERE id=? AND room_code=?)
+SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM participants p JOIN movies m ON m.rating_key=? WHERE p.id=? AND p.room_code=?
+AND (json_array_length(p.genres)=0 OR EXISTS (
+  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+)))
 AND EXISTS(SELECT 1 FROM room_movies WHERE room_code=? AND movie_id=?)
 ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.liked,created_at=excluded.created_at`,
-		code, participantID, movieID, liked, time.Now().Unix(), participantID, code, code, movieID)
+		code, participantID, movieID, liked, time.Now().Unix(), movieID, participantID, code, code, movieID)
 	if err != nil {
 		return false, err
 	}
@@ -533,8 +647,130 @@ ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.like
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO matches(room_code,movie_id,matched_at) VALUES(?,?,?)`, code, movieID, time.Now().Unix()); err != nil {
 			return false, err
 		}
+	} else if _, err := tx.ExecContext(ctx, `DELETE FROM matches WHERE room_code=? AND movie_id=?`, code, movieID); err != nil {
+		return false, err
 	}
 	return matched, tx.Commit()
+}
+
+// AdvanceRound replaces the deck with current matches after every participant finishes.
+func (s *Store) AdvanceRound(ctx context.Context, code, participantID string, expectedRound int) (round, titles int, advanced bool, err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	defer tx.Rollback()
+	if err := tx.QueryRowContext(ctx, `SELECT round FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&round); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, false, ErrNotFound
+		}
+		return 0, 0, false, err
+	}
+	var participantCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=?`, code).Scan(&participantCount); err != nil {
+		return 0, 0, false, err
+	}
+	var authenticated int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=? AND id=?`, code, participantID).Scan(&authenticated); err != nil {
+		return 0, 0, false, err
+	}
+	if authenticated == 0 {
+		return 0, 0, false, ErrNotFound
+	}
+	if expectedRound > 0 && round != expectedRound {
+		if round > expectedRound {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_movies WHERE room_code=?`, code).Scan(&titles); err != nil {
+				return 0, 0, false, err
+			}
+			return round, titles, false, nil
+		}
+		return 0, 0, false, errors.New("room round changed")
+	}
+	if participantCount < 2 {
+		return 0, 0, false, errors.New("another round needs at least two participants")
+	}
+	remaining, err := roundRemainingQuery(ctx, tx, code)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if remaining != 0 {
+		return 0, 0, false, errors.New("everyone must finish the current round first")
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT movie_id FROM matches WHERE room_code=?`, code)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	var movieIDs []string
+	for rows.Next() {
+		var movieID string
+		if err := rows.Scan(&movieID); err != nil {
+			rows.Close()
+			return 0, 0, false, err
+		}
+		movieIDs = append(movieIDs, movieID)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, 0, false, err
+	}
+	if len(movieIDs) <= 1 {
+		return 0, 0, false, errors.New("another round requires at least two matches")
+	}
+	mathrand.Shuffle(len(movieIDs), func(i, j int) { movieIDs[i], movieIDs[j] = movieIDs[j], movieIDs[i] })
+	if _, err := tx.ExecContext(ctx, `DELETE FROM votes WHERE room_code=?`, code); err != nil {
+		return 0, 0, false, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM matches WHERE room_code=?`, code); err != nil {
+		return 0, 0, false, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM room_movies WHERE room_code=?`, code); err != nil {
+		return 0, 0, false, err
+	}
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	for position, movieID := range movieIDs {
+		if _, err := stmt.ExecContext(ctx, code, movieID, position); err != nil {
+			stmt.Close()
+			return 0, 0, false, err
+		}
+	}
+	if err := stmt.Close(); err != nil {
+		return 0, 0, false, err
+	}
+	round++
+	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET round=? WHERE code=?`, round, code); err != nil {
+		return 0, 0, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, false, err
+	}
+	return round, len(movieIDs), true, nil
+}
+
+// roundRemaining returns the number of participant/title pairs still awaiting a vote.
+func (s *Store) roundRemaining(ctx context.Context, code string) (int, error) {
+	return roundRemainingQuery(ctx, s.db, code)
+}
+
+type queryRower interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// roundRemainingQuery counts outstanding votes while respecting personal genres.
+func roundRemainingQuery(ctx context.Context, db queryRower, code string) (int, error) {
+	var remaining int
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*)
+FROM participants p
+JOIN room_movies rm ON rm.room_code=p.room_code
+JOIN movies m ON m.rating_key=rm.movie_id
+LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
+WHERE p.room_code=? AND v.movie_id IS NULL
+AND (json_array_length(p.genres)=0 OR EXISTS (
+  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+))`, code).Scan(&remaining)
+	return remaining, err
 }
 
 // LeaveRoom deactivates an authenticated room participant.

@@ -193,8 +193,14 @@ func NewAuthManager(ctx context.Context, store AuthStore, logger *slog.Logger, c
 		}
 	}
 	manager := &AuthManager{
-		store: store, logger: logger, cloudBase: base, serverURLOverride: serverURLOverride, experimental: experimental, httpClient: &http.Client{Timeout: 20 * time.Second},
-		pending: make(map[string]*pendingAuth), now: time.Now,
+		store:             store,
+		logger:            logger,
+		cloudBase:         base,
+		serverURLOverride: serverURLOverride,
+		experimental:      experimental,
+		httpClient:        &http.Client{Timeout: 20 * time.Second},
+		pending:           make(map[string]*pendingAuth),
+		now:               time.Now,
 	}
 	state, err := store.LoadPlexAuth(ctx)
 	if err == nil {

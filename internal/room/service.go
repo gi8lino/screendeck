@@ -49,6 +49,11 @@ type CatalogOptions struct {
 	MaxYear int      `json:"maxYear"`
 }
 
+type RoundResult struct {
+	Round  int `json:"round"`
+	Titles int `json:"titles"`
+}
+
 type cacheEntry struct {
 	items     []plex.Item
 	fetchedAt time.Time
@@ -101,7 +106,7 @@ func (s *Service) Options(ctx context.Context, libraryKeys []string) (CatalogOpt
 }
 
 // Create creates a room and joins its first participant.
-func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters) (Session, error) {
+func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string) (Session, error) {
 	name = cleanName(name)
 	if name == "" {
 		return Session{}, errors.New("name is required")
@@ -119,18 +124,26 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 	seen := make(map[string]bool)
 	genreSet := make(map[string]struct{}, len(filters.Genres))
 	for _, genre := range filters.Genres {
-		genreSet[strings.ToLower(strings.TrimSpace(genre))] = struct{}{}
+		if normalized := strings.ToLower(strings.TrimSpace(genre)); normalized != "" {
+			genreSet[normalized] = struct{}{}
+		}
 	}
 	var itemIDs []string
+	availableGenreSet := make(map[string]string)
 	for _, item := range items {
 		if !matchesFilters(item, filters, genreSet) || seen[item.RatingKey] {
 			continue
 		}
 		seen[item.RatingKey] = true
 		itemIDs = append(itemIDs, item.RatingKey)
+		collectGenres(availableGenreSet, item.Genres)
 	}
 	if len(itemIDs) == 0 {
 		return Session{}, errors.New("the selected libraries contain no matching titles")
+	}
+	participantGenres, err := canonicalGenres(genres, genreValues(availableGenreSet))
+	if err != nil {
+		return Session{}, err
 	}
 	mathrand.Shuffle(len(itemIDs), func(i, j int) { itemIDs[i], itemIDs[j] = itemIDs[j], itemIDs[i] })
 	code, err := roomCode()
@@ -142,7 +155,13 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 		return Session{}, err
 	}
 	now := time.Now().UTC()
-	err = s.store.CreateRoom(ctx, store.Room{Code: code, CreatedAt: now, ExpiresAt: now.Add(s.roomTTL)}, store.Participant{ID: participantID, Name: name}, tokenHash, itemIDs)
+	err = s.store.CreateRoom(
+		ctx,
+		store.Room{Code: code, Round: 1, CreatedAt: now, ExpiresAt: now.Add(s.roomTTL)},
+		store.Participant{ID: participantID, Name: name, Genres: participantGenres},
+		tokenHash,
+		itemIDs,
+	)
 	if err != nil {
 		return Session{}, err
 	}
@@ -217,7 +236,7 @@ func matchesFilters(item plex.Item, filters Filters, genres map[string]struct{})
 	if len(genres) > 0 {
 		matched := false
 		for _, genre := range item.Genres {
-			if _, ok := genres[strings.ToLower(genre)]; ok {
+			if _, ok := genres[strings.ToLower(strings.TrimSpace(genre))]; ok {
 				matched = true
 				break
 			}
@@ -229,17 +248,34 @@ func matchesFilters(item plex.Item, filters Filters, genres map[string]struct{})
 	return true
 }
 
+// Genres returns the genres currently represented in a room's deck.
+func (s *Service) Genres(ctx context.Context, code string) ([]string, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if len(code) != 6 {
+		return nil, errors.New("a six-character room code is required")
+	}
+	return s.store.RoomGenres(ctx, code)
+}
+
 // Join adds a participant to an existing room.
-func (s *Service) Join(ctx context.Context, code, name string) (Session, error) {
+func (s *Service) Join(ctx context.Context, code, name string, genres []string) (Session, error) {
 	code, name = strings.ToUpper(strings.TrimSpace(code)), cleanName(name)
 	if len(code) != 6 || name == "" {
 		return Session{}, errors.New("a six-character room code and name are required")
+	}
+	availableGenres, err := s.store.RoomGenres(ctx, code)
+	if err != nil {
+		return Session{}, err
+	}
+	participantGenres, err := canonicalGenres(genres, availableGenres)
+	if err != nil {
+		return Session{}, err
 	}
 	participantID, token, tokenHash, err := credentials()
 	if err != nil {
 		return Session{}, err
 	}
-	if err := s.store.JoinRoom(ctx, code, store.Participant{ID: participantID, Name: name}, tokenHash); err != nil {
+	if err := s.store.JoinRoom(ctx, code, store.Participant{ID: participantID, Name: name, Genres: participantGenres}, tokenHash); err != nil {
 		return Session{}, err
 	}
 	s.Notify(code)
@@ -267,6 +303,21 @@ func (s *Service) Vote(ctx context.Context, code, token, movieID string, liked b
 		s.Notify(code)
 	}
 	return matched, err
+}
+
+// NextRound replaces the current deck with its matches and starts another round.
+func (s *Service) NextRound(ctx context.Context, code, token string, expectedRound int) (RoundResult, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	participant, err := s.store.ParticipantByToken(ctx, code, hashToken(token))
+	if err != nil {
+		return RoundResult{}, err
+	}
+	round, titles, _, err := s.store.AdvanceRound(ctx, code, participant.ID, expectedRound)
+	if err != nil {
+		return RoundResult{}, err
+	}
+	s.Notify(code)
+	return RoundResult{Round: round, Titles: titles}, nil
 }
 
 // Leave removes a participant from a room.
@@ -329,6 +380,57 @@ func (s *Service) Notify(code string) {
 		default:
 		}
 	}
+}
+
+// canonicalGenres validates participant genres and returns their canonical room spelling.
+func canonicalGenres(selected, available []string) ([]string, error) {
+	canonical := make(map[string]string, len(available))
+	for _, genre := range available {
+		trimmed := strings.TrimSpace(genre)
+		if trimmed != "" {
+			canonical[strings.ToLower(trimmed)] = trimmed
+		}
+	}
+	seen := make(map[string]struct{}, len(selected))
+	result := make([]string, 0, len(selected))
+	for _, genre := range selected {
+		trimmed := strings.TrimSpace(genre)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		value, ok := canonical[key]
+		if !ok {
+			return nil, fmt.Errorf("genre %q is not available in this room", trimmed)
+		}
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+// collectGenres adds non-empty genres to a case-insensitive canonical set.
+func collectGenres(target map[string]string, genres []string) {
+	for _, genre := range genres {
+		trimmed := strings.TrimSpace(genre)
+		if trimmed != "" {
+			target[strings.ToLower(trimmed)] = trimmed
+		}
+	}
+}
+
+// genreValues returns sorted canonical genre values from a normalized set.
+func genreValues(genres map[string]string) []string {
+	values := make([]string, 0, len(genres))
+	for _, genre := range genres {
+		values = append(values, genre)
+	}
+	sort.Strings(values)
+	return values
 }
 
 // cleanName normalizes and limits a participant name.

@@ -6,6 +6,7 @@ let eventSource;
 let voting = false;
 let navigation;
 let trackedRoomCode = "";
+let trackedRound = 0;
 let knownMatchIDs = new Set();
 let matchQueue = [];
 let matchDialogOpen = false;
@@ -56,19 +57,21 @@ function drawRoom(state) {
   const head = el("section", "room-head");
   const intro = el("div");
   intro.append(
-    el("div", "eyebrow", "Swipe room"),
+    el("div", "eyebrow", `Swipe room · Round ${state.room.round}`),
     el("h2", "", `Good hunting, ${state.me.name}.`),
   );
   const people = el("div", "people");
-  state.participants.forEach((participant) =>
-    people.append(
-      el(
-        "span",
-        `person${participant.id === state.me.id ? " me" : ""}`,
-        `${participant.name}${participant.id === state.me.id ? " · you" : ""}`,
-      ),
-    ),
-  );
+  state.participants.forEach((participant) => {
+    const person = el(
+      "span",
+      `person${participant.id === state.me.id ? " me" : ""}`,
+      `${participant.name}${participant.id === state.me.id ? " · you" : ""}`,
+    );
+    person.title = participant.genres?.length
+      ? `Genres: ${participant.genres.join(", ")}`
+      : "Genres: everything";
+    people.append(person);
+  });
   intro.append(people);
   const code = el("button", "room-code", state.room.code);
   code.title = "Copy room link";
@@ -94,36 +97,36 @@ function drawRoom(state) {
     const actions = el("div", "swipe-actions");
     const no = el("button", "btn icon no", "×");
     no.title = "Pass";
-    no.onclick = () => vote(state.candidate.id, false, card);
+    no.onclick = () => vote(state.candidate, false, card);
     const details = el("button", "btn icon info", "i");
     details.title = "View details";
     details.setAttribute("aria-label", "View title details");
     details.onclick = showDetails;
     const yes = el("button", "btn icon yes", "♥");
     yes.title = "Like";
-    yes.onclick = () => vote(state.candidate.id, true, card);
+    yes.onclick = () => vote(state.candidate, true, card);
     actions.append(no, details, yes);
     left.append(actions);
-    enableSwipe(card, state.candidate.id);
+    enableSwipe(card, state.candidate);
   } else {
-    const done = el("div", "finished");
-    done.append(
-      el("div", "eyebrow", "That’s the lot"),
-      el("h2", "", "You’ve seen every title."),
-      el("p", "lede", "Hang tight while everyone else finishes swiping."),
-    );
-    left.append(done);
+    left.append(finishedCard(state));
   }
   left.append(
     el(
       "div",
       "progress",
-      `${state.progress.voted} of ${state.progress.total} considered`,
+      `${state.progress.voted} of ${state.progress.total} considered · round ${state.room.round}`,
     ),
   );
 
   const side = el("aside", "side");
-  side.append(el("h3", "", `Matches · ${(state.matches || []).length}`));
+  side.append(
+    el(
+      "h3",
+      "",
+      `Round ${state.room.round} matches · ${(state.matches || []).length}`,
+    ),
+  );
   const list = el("div", "match-list");
   if (!state.matches?.length) {
     list.append(
@@ -137,7 +140,10 @@ function drawRoom(state) {
     );
   }
   (state.matches || []).forEach((movie) => {
-    const figure = el("figure", "match");
+    const figure = el(
+      "figure",
+      `match${state.roundComplete && state.matches.length === 1 ? " final-match" : ""}`,
+    );
     const image = el("img");
     image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
     image.alt = "";
@@ -147,6 +153,83 @@ function drawRoom(state) {
   side.append(list);
   grid.append(left, side);
   root.append(grid);
+}
+
+// finishedCard renders waiting, next-round, or final-choice states.
+function finishedCard(state) {
+  const done = el("div", "finished");
+  const matches = state.matches || [];
+  if (!state.roundComplete) {
+    done.append(
+      el("div", "eyebrow", "You’re done for now"),
+      el("h2", "", "You’ve seen your whole deck."),
+      el("p", "lede", "Hang tight while everyone else finishes this round."),
+    );
+    return done;
+  }
+
+  if (matches.length === 1) {
+    done.classList.add("winner");
+    done.append(
+      el("div", "eyebrow", "Decision made"),
+      el("h2", "", "One title remains."),
+      el("p", "lede", `${matches[0].title} survived every round.`),
+    );
+    return done;
+  }
+
+  if (matches.length > 1 && state.participants.length > 1) {
+    done.append(
+      el("div", "eyebrow", `Round ${state.room.round} complete`),
+      el("h2", "", `${matches.length} matches survived.`),
+      el(
+        "p",
+        "lede",
+        "Run them through the deck again. The current matches become the entire next round.",
+      ),
+    );
+    const next = el("button", "btn primary another-round", "Another round");
+    next.type = "button";
+    next.onclick = () => startNextRound(state, next);
+    done.append(next);
+    return done;
+  }
+
+  done.append(
+    el("div", "eyebrow", "Round complete"),
+    el("h2", "", "No shared pick survived."),
+    el(
+      "p",
+      "lede",
+      state.participants.length < 2
+        ? "Invite someone else or start a new room when you’re ready."
+        : "This round ended without a unanimous match. Start a new room to try a wider deck.",
+    ),
+  );
+  return done;
+}
+
+// startNextRound narrows the room deck to the current unanimous matches.
+async function startNextRound(state, button) {
+  if (button.disabled) return;
+  const session = getSession();
+  button.disabled = true;
+  button.textContent = "Starting next round…";
+  try {
+    const result = await api(
+      `/api/rooms/${encodeURIComponent(session.code)}/rounds`,
+      {
+        method: "POST",
+        body: JSON.stringify({ round: state.room.round }),
+      },
+    );
+    showToast(`Round ${result.round}: ${result.titles} titles`);
+    await renderRoom();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+    button.textContent = "Another round";
+  }
 }
 
 // roomURL builds a direct join URL for a room code.
@@ -242,8 +325,12 @@ function trackMatches(state) {
   const matches = state.matches || [];
   const matchIDs = new Set(matches.map((movie) => movie.id));
 
-  if (trackedRoomCode !== state.room.code) {
+  if (
+    trackedRoomCode !== state.room.code ||
+    trackedRound !== state.room.round
+  ) {
     trackedRoomCode = state.room.code;
+    trackedRound = state.room.round;
     knownMatchIDs = matchIDs;
     matchQueue = [];
     return;
@@ -253,13 +340,28 @@ function trackMatches(state) {
     .filter((movie) => !knownMatchIDs.has(movie.id))
     .reverse();
   knownMatchIDs = matchIDs;
-  matchQueue.push(...newMatches);
+  for (const movie of newMatches) queueMatch(movie, false);
   showNextMatch();
+}
+
+// queueMatch adds a match once and optionally marks it known before state refresh.
+function queueMatch(movie, markKnown) {
+  if (markKnown) knownMatchIDs.add(movie.id);
+  if (
+    matchQueue.some((queued) => queued.id === movie.id) ||
+    [...document.querySelectorAll(".match-dialog")].some(
+      (dialog) => dialog.dataset.movieId === movie.id,
+    )
+  ) {
+    return;
+  }
+  matchQueue.push(movie);
 }
 
 // resetMatchTracking clears match notification state when leaving a room.
 function resetMatchTracking() {
   trackedRoomCode = "";
+  trackedRound = 0;
   knownMatchIDs = new Set();
   matchQueue = [];
   const dialog = document.querySelector(".match-dialog");
@@ -281,10 +383,18 @@ function showNextMatch() {
   matchDialogOpen = true;
   const movie = matchQueue.shift();
   const dialog = el("dialog", "match-dialog");
+  dialog.dataset.movieId = movie.id;
   const close = el("button", "dialog-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "Close match");
   close.onclick = () => dialog.close();
+
+  const burst = el("div", "match-burst");
+  ["♥", "♥", "♥", "♥", "♥", "♥"].forEach((heart, index) => {
+    const particle = el("span", "match-heart", heart);
+    particle.style.setProperty("--i", String(index));
+    burst.append(particle);
+  });
 
   const poster = el("img", "match-dialog-poster");
   poster.src = `/api/posters/${encodeURIComponent(movie.id)}`;
@@ -292,7 +402,7 @@ function showNextMatch() {
 
   const content = el("div", "match-dialog-content");
   content.append(
-    el("p", "eyebrow", "Everyone said yes"),
+    el("p", "eyebrow match-eyebrow", "Everyone said yes"),
     el("h2", "", "It’s a match!"),
     el("p", "match-dialog-title", movie.title),
   );
@@ -315,7 +425,7 @@ function showNextMatch() {
 
   const layout = el("div", "match-dialog-layout");
   layout.append(poster, content);
-  dialog.append(close, layout);
+  dialog.append(burst, close, layout);
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
   });
@@ -344,7 +454,7 @@ function movieMetadata(movie) {
 }
 
 // enableSwipe adds pointer-driven voting gestures to a card.
-function enableSwipe(card, movieID) {
+function enableSwipe(card, movie) {
   let start = 0;
   let delta = 0;
   let active = false;
@@ -371,7 +481,7 @@ function enableSwipe(card, movieID) {
     if (!active) return;
     active = false;
     if (Math.abs(delta) > 90) {
-      vote(movieID, delta > 0, card);
+      vote(movie, delta > 0, card);
       return;
     }
     card.style.transition = "";
@@ -392,7 +502,7 @@ function enableSwipe(card, movieID) {
 }
 
 // vote records a choice and advances to the next candidate.
-async function vote(movieID, liked, card) {
+async function vote(movie, liked, card) {
   if (voting) return;
   const session = getSession();
   voting = true;
@@ -400,10 +510,17 @@ async function vote(movieID, liked, card) {
   card.style.transform = `translateX(${liked ? 130 : -130}%) rotate(${liked ? 16 : -16}deg)`;
   card.style.opacity = 0;
   try {
-    await api(
+    const result = await api(
       `/api/rooms/${encodeURIComponent(session.code)}/votes`,
-      { method: "POST", body: JSON.stringify({ movieId: movieID, liked }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ movieId: movie.id, liked }),
+      },
     );
+    if (result.matched) {
+      queueMatch(movie, true);
+      showNextMatch();
+    }
     await renderRoom();
   } catch (error) {
     showToast(error.message);
