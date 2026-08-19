@@ -5,6 +5,10 @@ import { el, root, showToast, topbar } from "./ui.js";
 let eventSource;
 let voting = false;
 let navigation;
+let trackedRoomCode = "";
+let knownMatchIDs = new Set();
+let matchQueue = [];
+let matchDialogOpen = false;
 
 // renderRoom loads and displays the current room.
 export async function renderRoom(nextNavigation) {
@@ -14,8 +18,10 @@ export async function renderRoom(nextNavigation) {
   try {
     const state = await api(`/api/rooms/${encodeURIComponent(session.code)}`);
     drawRoom(state);
+    trackMatches(state);
     connectEvents();
   } catch (error) {
+    resetMatchTracking();
     saveSession(null);
     navigation.renderHome();
     showToast(error.message);
@@ -42,6 +48,7 @@ function drawRoom(state) {
       /* session may already be gone */
     }
     stopRoomEvents();
+    resetMatchTracking();
     saveSession(null);
     navigation.renderHome();
   };
@@ -218,7 +225,109 @@ function showMovieDetails(movie) {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
   });
-  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.addEventListener(
+    "close",
+    () => {
+      dialog.remove();
+      showNextMatch();
+    },
+    { once: true },
+  );
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+// trackMatches queues matches that appeared after this participant entered the room.
+function trackMatches(state) {
+  const matches = state.matches || [];
+  const matchIDs = new Set(matches.map((movie) => movie.id));
+
+  if (trackedRoomCode !== state.room.code) {
+    trackedRoomCode = state.room.code;
+    knownMatchIDs = matchIDs;
+    matchQueue = [];
+    return;
+  }
+
+  const newMatches = matches
+    .filter((movie) => !knownMatchIDs.has(movie.id))
+    .reverse();
+  knownMatchIDs = matchIDs;
+  matchQueue.push(...newMatches);
+  showNextMatch();
+}
+
+// resetMatchTracking clears match notification state when leaving a room.
+function resetMatchTracking() {
+  trackedRoomCode = "";
+  knownMatchIDs = new Set();
+  matchQueue = [];
+  const dialog = document.querySelector(".match-dialog");
+  if (dialog?.open) dialog.close();
+  else dialog?.remove();
+  matchDialogOpen = false;
+}
+
+// showNextMatch displays the next newly matched title in a prominent dialog.
+function showNextMatch() {
+  if (
+    matchDialogOpen ||
+    matchQueue.length === 0 ||
+    document.querySelector(".movie-dialog[open]")
+  ) {
+    return;
+  }
+
+  matchDialogOpen = true;
+  const movie = matchQueue.shift();
+  const dialog = el("dialog", "match-dialog");
+  const close = el("button", "dialog-close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close match");
+  close.onclick = () => dialog.close();
+
+  const poster = el("img", "match-dialog-poster");
+  poster.src = `/api/posters/${encodeURIComponent(movie.id)}`;
+  poster.alt = `Poster for ${movie.title}`;
+
+  const content = el("div", "match-dialog-content");
+  content.append(
+    el("p", "eyebrow", "Everyone said yes"),
+    el("h2", "", "It’s a match!"),
+    el("p", "match-dialog-title", movie.title),
+  );
+  const metadata = movieMetadata(movie);
+  if (metadata.length) content.append(el("p", "muted", metadata.join("  ·  ")));
+  if (movie.genres?.length) {
+    content.append(el("p", "match-dialog-genres", movie.genres.join(" · ")));
+  }
+  if (movie.summary) {
+    content.append(el("p", "match-dialog-summary", movie.summary));
+  }
+  const continueButton = el(
+    "button",
+    "btn primary match-continue",
+    "Continue swiping",
+  );
+  continueButton.type = "button";
+  continueButton.onclick = () => dialog.close();
+  content.append(continueButton);
+
+  const layout = el("div", "match-dialog-layout");
+  layout.append(poster, content);
+  dialog.append(close, layout);
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener(
+    "close",
+    () => {
+      dialog.remove();
+      matchDialogOpen = false;
+      showNextMatch();
+    },
+    { once: true },
+  );
   document.body.append(dialog);
   dialog.showModal();
 }
@@ -291,11 +400,10 @@ async function vote(movieID, liked, card) {
   card.style.transform = `translateX(${liked ? 130 : -130}%) rotate(${liked ? 16 : -16}deg)`;
   card.style.opacity = 0;
   try {
-    const result = await api(
+    await api(
       `/api/rooms/${encodeURIComponent(session.code)}/votes`,
       { method: "POST", body: JSON.stringify({ movieId: movieID, liked }) },
     );
-    if (result.matched) showToast("It’s a match!");
     await renderRoom();
   } catch (error) {
     showToast(error.message);
@@ -314,7 +422,9 @@ function connectEvents() {
     `/api/rooms/${encodeURIComponent(session.code)}/events?token=${encodeURIComponent(session.token)}`,
   );
   eventSource.addEventListener("update", (event) => {
-    if (event.data === "changed" && !voting) renderRoom();
+    if ((event.data === "changed" || event.data === "connected") && !voting) {
+      renderRoom();
+    }
   });
   eventSource.onerror = () => {
     stopRoomEvents();

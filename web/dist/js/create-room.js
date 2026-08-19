@@ -89,9 +89,9 @@ function createFilterFields() {
   );
   const genreRow = el("div", "form-row compact");
   genreRow.append(el("label", "", "Genres · select any that fit"));
-  const genres = el("select");
-  genres.multiple = true;
-  genres.size = 6;
+  const genres = el("div", "genre-chips");
+  genres.setAttribute("role", "group");
+  genres.setAttribute("aria-label", "Genres");
   genreRow.append(genres);
   const range = el("div", "range-grid");
   const yearFrom = numberField("From year", "1900");
@@ -146,6 +146,11 @@ function renderLibraryChoices(libraries, checks, onChange) {
 
 // loadCatalogFilters retrieves available genres and year boundaries.
 async function loadCatalogFilters(libraryKeys, filters) {
+  const selectedGenres = new Set(
+    [...filters.genres.querySelectorAll('input[type="checkbox"]:checked')].map(
+      (input) => input.value,
+    ),
+  );
   filters.genres.replaceChildren();
   if (!libraryKeys.length) {
     filters.status.textContent =
@@ -159,9 +164,13 @@ async function loadCatalogFilters(libraryKeys, filters) {
       body: JSON.stringify({ libraryKeys }),
     });
     options.genres.forEach((genre) => {
-      const option = el("option", "", genre);
-      option.value = genre;
-      filters.genres.append(option);
+      const label = el("label", "genre-chip");
+      const input = el("input");
+      input.type = "checkbox";
+      input.value = genre;
+      input.checked = selectedGenres.has(genre);
+      label.append(input, el("span", "", genre));
+      filters.genres.append(label);
     });
     filters.yearFrom.input.placeholder = options.minYear
       ? String(options.minYear)
@@ -178,7 +187,9 @@ async function loadCatalogFilters(libraryKeys, filters) {
 // filterValues returns normalized room filter values.
 function filterValues(filters) {
   return {
-    genres: [...filters.genres.selectedOptions].map((option) => option.value),
+    genres: [
+      ...filters.genres.querySelectorAll('input[type="checkbox"]:checked'),
+    ].map((input) => input.value),
     yearFrom: Number(filters.yearFrom.input.value) || 0,
     yearTo: Number(filters.yearTo.input.value) || 0,
     maxDurationMinutes: Number(filters.duration.input.value) || 0,
