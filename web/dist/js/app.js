@@ -8,6 +8,7 @@ import { el, root, topbar } from "./ui.js";
 
 const navigation = {
   renderHome,
+  renderJoinRoom: (roomCode = "") => renderJoinRoom(navigation, roomCode),
   renderRoom: () => renderRoom(navigation),
 };
 
@@ -46,18 +47,36 @@ function renderHome() {
     ? () => renderCreateRoom(navigation)
     : () => renderPlexSetup(navigation);
   const join = el("button", "btn ghost", "Join friends");
-  join.onclick = () => renderJoinRoom(navigation);
+  join.onclick = () => navigation.renderJoinRoom();
   actions.append(create, join);
   hero.append(actions);
   root.append(hero);
+}
+
+// invitedRoomCode returns a valid room code from the current share URL.
+function invitedRoomCode() {
+  const code = new URLSearchParams(window.location.search)
+    .get("room")
+    ?.trim()
+    .toUpperCase();
+  return /^[A-HJ-NP-Z2-9]{6}$/.test(code || "") ? code : "";
 }
 
 // boot loads public configuration and restores an active room session.
 async function boot() {
   try {
     setConfig(await api("/api/config"));
-    if (getSession()) await renderRoom(navigation);
-    else renderHome();
+    const roomCode = invitedRoomCode();
+    const session = getSession();
+    if (roomCode && session?.code !== roomCode) {
+      navigation.renderJoinRoom(roomCode);
+    } else if (session) {
+      await renderRoom(navigation);
+    } else if (roomCode) {
+      navigation.renderJoinRoom(roomCode);
+    } else {
+      renderHome();
+    }
   } catch (error) {
     root.replaceChildren(
       el("div", "notice", `ScreenDeck could not start: ${error.message}`),

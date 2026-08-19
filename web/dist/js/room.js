@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { getSession, saveSession } from "./state.js";
+import { getConfig, getSession, saveSession } from "./state.js";
 import { el, root, showToast, topbar } from "./ui.js";
 
 let eventSource;
@@ -64,10 +64,14 @@ function drawRoom(state) {
   );
   intro.append(people);
   const code = el("button", "room-code", state.room.code);
-  code.title = "Copy room code";
+  code.title = "Copy room link";
   code.onclick = async () => {
-    await navigator.clipboard?.writeText(state.room.code);
-    showToast("Room code copied");
+    try {
+      await navigator.clipboard.writeText(roomURL(state.room.code));
+      showToast("Room link copied");
+    } catch {
+      showToast("Could not copy room link");
+    }
   };
   head.append(intro, code);
   root.append(head);
@@ -75,18 +79,23 @@ function drawRoom(state) {
   const grid = el("section", "room-grid");
   const left = el("div");
   if (state.candidate) {
+    const showDetails = () => showMovieDetails(state.candidate);
     const deck = el("div", "deck");
-    const card = movieCard(state.candidate);
+    const card = movieCard(state.candidate, showDetails);
     deck.append(card);
     left.append(deck);
     const actions = el("div", "swipe-actions");
     const no = el("button", "btn icon no", "×");
     no.title = "Pass";
     no.onclick = () => vote(state.candidate.id, false, card);
+    const details = el("button", "btn icon info", "i");
+    details.title = "View details";
+    details.setAttribute("aria-label", "View title details");
+    details.onclick = showDetails;
     const yes = el("button", "btn icon yes", "♥");
     yes.title = "Like";
     yes.onclick = () => vote(state.candidate.id, true, card);
-    actions.append(no, yes);
+    actions.append(no, details, yes);
     left.append(actions);
     enableSwipe(card, state.candidate.id);
   } else {
@@ -133,9 +142,28 @@ function drawRoom(state) {
   root.append(grid);
 }
 
+// roomURL builds a direct join URL for a room code.
+function roomURL(roomCode) {
+  const url = new URL(getConfig().baseUrl || window.location.origin);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("room", roomCode);
+  return url.toString();
+}
+
 // movieCard builds a swipeable card for one movie or TV show.
-function movieCard(movie) {
+function movieCard(movie, showDetails) {
   const card = el("article", "card");
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", `View details for ${movie.title}`);
+  card.title = "View details";
+  card.onclick = showDetails;
+  card.onkeydown = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    showDetails();
+  };
   const image = el("img", "poster");
   image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
   image.alt = `Poster for ${movie.title}`;
@@ -165,19 +193,64 @@ function movieCard(movie) {
   return card;
 }
 
+// showMovieDetails opens the complete metadata and synopsis for a title.
+function showMovieDetails(movie) {
+  document.querySelector(".movie-dialog")?.remove();
+  const dialog = el("dialog", "movie-dialog");
+  const close = el("button", "dialog-close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close details");
+  close.onclick = () => dialog.close();
+  const image = el("img", "dialog-poster");
+  image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
+  image.alt = `Poster for ${movie.title}`;
+  const content = el("div", "dialog-content");
+  content.append(
+    el("div", "eyebrow", movie.type === "show" ? "TV series" : "Movie"),
+    el("h2", "", movie.title),
+    el("div", "meta", movieMetadata(movie).join("  ·  ")),
+    el("p", "dialog-summary", movie.summary || "No synopsis available."),
+  );
+  if (movie.genres?.length) {
+    content.append(el("p", "dialog-genres", movie.genres.join(" · ")));
+  }
+  dialog.append(close, image, content);
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+// movieMetadata returns display-ready metadata for a movie or TV show.
+function movieMetadata(movie) {
+  return [
+    movie.year || null,
+    movie.type === "movie" && movie.duration
+      ? `${Math.round(movie.duration / 60000)} min`
+      : null,
+    movie.rating ? `★ ${movie.rating.toFixed(1)}` : null,
+  ].filter(Boolean);
+}
+
 // enableSwipe adds pointer-driven voting gestures to a card.
 function enableSwipe(card, movieID) {
   let start = 0;
   let delta = 0;
   let active = false;
+  let suppressClick = false;
   card.onpointerdown = (event) => {
     active = true;
     start = event.clientX;
+    delta = 0;
+    suppressClick = false;
     card.setPointerCapture(event.pointerId);
   };
   card.onpointermove = (event) => {
     if (!active) return;
     delta = event.clientX - start;
+    if (Math.abs(delta) > 6) suppressClick = true;
     card.style.transition = "none";
     card.style.transform = `translateX(${delta}px) rotate(${delta / 18}deg)`;
     card.querySelector(delta > 0 ? ".like" : ".nope").style.opacity = Math.min(
@@ -198,6 +271,15 @@ function enableSwipe(card, movieID) {
       .querySelectorAll(".stamp")
       .forEach((stamp) => (stamp.style.opacity = 0));
   };
+  card.addEventListener(
+    "click",
+    (event) => {
+      if (!suppressClick) return;
+      event.stopImmediatePropagation();
+      suppressClick = false;
+    },
+    { capture: true },
+  );
 }
 
 // vote records a choice and advances to the next candidate.

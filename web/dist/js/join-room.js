@@ -3,7 +3,7 @@ import { saveSession } from "./state.js";
 import { backButton, el, root, showError, topbar } from "./ui.js";
 
 // renderJoinRoom displays the form for joining an existing room.
-export function renderJoinRoom(navigation) {
+export function renderJoinRoom(navigation, initialCode = "") {
   root.replaceChildren();
   root.append(topbar(backButton(navigation.renderHome)));
   const panel = el("section", "panel");
@@ -20,6 +20,7 @@ export function renderJoinRoom(navigation) {
   code.required = true;
   code.placeholder = "ABC123";
   code.autocapitalize = "characters";
+  code.value = initialCode;
   codeRow.append(code);
   const nameRow = el("div", "form-row");
   nameRow.append(el("label", "", "Your name"));
@@ -36,6 +37,7 @@ export function renderJoinRoom(navigation) {
   form.append(codeRow, nameRow, error, submit);
   panel.append(form);
   root.append(panel);
+  if (initialCode) name.focus();
 
   form.onsubmit = async (event) => {
     event.preventDefault();
