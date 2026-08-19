@@ -66,7 +66,13 @@ type Session struct {
 
 // NewService creates a room service backed by the supplied catalog and store.
 func NewService(database *store.Store, catalog Catalog, roomTTL time.Duration) *Service {
-	return &Service{store: database, catalog: catalog, roomTTL: roomTTL, events: make(map[string]map[chan struct{}]struct{}), cache: make(map[string]cacheEntry)}
+	return &Service{
+		store:   database,
+		catalog: catalog,
+		roomTTL: roomTTL,
+		events:  make(map[string]map[chan struct{}]struct{}),
+		cache:   make(map[string]cacheEntry),
+	}
 }
 
 // Libraries returns the catalog libraries sorted for display.

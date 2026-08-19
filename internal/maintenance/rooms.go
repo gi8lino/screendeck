@@ -6,14 +6,12 @@ import (
 	"time"
 )
 
-const roomCleanupInterval = time.Hour
-
 type expiredRoomStore interface {
 	DeleteExpired(context.Context) error
 }
 
 // RunRoomCleanup periodically removes expired rooms until shutdown.
-func RunRoomCleanup(ctx context.Context, store expiredRoomStore, logger *slog.Logger) {
+func RunRoomCleanup(ctx context.Context, store expiredRoomStore, roomCleanupInterval time.Duration, logger *slog.Logger) {
 	ticker := time.NewTicker(roomCleanupInterval)
 	defer ticker.Stop()
 	for {

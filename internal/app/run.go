@@ -64,7 +64,7 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 	ctx, stop := server.SignalContext(ctx)
 	defer stop()
 
-	go maintenance.RunRoomCleanup(ctx, database, setupLogger)
+	go maintenance.RunRoomCleanup(ctx, database, cfg.RoomCleanupInterval, setupLogger)
 
 	configured, serverName := authManager.Configured()
 	serverLogger.Info("starting HTTP server",

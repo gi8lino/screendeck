@@ -12,16 +12,17 @@ import (
 )
 
 type Config struct {
-	ListenAddress   string
-	DatabasePath    string
-	AuthKeyPath     string
-	BaseURL         string
-	PlexURLOverride string
-	RoomTTL         time.Duration
-	LogFormat       logging.LogFormat
-	Debug           bool
-	Experimental    bool
-	Overridden      map[string]any
+	ListenAddress       string
+	DatabasePath        string
+	AuthKeyPath         string
+	BaseURL             string
+	PlexURLOverride     string
+	RoomTTL             time.Duration
+	LogFormat           logging.LogFormat
+	Debug               bool
+	Experimental        bool
+	RoomCleanupInterval time.Duration
+	Overridden          map[string]any
 }
 
 // Parse reads command-line and environment configuration.
@@ -53,6 +54,16 @@ func Parse(args []string, version string) (Config, error) {
 			return strings.TrimRight(url, "/")
 		}).
 		Placeholder("URL").
+		Value()
+
+	tf.DurationVar(&cfg.RoomCleanupInterval, "room-cleanup-interval", time.Hour, "How often expired rooms are deleted").
+		Validate(func(d time.Duration) error {
+			if d <= 0 {
+				return fmt.Errorf("room-cleanup-interval must be a positive duration")
+			}
+			return nil
+		}).
+		Placeholder("DURATION").
 		Value()
 
 	tf.StringVar(&cfg.PlexURLOverride, "plex-url-override", "", "Override the discovered Plex server URL").
