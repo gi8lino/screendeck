@@ -17,6 +17,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 		LibraryKeys      []string              `json:"libraryKeys"`
 		Filters          room.Filters          `json:"filters"`
 		Genres           []string              `json:"genres"`
+		GenreMode        room.GenreMode        `json:"genreMode"`
 		RoundSize        int                   `json:"roundSize"`
 		SamplingStrategy room.SamplingStrategy `json:"samplingStrategy"`
 	}
@@ -26,7 +27,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.SamplingStrategy, input.RoundSize)
+		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.GenreMode, input.SamplingStrategy, input.RoundSize)
 		if err != nil {
 			a.fail(r, w, err)
 			return
@@ -38,9 +39,10 @@ func (a *API) CreateRoom() http.HandlerFunc {
 // JoinRoom returns the room joining handler.
 func (a *API) JoinRoom() http.HandlerFunc {
 	type request struct {
-		Code   string   `json:"code"`
-		Name   string   `json:"name"`
-		Genres []string `json:"genres"`
+		Code      string         `json:"code"`
+		Name      string         `json:"name"`
+		Genres    []string       `json:"genres"`
+		GenreMode room.GenreMode `json:"genreMode"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -48,7 +50,7 @@ func (a *API) JoinRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Join(r.Context(), input.Code, input.Name, input.Genres)
+		session, err := a.Rooms.Join(r.Context(), input.Code, input.Name, input.Genres, input.GenreMode)
 		if err != nil {
 			a.fail(r, w, err)
 			return

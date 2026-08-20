@@ -42,6 +42,12 @@ export function renderJoinRoom(navigation, initialCode = "") {
       "Optional · pick what you personally want to swipe. Leave empty to see every title in the room.",
     ),
   );
+  const genreMode = el("select");
+  const anyMode = el("option", "", "Match any selected genre");
+  anyMode.value = "any";
+  const allMode = el("option", "", "Match all selected genres");
+  allMode.value = "all";
+  genreMode.append(anyMode, allMode);
   const genreStatus = el(
     "p",
     "muted",
@@ -50,7 +56,7 @@ export function renderJoinRoom(navigation, initialCode = "") {
   const genres = el("div", "genre-chips");
   genres.setAttribute("role", "group");
   genres.setAttribute("aria-label", "Your genres");
-  genreBox.append(genreStatus, genres);
+  genreBox.append(genreMode, genreStatus, genres);
 
   const error = el("p", "error");
   const submit = el("button", "btn primary", "Join room");
@@ -67,8 +73,7 @@ export function renderJoinRoom(navigation, initialCode = "") {
     if (!/^[A-HJ-NP-Z2-9]{6}$/.test(roomCode)) {
       loadedCode = "";
       genres.replaceChildren();
-      genreStatus.textContent =
-        "Enter a valid room code to load genre choices.";
+      genreStatus.textContent = "Enter a valid room code to load genre choices.";
       return;
     }
     const selected = selectedGenres(genres);
@@ -108,6 +113,7 @@ export function renderJoinRoom(navigation, initialCode = "") {
           code: roomCode,
           name: name.value,
           genres: selectedGenres(genres),
+          genreMode: genreMode.value,
         }),
       });
       saveSession(joined);

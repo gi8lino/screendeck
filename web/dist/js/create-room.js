@@ -33,7 +33,14 @@ export async function renderCreateRoom(navigation) {
   const error = el("p", "error");
   const submit = el("button", "btn primary", "Create room");
   submit.type = "submit";
-  form.append(nameRow, libRow, filters.personalBox, filters.box, error, submit);
+  form.append(
+    nameRow,
+    libRow,
+    filters.personalBox,
+    filters.box,
+    error,
+    submit,
+  );
   panel.append(form);
   root.append(panel);
 
@@ -67,6 +74,7 @@ export async function renderCreateRoom(navigation) {
           name: name.value,
           libraryKeys: selectedLibraries(),
           genres: selectedGenres(filters.personalGenres),
+          genreMode: filters.genreMode.value,
           roundSize: Number(filters.roundSize.value) || 0,
           samplingStrategy: filters.samplingStrategy.value,
           filters: filterValues(filters),
@@ -93,10 +101,16 @@ function createFilterFields() {
       "Optional · these only filter your own swipe deck. Leave empty to see every room title.",
     ),
   );
+  const genreMode = el("select");
+  const anyMode = el("option", "", "Match any selected genre");
+  anyMode.value = "any";
+  const allMode = el("option", "", "Match all selected genres");
+  allMode.value = "all";
+  genreMode.append(anyMode, allMode);
   const personalGenres = el("div", "genre-chips");
   personalGenres.setAttribute("role", "group");
   personalGenres.setAttribute("aria-label", "Your genres");
-  personalBox.append(personalGenres);
+  personalBox.append(genreMode, personalGenres);
 
   const box = el("section", "filter-box");
   box.append(el("div", "label", "Room filters"));
@@ -173,6 +187,7 @@ function createFilterFields() {
   return {
     personalBox,
     personalGenres,
+    genreMode,
     box,
     status,
     roundSize,

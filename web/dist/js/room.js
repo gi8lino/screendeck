@@ -73,7 +73,7 @@ function drawRoom(state) {
       labels.join(" · "),
     );
     person.title = participant.genres?.length
-      ? `Genres: ${participant.genres.join(", ")}`
+      ? `Genres (${participant.genreMode === "all" ? "all" : "any"}): ${participant.genres.join(", ")}`
       : "Genres: everything";
     people.append(person);
   });

@@ -49,6 +49,7 @@ type Participant struct {
 	ID                string   `json:"id"`
 	Name              string   `json:"name"`
 	Genres            []string `json:"genres"`
+	GenreMode         string   `json:"genreMode"`
 	ReadyForNextRound bool     `json:"readyForNextRound"`
 }
 
@@ -306,6 +307,7 @@ CREATE TABLE IF NOT EXISTS participants (
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
   name TEXT NOT NULL,
   genres TEXT NOT NULL DEFAULT '[]',
+  genre_mode TEXT NOT NULL DEFAULT 'any',
   token_hash TEXT NOT NULL UNIQUE,
   joined_at INTEGER NOT NULL
 );
@@ -363,6 +365,9 @@ CREATE TABLE IF NOT EXISTS plex_auth (
 		return err
 	}
 	if err := s.ensureColumn(ctx, "participants", "genres", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "participants", "genre_mode", "TEXT NOT NULL DEFAULT 'any'"); err != nil {
 		return err
 	}
 	return nil
@@ -442,6 +447,9 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
+	if participant.GenreMode == "" {
+		participant.GenreMode = "any"
+	}
 	participantGenres, err := json.Marshal(participant.Genres)
 	if err != nil {
 		return fmt.Errorf("encode participant genres: %w", err)
@@ -454,7 +462,7 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 	if _, err := tx.ExecContext(ctx, `INSERT INTO rooms(code,round,phase,created_at,expires_at) VALUES(?,?,?,?,?)`, room.Code, room.Round, room.Phase, room.CreatedAt.Unix(), room.ExpiresAt.Unix()); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,token_hash,joined_at) VALUES(?,?,?,?,?,?)`, participant.ID, room.Code, participant.Name, string(participantGenres), tokenHash, time.Now().Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,genre_mode,token_hash,joined_at) VALUES(?,?,?,?,?,?,?)`, participant.ID, room.Code, participant.Name, string(participantGenres), participant.GenreMode, tokenHash, time.Now().Unix()); err != nil {
 		return err
 	}
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
@@ -496,6 +504,9 @@ func (s *Store) JoinRoom(ctx context.Context, code string, participant Participa
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
+	if participant.GenreMode == "" {
+		participant.GenreMode = "any"
+	}
 	genres, err := json.Marshal(participant.Genres)
 	if err != nil {
 		return fmt.Errorf("encode participant genres: %w", err)
@@ -505,8 +516,8 @@ func (s *Store) JoinRoom(ctx context.Context, code string, participant Participa
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,token_hash,joined_at)
-SELECT ?,code,?,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.ID, participant.Name, string(genres), tokenHash, time.Now().Unix(), code, time.Now().Unix())
+	result, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,genre_mode,token_hash,joined_at)
+SELECT ?,code,?,?,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.ID, participant.Name, string(genres), participant.GenreMode, tokenHash, time.Now().Unix(), code, time.Now().Unix())
 	if err != nil {
 		return err
 	}
@@ -535,7 +546,7 @@ WHERE room_code=? AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id
 func (s *Store) ParticipantByToken(ctx context.Context, code, tokenHash string) (Participant, error) {
 	var participant Participant
 	var genres string
-	err := s.db.QueryRowContext(ctx, `SELECT id,name,genres FROM participants WHERE room_code=? AND token_hash=?`, code, tokenHash).Scan(&participant.ID, &participant.Name, &genres)
+	err := s.db.QueryRowContext(ctx, `SELECT id,name,genres,genre_mode FROM participants WHERE room_code=? AND token_hash=?`, code, tokenHash).Scan(&participant.ID, &participant.Name, &genres, &participant.GenreMode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return participant, ErrNotFound
 	}
@@ -593,13 +604,13 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 	}
 	state.Room.CreatedAt, state.Room.ExpiresAt = time.Unix(created, 0).UTC(), time.Unix(expires, 0).UTC()
 	var meGenres string
-	if err := s.db.QueryRowContext(ctx, `SELECT p.id,p.name,p.genres,EXISTS(
+	if err := s.db.QueryRowContext(ctx, `SELECT p.id,p.name,p.genres,p.genre_mode,EXISTS(
   SELECT 1 FROM round_ready rr WHERE rr.room_code=p.room_code AND rr.round=? AND rr.participant_id=p.id
-) FROM participants p WHERE p.id=? AND p.room_code=?`, state.Room.Round, participantID, code).Scan(&state.Me.ID, &state.Me.Name, &meGenres, &state.Me.ReadyForNextRound); err != nil {
+) FROM participants p WHERE p.id=? AND p.room_code=?`, state.Room.Round, participantID, code).Scan(&state.Me.ID, &state.Me.Name, &meGenres, &state.Me.GenreMode, &state.Me.ReadyForNextRound); err != nil {
 		return state, ErrNotFound
 	}
 	decodeGenres(meGenres, &state.Me.Genres)
-	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.name,p.genres,EXISTS(
+	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.name,p.genres,p.genre_mode,EXISTS(
   SELECT 1 FROM round_ready rr WHERE rr.room_code=p.room_code AND rr.round=? AND rr.participant_id=p.id
 ) FROM participants p WHERE p.room_code=? ORDER BY p.joined_at`, state.Room.Round, code)
 	if err != nil {
@@ -608,7 +619,7 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 	for rows.Next() {
 		var p Participant
 		var genres string
-		if err := rows.Scan(&p.ID, &p.Name, &genres, &p.ReadyForNextRound); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &genres, &p.GenreMode, &p.ReadyForNextRound); err != nil {
 			rows.Close()
 			return state, err
 		}
@@ -639,7 +650,7 @@ WHERE rr.room_code=? AND rr.round=?`, code, state.Room.Round).Scan(&state.NextRo
 		return state, err
 	}
 	if requesterID != "" {
-		if err := s.db.QueryRowContext(ctx, `SELECT id,name FROM participants WHERE room_code=? AND id=?`, code, requesterID).Scan(&requester.ID, &requester.Name); err == nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT id,name,genre_mode FROM participants WHERE room_code=? AND id=?`, code, requesterID).Scan(&requester.ID, &requester.Name, &requester.GenreMode); err == nil {
 			state.NextRound.RequestedBy = &requester
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return state, err
@@ -652,9 +663,19 @@ JOIN room_movies rm ON rm.room_code=p.room_code
 JOIN movies m ON m.rating_key=rm.movie_id
 LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
 WHERE p.id=? AND p.room_code=?
-AND (json_array_length(p.genres)=0 OR EXISTS (
-  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
-    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+AND (json_array_length(p.genres)=0 OR (
+  p.genre_mode='all' AND NOT EXISTS (
+    SELECT 1 FROM json_each(p.genres) pg
+    WHERE NOT EXISTS (
+      SELECT 1 FROM json_each(m.genres) mg
+      WHERE lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+    )
+  )
+) OR (
+  p.genre_mode<>'all' AND EXISTS (
+    SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+      ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+  )
 ))`, participantID, code).Scan(&state.Progress.Voted, &state.Progress.Total); err != nil {
 		return state, err
 	}
@@ -683,9 +704,19 @@ JOIN room_movies rm ON rm.room_code=p.room_code
 JOIN movies m ON m.rating_key=rm.movie_id
 LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
 WHERE p.id=? AND p.room_code=? AND v.movie_id IS NULL
-AND (json_array_length(p.genres)=0 OR EXISTS (
-  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
-    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+AND (json_array_length(p.genres)=0 OR (
+  p.genre_mode='all' AND NOT EXISTS (
+    SELECT 1 FROM json_each(p.genres) pg
+    WHERE NOT EXISTS (
+      SELECT 1 FROM json_each(m.genres) mg
+      WHERE lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+    )
+  )
+) OR (
+  p.genre_mode<>'all' AND EXISTS (
+    SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+      ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+  )
 ))
 ORDER BY rm.position LIMIT 1`, participantID, code)
 	movie, err := scanMovie(row)
@@ -743,9 +774,19 @@ func (s *Store) Vote(ctx context.Context, code, participantID, movieID string, l
 	defer tx.Rollback()
 	result, err := tx.ExecContext(ctx, `INSERT INTO votes(room_code,participant_id,movie_id,liked,created_at)
 SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM participants p JOIN movies m ON m.rating_key=? WHERE p.id=? AND p.room_code=?
-AND (json_array_length(p.genres)=0 OR EXISTS (
-  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
-    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+AND (json_array_length(p.genres)=0 OR (
+  p.genre_mode='all' AND NOT EXISTS (
+    SELECT 1 FROM json_each(p.genres) pg
+    WHERE NOT EXISTS (
+      SELECT 1 FROM json_each(m.genres) mg
+      WHERE lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+    )
+  )
+) OR (
+  p.genre_mode<>'all' AND EXISTS (
+    SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+      ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+  )
 )))
 AND EXISTS(SELECT 1 FROM room_movies WHERE room_code=? AND movie_id=?)
 ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.liked,created_at=excluded.created_at`,
@@ -1079,9 +1120,19 @@ JOIN room_movies rm ON rm.room_code=p.room_code
 JOIN movies m ON m.rating_key=rm.movie_id
 LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
 WHERE p.room_code=? AND v.movie_id IS NULL
-AND (json_array_length(p.genres)=0 OR EXISTS (
-  SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
-    ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+AND (json_array_length(p.genres)=0 OR (
+  p.genre_mode='all' AND NOT EXISTS (
+    SELECT 1 FROM json_each(p.genres) pg
+    WHERE NOT EXISTS (
+      SELECT 1 FROM json_each(m.genres) mg
+      WHERE lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+    )
+  )
+) OR (
+  p.genre_mode<>'all' AND EXISTS (
+    SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
+      ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
+  )
 ))`, code).Scan(remaining)
 	return err
 }

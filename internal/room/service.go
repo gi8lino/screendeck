@@ -43,6 +43,13 @@ type Filters struct {
 	UnwatchedOnly      bool     `json:"unwatchedOnly"`
 }
 
+type GenreMode string
+
+const (
+	GenreModeAny GenreMode = "any"
+	GenreModeAll GenreMode = "all"
+)
+
 type SamplingStrategy string
 
 const (
@@ -123,7 +130,7 @@ func (s *Service) Options(ctx context.Context, libraryKeys []string) (CatalogOpt
 }
 
 // Create creates a room and joins its first participant.
-func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, sampling SamplingStrategy, roundSize int) (Session, error) {
+func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, genreMode GenreMode, sampling SamplingStrategy, roundSize int) (Session, error) {
 	name = cleanName(name)
 	if name == "" {
 		return Session{}, errors.New("name is required")
@@ -136,6 +143,10 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 	}
 	if roundSize < 0 || roundSize > 50000 {
 		return Session{}, errors.New("round size must be between 0 and 50000 titles")
+	}
+	genreMode = normalizeGenreMode(genreMode)
+	if genreMode == "" {
+		return Session{}, errors.New("genre mode must be any or all")
 	}
 	if sampling == "" {
 		sampling = SamplingRandom
@@ -195,7 +206,7 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 	err = s.store.CreateRoom(
 		ctx,
 		store.Room{Code: code, Round: 1, CreatedAt: now, ExpiresAt: now.Add(s.roomTTL)},
-		store.Participant{ID: participantID, Name: name, Genres: participantGenres},
+		store.Participant{ID: participantID, Name: name, Genres: participantGenres, GenreMode: string(genreMode)},
 		tokenHash,
 		itemIDs,
 		poolIDs,
@@ -365,7 +376,7 @@ func (s *Service) Genres(ctx context.Context, code string) ([]string, error) {
 }
 
 // Join adds a participant to an existing room.
-func (s *Service) Join(ctx context.Context, code, name string, genres []string) (Session, error) {
+func (s *Service) Join(ctx context.Context, code, name string, genres []string, genreMode GenreMode) (Session, error) {
 	code, name = strings.ToUpper(strings.TrimSpace(code)), cleanName(name)
 	if len(code) != 6 || name == "" {
 		return Session{}, errors.New("a six-character room code and name are required")
@@ -378,11 +389,15 @@ func (s *Service) Join(ctx context.Context, code, name string, genres []string) 
 	if err != nil {
 		return Session{}, err
 	}
+	genreMode = normalizeGenreMode(genreMode)
+	if genreMode == "" {
+		return Session{}, errors.New("genre mode must be any or all")
+	}
 	participantID, token, tokenHash, err := credentials()
 	if err != nil {
 		return Session{}, err
 	}
-	if err := s.store.JoinRoom(ctx, code, store.Participant{ID: participantID, Name: name, Genres: participantGenres}, tokenHash); err != nil {
+	if err := s.store.JoinRoom(ctx, code, store.Participant{ID: participantID, Name: name, Genres: participantGenres, GenreMode: string(genreMode)}, tokenHash); err != nil {
 		return Session{}, err
 	}
 	s.Notify(code)
@@ -501,6 +516,19 @@ func (s *Service) Notify(code string) {
 		case ch <- struct{}{}:
 		default:
 		}
+	}
+}
+
+// normalizeGenreMode returns a supported personal genre matching mode.
+func normalizeGenreMode(mode GenreMode) GenreMode {
+	if mode == "" {
+		return GenreModeAny
+	}
+	switch mode {
+	case GenreModeAny, GenreModeAll:
+		return mode
+	default:
+		return ""
 	}
 }
 

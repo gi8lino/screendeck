@@ -52,7 +52,7 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 	assert.Equal(t, 2010, options.MinYear)
 	assert.Equal(t, 2023, options.MaxYear)
 
-	session, err := service.Create(context.Background(), "Host", []string{"1", "2"}, Filters{Genres: []string{"Drama"}, YearFrom: 2020, MaxDurationMinutes: 120}, nil, SamplingRandom, 0)
+	session, err := service.Create(context.Background(), "Host", []string{"1", "2"}, Filters{Genres: []string{"Drama"}, YearFrom: 2020, MaxDurationMinutes: 120}, nil, GenreModeAny, SamplingRandom, 0)
 	require.NoError(t, err)
 
 	state, err := service.State(context.Background(), session.Code, session.Token)
@@ -79,7 +79,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	}
 	service := NewService(database, catalog, time.Hour)
 
-	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Drama"}, SamplingRandom, 0)
+	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Drama"}, GenreModeAny, SamplingRandom, 0)
 	require.NoError(t, err)
 
 	hostState, err := service.State(context.Background(), host.Code, host.Token)
@@ -88,7 +88,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	require.NotNil(t, hostState.Candidate)
 	assert.Equal(t, "drama", hostState.Candidate.RatingKey)
 
-	guest, err := service.Join(context.Background(), host.Code, "Guest", []string{"Action"})
+	guest, err := service.Join(context.Background(), host.Code, "Guest", []string{"Action"}, GenreModeAny)
 	require.NoError(t, err)
 
 	guestState, err := service.State(context.Background(), guest.Code, guest.Token)
@@ -118,7 +118,7 @@ func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 	}
 	service := NewService(database, catalog, time.Hour)
 
-	session, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, SamplingRandom, 2)
+	session, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, GenreModeAny, SamplingRandom, 2)
 	require.NoError(t, err)
 
 	state, err := service.State(context.Background(), session.Code, session.Token)
@@ -126,7 +126,7 @@ func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 	assert.Equal(t, 2, state.Progress.Total)
 	require.NotNil(t, state.Candidate)
 
-	_, err = service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, SamplingRandom, -1)
+	_, err = service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, GenreModeAny, SamplingRandom, -1)
 	require.Error(t, err)
 }
 
@@ -158,4 +158,31 @@ func TestInitialSamplingStrategies(t *testing.T) {
 
 	_, err = selectInitialItems(items, SamplingStrategy("bogus"), 0)
 	require.Error(t, err)
+}
+
+// TestParticipantGenreModeAllRequiresEveryGenre verifies all-mode narrows a personal deck to titles containing every selected genre.
+func TestParticipantGenreModeAllRequiresEveryGenre(t *testing.T) {
+	database, err := store.Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close()
+
+	catalog := fakeCatalog{
+		libraries: []plex.Library{{Key: "1", Title: "Films", Type: "movie"}},
+		items: map[string][]plex.Item{
+			"1": {
+				{RatingKey: "action", Library: "1", Type: "movie", Title: "Action", Genres: []string{"Action"}},
+				{RatingKey: "combo", Library: "1", Type: "movie", Title: "Action Drama", Genres: []string{"Action", "Drama"}},
+			},
+		},
+	}
+	service := NewService(database, catalog, time.Hour)
+
+	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Action", "Drama"}, GenreModeAll, SamplingHighestRated, 0)
+	require.NoError(t, err)
+	state, err := service.State(context.Background(), host.Code, host.Token)
+	require.NoError(t, err)
+	assert.Equal(t, 1, state.Progress.Total)
+	require.NotNil(t, state.Candidate)
+	assert.Equal(t, "combo", state.Candidate.RatingKey)
+	assert.Equal(t, "all", state.Me.GenreMode)
 }
