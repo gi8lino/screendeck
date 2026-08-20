@@ -35,10 +35,11 @@ export function stopRoomEvents() {
   eventSource = null;
 }
 
-// drawRoom renders participants, the current candidate, and matches.
+// drawRoom renders participants, the current candidate, matches, and next-round readiness.
 function drawRoom(state) {
   const session = getSession();
   root.replaceChildren();
+
   const leave = el("button", "btn ghost", "Leave");
   leave.onclick = async () => {
     try {
@@ -54,6 +55,7 @@ function drawRoom(state) {
     navigation.renderHome();
   };
   root.append(topbar(leave));
+
   const head = el("section", "room-head");
   const intro = el("div");
   intro.append(
@@ -62,10 +64,13 @@ function drawRoom(state) {
   );
   const people = el("div", "people");
   state.participants.forEach((participant) => {
+    const labels = [participant.name];
+    if (participant.id === state.me.id) labels.push("you");
+    if (participant.readyForNextRound) labels.push("next round ✓");
     const person = el(
       "span",
-      `person${participant.id === state.me.id ? " me" : ""}`,
-      `${participant.name}${participant.id === state.me.id ? " · you" : ""}`,
+      `person${participant.id === state.me.id ? " me" : ""}${participant.readyForNextRound ? " ready" : ""}`,
+      labels.join(" · "),
     );
     person.title = participant.genres?.length
       ? `Genres: ${participant.genres.join(", ")}`
@@ -73,6 +78,7 @@ function drawRoom(state) {
     people.append(person);
   });
   intro.append(people);
+
   const code = el("button", "room-code", state.room.code);
   code.title = "Copy room link";
   code.onclick = async () => {
@@ -94,6 +100,7 @@ function drawRoom(state) {
     const card = movieCard(state.candidate, showDetails);
     deck.append(card);
     left.append(deck);
+
     const actions = el("div", "swipe-actions");
     const no = el("button", "btn icon no", "×");
     no.title = "Pass";
@@ -121,111 +128,267 @@ function drawRoom(state) {
 
   const side = el("aside", "side");
   side.append(
-    el("h3", "", `Round ${state.room.round} matches · ${(state.matches || []).length}`),
+    el(
+      "h3",
+      "",
+      `Round ${state.room.round} matches · ${(state.matches || []).length}`,
+    ),
+    matchSummary(state),
   );
-  const list = el("div", "match-list");
-  if (!state.matches?.length) {
-    list.append(
-      el(
-        "div",
-        "empty",
-        state.participants.length < 2
-          ? "Invite someone with the room code. Matches need at least two people."
-          : "A shared yes will appear here.",
-      ),
-    );
-  }
-  (state.matches || []).forEach((movie) => {
-    const figure = el(
-      "figure",
-      `match${state.roundComplete && state.matches.length === 1 ? " final-match" : ""}`,
-    );
-    const image = el("img");
-    image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
-    image.alt = "";
-    figure.append(image, el("figcaption", "", movie.title));
-    list.append(figure);
-  });
-  side.append(list);
+  const nextRound = nextRoundPanel(state);
+  if (nextRound) side.append(nextRound);
+
   grid.append(left, side);
   root.append(grid);
 }
 
-// finishedCard renders waiting, next-round, or final-choice states.
-function finishedCard(state) {
-  const done = el("div", "finished");
+// matchSummary renders a compact stack instead of every matched poster.
+function matchSummary(state) {
   const matches = state.matches || [];
-  if (!state.roundComplete) {
-    done.append(
-      el("div", "eyebrow", "You’re done for now"),
-      el("h2", "", "You’ve seen your whole deck."),
-      el("p", "lede", "Hang tight while everyone else finishes this round."),
-    );
-    return done;
-  }
-
-  if (matches.length === 1) {
-    done.classList.add("winner");
-    done.append(
-      el("div", "eyebrow", "Decision made"),
-      el("h2", "", "One title remains."),
-      el("p", "lede", `${matches[0].title} survived every round.`),
-    );
-    return done;
-  }
-
-  if (matches.length > 1 && state.participants.length > 1) {
-    done.append(
-      el("div", "eyebrow", `Round ${state.room.round} complete`),
-      el("h2", "", `${matches.length} matches survived.`),
-      el(
-        "p",
-        "lede",
-        "Run them through the deck again. The current matches become the entire next round.",
-      ),
-    );
-    const next = el("button", "btn primary another-round", "Another round");
-    next.type = "button";
-    next.onclick = () => startNextRound(state, next);
-    done.append(next);
-    return done;
-  }
-
-  done.append(
-    el("div", "eyebrow", "Round complete"),
-    el("h2", "", "No shared pick survived."),
-    el(
-      "p",
-      "lede",
+  if (!matches.length) {
+    return el(
+      "div",
+      "empty",
       state.participants.length < 2
-        ? "Invite someone else or start a new room when you’re ready."
-        : "This round ended without a unanimous match. Start a new room to try a wider deck.",
-    ),
+        ? "Invite someone with the room code. Matches need at least two people."
+        : "A shared yes will appear here.",
+    );
+  }
+
+  const pile = el("button", "match-pile");
+  pile.type = "button";
+  pile.setAttribute(
+    "aria-label",
+    `Show ${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
   );
-  return done;
+  pile.onclick = () => showMatches(matches, state.room.round);
+
+  const stack = el("span", "match-pile-stack");
+  matches.slice(0, 3).forEach((movie) => {
+    const image = el("img", "match-pile-poster");
+    image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
+    image.alt = "";
+    stack.append(image);
+  });
+  const count = el("span", "match-pile-count", String(matches.length));
+  stack.append(count);
+
+  const label = el("span", "match-pile-label");
+  label.append(
+    el(
+      "strong",
+      "",
+      `${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
+    ),
+    el("small", "", "Click to open the pile"),
+  );
+  pile.append(stack, label);
+  return pile;
 }
 
-// startNextRound narrows the room deck to the current unanimous matches.
-async function startNextRound(state, button) {
+// showMatches expands the current match pile in a scrollable dialog.
+function showMatches(matches, round) {
+  document.querySelector(".matches-dialog")?.remove();
+  const dialog = el("dialog", "matches-dialog");
+  const close = el("button", "dialog-close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close matches");
+  close.onclick = () => dialog.close();
+
+  const header = el("div", "matches-dialog-head");
+  header.append(
+    el("div", "eyebrow", `Round ${round}`),
+    el(
+      "h2",
+      "",
+      `${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
+    ),
+    el("p", "muted", "These are the titles everyone has liked so far."),
+  );
+
+  const list = el("div", "matches-dialog-grid");
+  matches.forEach((movie) => {
+    const button = el("button", "match-grid-item");
+    button.type = "button";
+    button.title = `View details for ${movie.title}`;
+    const image = el("img");
+    image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
+    image.alt = `Poster for ${movie.title}`;
+    button.append(image, el("span", "", movie.title));
+    button.onclick = () => {
+      dialog.close();
+      showMovieDetails(movie);
+    };
+    list.append(button);
+  });
+
+  dialog.append(close, header, list);
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener(
+    "close",
+    () => {
+      dialog.remove();
+      showNextMatch();
+    },
+    { once: true },
+  );
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+// nextRoundPanel renders the unanimous agreement flow as soon as two matches exist.
+function nextRoundPanel(state) {
+  if (state.participants.length < 2) return null;
+
+  const matches = state.matches || [];
+  const readiness = state.nextRound || {
+    ready: 0,
+    required: state.participants.length,
+    available: false,
+  };
+  if (matches.length < 2 && readiness.ready === 0) return null;
+
+  const panel = el("section", "next-round-panel");
+  panel.append(el("h3", "", "Next round"));
+
+  const readyPeople = state.participants.filter(
+    (participant) => participant.readyForNextRound,
+  );
+  if (readiness.ready > 0) {
+    const names = readyPeople.map((participant) => participant.name);
+    panel.append(
+      el(
+        "p",
+        "next-round-status",
+        `${readiness.ready} of ${readiness.required} ready${names.length ? ` · ${names.join(", ")}` : ""}`,
+      ),
+    );
+  } else {
+    panel.append(
+      el(
+        "p",
+        "muted",
+        "Ask everyone to narrow the deck to the matches you have right now. You can keep swiping while people decide.",
+      ),
+    );
+  }
+
+  if (matches.length < 2 && state.me.readyForNextRound) {
+    panel.append(
+      el(
+        "p",
+        "muted",
+        "There are fewer than two matches now. Withdraw your readiness or keep swiping until another match appears.",
+      ),
+    );
+  }
+
+  if (matches.length >= 2 || state.me.readyForNextRound) {
+    const button = el(
+      "button",
+      state.me.readyForNextRound
+        ? "btn ghost next-round-button"
+        : "btn primary next-round-button",
+      state.me.readyForNextRound
+        ? "Withdraw readiness"
+        : readiness.ready > 0
+          ? "Ready for next round"
+          : "Ask for next round",
+    );
+    button.type = "button";
+    button.onclick = () => toggleNextRoundReady(state, button);
+    panel.append(button);
+  }
+  return panel;
+}
+
+// toggleNextRoundReady records or withdraws this participant's agreement.
+async function toggleNextRoundReady(state, button) {
   if (button.disabled) return;
   const session = getSession();
+  const ready = !state.me.readyForNextRound;
   button.disabled = true;
-  button.textContent = "Starting next round…";
+  button.textContent = ready ? "Marking ready…" : "Withdrawing…";
   try {
     const result = await api(
-      `/api/rooms/${encodeURIComponent(session.code)}/rounds`,
+      `/api/rooms/${encodeURIComponent(session.code)}/round-ready`,
       {
         method: "POST",
-        body: JSON.stringify({ round: state.room.round }),
+        body: JSON.stringify({ round: state.room.round, ready }),
       },
     );
-    showToast(`Round ${result.round}: ${result.titles} titles`);
+    if (result.advanced) {
+      showToast(`Round ${result.round}: ${result.titles} matched titles`);
+    } else {
+      showToast(`${result.ready} of ${result.required} ready`);
+    }
     await renderRoom();
   } catch (error) {
     showToast(error.message);
     button.disabled = false;
-    button.textContent = "Another round";
+    button.textContent = state.me.readyForNextRound
+      ? "Withdraw readiness"
+      : state.nextRound?.ready > 0
+        ? "Ready for next round"
+        : "Ask for next round";
   }
+}
+
+// finishedCard renders the state shown after this participant exhausts their personal deck.
+function finishedCard(state) {
+  const done = el("div", "finished");
+  const matches = state.matches || [];
+
+  if (state.roundComplete && matches.length === 1) {
+    done.classList.add("winner");
+    done.append(
+      el("div", "eyebrow", "Decision made"),
+      el("h2", "", "One title remains."),
+      el("p", "lede", `${matches[0].title} survived the complete round.`),
+    );
+    return done;
+  }
+
+  if (state.roundComplete && matches.length === 0) {
+    done.append(
+      el("div", "eyebrow", "Round complete"),
+      el("h2", "", "No shared pick survived."),
+      el(
+        "p",
+        "lede",
+        "Start a new room with a wider deck or different filters to try again.",
+      ),
+    );
+    return done;
+  }
+
+  if (matches.length > 1) {
+    done.append(
+      el("div", "eyebrow", "Your deck is complete"),
+      el("h2", "", `${matches.length} matches so far.`),
+      el(
+        "p",
+        "lede",
+        "You can wait for more matches or use the next-round request to narrow the group now.",
+      ),
+    );
+    return done;
+  }
+
+  done.append(
+    el("div", "eyebrow", "You’re done for now"),
+    el("h2", "", "You’ve seen your whole deck."),
+    el(
+      "p",
+      "lede",
+      state.roundComplete
+        ? "The group has finished this deck."
+        : "Other participants can keep swiping; new matches will appear live.",
+    ),
+  );
+  return done;
 }
 
 // roomURL builds a direct join URL for a room code.
@@ -316,7 +479,7 @@ function showMovieDetails(movie) {
   dialog.showModal();
 }
 
-// trackMatches queues matches that appeared after this participant entered the room.
+// trackMatches notices matches created by other participants without interrupting swiping.
 function trackMatches(state) {
   const matches = state.matches || [];
   const matchIDs = new Set(matches.map((movie) => movie.id));
@@ -332,15 +495,16 @@ function trackMatches(state) {
     return;
   }
 
-  const newMatches = matches
-    .filter((movie) => !knownMatchIDs.has(movie.id))
-    .reverse();
+  const newMatches = matches.filter((movie) => !knownMatchIDs.has(movie.id));
   knownMatchIDs = matchIDs;
-  for (const movie of newMatches) queueMatch(movie, false);
-  showNextMatch();
+  if (newMatches.length === 1) {
+    showToast(`New match: ${newMatches[0].title}`);
+  } else if (newMatches.length > 1) {
+    showToast(`${newMatches.length} new matches`);
+  }
 }
 
-// queueMatch adds a match once and optionally marks it known before state refresh.
+// queueMatch adds a locally completed match to the full-screen reveal queue.
 function queueMatch(movie, markKnown) {
   if (markKnown) knownMatchIDs.add(movie.id);
   if (
@@ -360,18 +524,20 @@ function resetMatchTracking() {
   trackedRound = 0;
   knownMatchIDs = new Set();
   matchQueue = [];
-  const dialog = document.querySelector(".match-dialog");
-  if (dialog?.open) dialog.close();
-  else dialog?.remove();
+  for (const selector of [".match-dialog", ".matches-dialog"]) {
+    const dialog = document.querySelector(selector);
+    if (dialog?.open) dialog.close();
+    else dialog?.remove();
+  }
   matchDialogOpen = false;
 }
 
-// showNextMatch displays the next newly matched title in a prominent dialog.
+// showNextMatch displays a prominent reveal only for the participant whose swipe completed it.
 function showNextMatch() {
   if (
     matchDialogOpen ||
     matchQueue.length === 0 ||
-    document.querySelector(".movie-dialog[open]")
+    document.querySelector(".movie-dialog[open], .matches-dialog[open]")
   ) {
     return;
   }

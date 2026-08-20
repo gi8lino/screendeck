@@ -36,24 +36,32 @@ type Room struct {
 }
 
 type Participant struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name"`
-	Genres []string `json:"genres"`
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Genres            []string `json:"genres"`
+	ReadyForNextRound bool     `json:"readyForNextRound"`
 }
 
 type RoomState struct {
-	Room          Room          `json:"room"`
-	Me            Participant   `json:"me"`
-	Participants  []Participant `json:"participants"`
-	Candidate     *plex.Item    `json:"candidate,omitempty"`
-	Matches       []plex.Item   `json:"matches"`
-	Progress      Progress      `json:"progress"`
-	RoundComplete bool          `json:"roundComplete"`
+	Room          Room           `json:"room"`
+	Me            Participant    `json:"me"`
+	Participants  []Participant  `json:"participants"`
+	Candidate     *plex.Item     `json:"candidate,omitempty"`
+	Matches       []plex.Item    `json:"matches"`
+	Progress      Progress       `json:"progress"`
+	NextRound     NextRoundState `json:"nextRound"`
+	RoundComplete bool           `json:"roundComplete"`
 }
 
 type Progress struct {
 	Voted int `json:"voted"`
 	Total int `json:"total"`
+}
+
+type NextRoundState struct {
+	Ready     int  `json:"ready"`
+	Required  int  `json:"required"`
+	Available bool `json:"available"`
 }
 
 // Open opens the database and applies its schema migrations.
@@ -84,7 +92,7 @@ func Open(path string, configuredKeyPath ...string) (*Store, error) {
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		db.Close()
+		db.Close() // nolint:errcheck
 		return nil, err
 	}
 	store := &Store{db: db, cipher: aead}
@@ -274,6 +282,13 @@ CREATE TABLE IF NOT EXISTS participants (
   joined_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS participants_room_idx ON participants(room_code);
+CREATE TABLE IF NOT EXISTS round_ready (
+  room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+  round INTEGER NOT NULL,
+  participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY(room_code, round, participant_id)
+);
 CREATE TABLE IF NOT EXISTS votes (
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
   participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
@@ -437,6 +452,11 @@ SELECT ?,code,?,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.ID,
 	if count, _ := result.RowsAffected(); count == 0 {
 		return ErrNotFound
 	}
+	// Membership changed, so any pending next-round agreement must be renewed
+	// by the new set of active participants.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM round_ready WHERE room_code=?`, code); err != nil {
+		return err
+	}
 	// A newly joined participant has not voted yet, so prior matches are no
 	// longer unanimous until that participant also likes them.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM matches
@@ -505,18 +525,22 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 	}
 	state.Room.CreatedAt, state.Room.ExpiresAt = time.Unix(created, 0).UTC(), time.Unix(expires, 0).UTC()
 	var meGenres string
-	if err := s.db.QueryRowContext(ctx, `SELECT id,name,genres FROM participants WHERE id=? AND room_code=?`, participantID, code).Scan(&state.Me.ID, &state.Me.Name, &meGenres); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT p.id,p.name,p.genres,EXISTS(
+  SELECT 1 FROM round_ready rr WHERE rr.room_code=p.room_code AND rr.round=? AND rr.participant_id=p.id
+) FROM participants p WHERE p.id=? AND p.room_code=?`, state.Room.Round, participantID, code).Scan(&state.Me.ID, &state.Me.Name, &meGenres, &state.Me.ReadyForNextRound); err != nil {
 		return state, ErrNotFound
 	}
 	decodeGenres(meGenres, &state.Me.Genres)
-	rows, err := s.db.QueryContext(ctx, `SELECT id,name,genres FROM participants WHERE room_code=? ORDER BY joined_at`, code)
+	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.name,p.genres,EXISTS(
+  SELECT 1 FROM round_ready rr WHERE rr.room_code=p.room_code AND rr.round=? AND rr.participant_id=p.id
+) FROM participants p WHERE p.room_code=? ORDER BY p.joined_at`, state.Room.Round, code)
 	if err != nil {
 		return state, err
 	}
 	for rows.Next() {
 		var p Participant
 		var genres string
-		if err := rows.Scan(&p.ID, &p.Name, &genres); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &genres, &p.ReadyForNextRound); err != nil {
 			rows.Close()
 			return state, err
 		}
@@ -535,6 +559,13 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 	if err != nil {
 		return state, err
 	}
+	state.NextRound.Required = len(state.Participants)
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM round_ready rr
+JOIN participants p ON p.id=rr.participant_id AND p.room_code=rr.room_code
+WHERE rr.room_code=? AND rr.round=?`, code, state.Room.Round).Scan(&state.NextRound.Ready); err != nil {
+		return state, err
+	}
+	state.NextRound.Available = state.NextRound.Required > 1 && len(state.Matches) > 1
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(v.movie_id),COUNT(rm.movie_id)
 FROM participants p
 JOIN room_movies rm ON rm.room_code=p.room_code
@@ -653,99 +684,170 @@ ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.like
 	return matched, tx.Commit()
 }
 
-// AdvanceRound replaces the deck with current matches after every participant finishes.
-func (s *Store) AdvanceRound(ctx context.Context, code, participantID string, expectedRound int) (round, titles int, advanced bool, err error) {
+// SetRoundReady updates one participant's next-round readiness and advances once everyone agrees.
+func (s *Store) SetRoundReady(ctx context.Context, code, participantID string, expectedRound int, ready bool) (round, titles, readyCount, required int, advanced bool, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, 0, 0, 0, false, err
 	}
 	defer tx.Rollback()
+
 	if err := tx.QueryRowContext(ctx, `SELECT round FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&round); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, 0, false, ErrNotFound
+			return 0, 0, 0, 0, false, ErrNotFound
 		}
-		return 0, 0, false, err
-	}
-	var participantCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=?`, code).Scan(&participantCount); err != nil {
-		return 0, 0, false, err
-	}
-	var authenticated int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=? AND id=?`, code, participantID).Scan(&authenticated); err != nil {
-		return 0, 0, false, err
-	}
-	if authenticated == 0 {
-		return 0, 0, false, ErrNotFound
+		return 0, 0, 0, 0, false, err
 	}
 	if expectedRound > 0 && round != expectedRound {
 		if round > expectedRound {
 			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_movies WHERE room_code=?`, code).Scan(&titles); err != nil {
-				return 0, 0, false, err
+				return 0, 0, 0, 0, false, err
 			}
-			return round, titles, false, nil
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=?`, code).Scan(&required); err != nil {
+				return 0, 0, 0, 0, false, err
+			}
+			return round, titles, 0, required, true, nil
 		}
-		return 0, 0, false, errors.New("room round changed")
+		return 0, 0, 0, 0, false, errors.New("room round changed")
 	}
-	if participantCount < 2 {
-		return 0, 0, false, errors.New("another round needs at least two participants")
+
+	var authenticated int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=? AND id=?`, code, participantID).Scan(&authenticated); err != nil {
+		return 0, 0, 0, 0, false, err
 	}
-	remaining, err := roundRemainingQuery(ctx, tx, code)
-	if err != nil {
-		return 0, 0, false, err
+	if authenticated == 0 {
+		return 0, 0, 0, 0, false, ErrNotFound
 	}
-	if remaining != 0 {
-		return 0, 0, false, errors.New("everyone must finish the current round first")
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=?`, code).Scan(&required); err != nil {
+		return 0, 0, 0, 0, false, err
 	}
+	if required < 2 {
+		return 0, 0, 0, 0, false, errors.New("another round needs at least two participants")
+	}
+
+	if ready {
+		var matches int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE room_code=?`, code).Scan(&matches); err != nil {
+			return 0, 0, 0, 0, false, err
+		}
+		if matches < 2 {
+			return 0, 0, 0, 0, false, errors.New("another round requires at least two matches")
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO round_ready(room_code,round,participant_id,created_at) VALUES(?,?,?,?)
+ON CONFLICT(room_code,round,participant_id) DO NOTHING`, code, round, participantID, time.Now().Unix()); err != nil {
+			return 0, 0, 0, 0, false, err
+		}
+	} else if _, err := tx.ExecContext(ctx, `DELETE FROM round_ready WHERE room_code=? AND round=? AND participant_id=?`, code, round, participantID); err != nil {
+		return 0, 0, 0, 0, false, err
+	}
+
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM round_ready rr
+JOIN participants p ON p.id=rr.participant_id AND p.room_code=rr.room_code
+WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&readyCount); err != nil {
+		return 0, 0, 0, 0, false, err
+	}
+	if readyCount == required {
+		nextRound, nextTitles, err := advanceRoundTx(ctx, tx, code, round)
+		if err != nil {
+			return 0, 0, 0, 0, false, err
+		}
+		if err := tx.Commit(); err != nil {
+			return 0, 0, 0, 0, false, err
+		}
+		return nextRound, nextTitles, required, required, true, nil
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, 0, 0, false, err
+	}
+	return round, 0, readyCount, required, false, nil
+}
+
+// advanceRoundTx snapshots the current matches and makes them the next shuffled deck.
+func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (int, int, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT movie_id FROM matches WHERE room_code=?`, code)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, 0, err
 	}
 	var movieIDs []string
 	for rows.Next() {
 		var movieID string
 		if err := rows.Scan(&movieID); err != nil {
 			rows.Close()
-			return 0, 0, false, err
+			return 0, 0, err
 		}
 		movieIDs = append(movieIDs, movieID)
 	}
 	if err := rows.Close(); err != nil {
-		return 0, 0, false, err
+		return 0, 0, err
 	}
-	if len(movieIDs) <= 1 {
-		return 0, 0, false, errors.New("another round requires at least two matches")
+	if len(movieIDs) < 2 {
+		return 0, 0, errors.New("another round requires at least two matches")
 	}
+
 	mathrand.Shuffle(len(movieIDs), func(i, j int) { movieIDs[i], movieIDs[j] = movieIDs[j], movieIDs[i] })
 	if _, err := tx.ExecContext(ctx, `DELETE FROM votes WHERE room_code=?`, code); err != nil {
-		return 0, 0, false, err
+		return 0, 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM matches WHERE room_code=?`, code); err != nil {
-		return 0, 0, false, err
+		return 0, 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM room_movies WHERE room_code=?`, code); err != nil {
-		return 0, 0, false, err
+		return 0, 0, err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM round_ready WHERE room_code=?`, code); err != nil {
+		return 0, 0, err
+	}
+
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, 0, err
 	}
 	for position, movieID := range movieIDs {
 		if _, err := stmt.ExecContext(ctx, code, movieID, position); err != nil {
 			stmt.Close()
-			return 0, 0, false, err
+			return 0, 0, err
 		}
 	}
 	if err := stmt.Close(); err != nil {
-		return 0, 0, false, err
+		return 0, 0, err
 	}
-	round++
-	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET round=? WHERE code=?`, round, code); err != nil {
-		return 0, 0, false, err
+
+	nextRound := round + 1
+	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET round=? WHERE code=? AND round=?`, nextRound, code, round); err != nil {
+		return 0, 0, err
 	}
-	if err := tx.Commit(); err != nil {
-		return 0, 0, false, err
+	return nextRound, len(movieIDs), nil
+}
+
+// maybeAdvanceReadyRoundTx advances after membership changes leave every active participant ready.
+func maybeAdvanceReadyRoundTx(ctx context.Context, tx *sql.Tx, code string) error {
+	var round, participants, ready, matches int
+	if err := tx.QueryRowContext(ctx, `SELECT round FROM rooms WHERE code=?`, code).Scan(&round); err != nil {
+		return err
 	}
-	return round, len(movieIDs), true, nil
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=?`, code).Scan(&participants); err != nil {
+		return err
+	}
+	if participants < 2 {
+		return nil
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM round_ready rr
+JOIN participants p ON p.id=rr.participant_id AND p.room_code=rr.room_code
+WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&ready); err != nil {
+		return err
+	}
+	if ready != participants {
+		return nil
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE room_code=?`, code).Scan(&matches); err != nil {
+		return err
+	}
+	if matches < 2 {
+		return nil
+	}
+	_, _, err := advanceRoundTx(ctx, tx, code, round)
+	return err
 }
 
 // roundRemaining returns the number of participant/title pairs still awaiting a vote.
@@ -796,6 +898,9 @@ AND (SELECT COUNT(*) FROM participants WHERE room_code=?)>1
 AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=rm.movie_id AND liked=1)
   =(SELECT COUNT(*) FROM participants WHERE room_code=?)`, time.Now().Unix(), code, code, code, code)
 	if err != nil {
+		return err
+	}
+	if err := maybeAdvanceReadyRoundTx(ctx, tx, code); err != nil {
 		return err
 	}
 	return tx.Commit()

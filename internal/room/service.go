@@ -50,8 +50,11 @@ type CatalogOptions struct {
 }
 
 type RoundResult struct {
-	Round  int `json:"round"`
-	Titles int `json:"titles"`
+	Round    int  `json:"round"`
+	Titles   int  `json:"titles"`
+	Ready    int  `json:"ready"`
+	Required int  `json:"required"`
+	Advanced bool `json:"advanced"`
 }
 
 type cacheEntry struct {
@@ -66,13 +69,7 @@ type Session struct {
 
 // NewService creates a room service backed by the supplied catalog and store.
 func NewService(database *store.Store, catalog Catalog, roomTTL time.Duration) *Service {
-	return &Service{
-		store:   database,
-		catalog: catalog,
-		roomTTL: roomTTL,
-		events:  make(map[string]map[chan struct{}]struct{}),
-		cache:   make(map[string]cacheEntry),
-	}
+	return &Service{store: database, catalog: catalog, roomTTL: roomTTL, events: make(map[string]map[chan struct{}]struct{}), cache: make(map[string]cacheEntry)}
 }
 
 // Libraries returns the catalog libraries sorted for display.
@@ -112,7 +109,7 @@ func (s *Service) Options(ctx context.Context, libraryKeys []string) (CatalogOpt
 }
 
 // Create creates a room and joins its first participant.
-func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string) (Session, error) {
+func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, roundSize int) (Session, error) {
 	name = cleanName(name)
 	if name == "" {
 		return Session{}, errors.New("name is required")
@@ -122,6 +119,9 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 	}
 	if filters.YearFrom < 0 || filters.YearTo < 0 || filters.MaxDurationMinutes < 0 || (filters.YearFrom > 0 && filters.YearTo > 0 && filters.YearFrom > filters.YearTo) {
 		return Session{}, errors.New("invalid catalog filters")
+	}
+	if roundSize < 0 || roundSize > 50000 {
+		return Session{}, errors.New("round size must be between 0 and 50000 titles")
 	}
 	_, items, err := s.loadItems(ctx, libraryKeys)
 	if err != nil {
@@ -152,6 +152,9 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 		return Session{}, err
 	}
 	mathrand.Shuffle(len(itemIDs), func(i, j int) { itemIDs[i], itemIDs[j] = itemIDs[j], itemIDs[i] })
+	if roundSize > 0 && len(itemIDs) > roundSize {
+		itemIDs = itemIDs[:roundSize]
+	}
 	code, err := roomCode()
 	if err != nil {
 		return Session{}, err
@@ -311,19 +314,19 @@ func (s *Service) Vote(ctx context.Context, code, token, movieID string, liked b
 	return matched, err
 }
 
-// NextRound replaces the current deck with its matches and starts another round.
-func (s *Service) NextRound(ctx context.Context, code, token string, expectedRound int) (RoundResult, error) {
+// SetNextRoundReady records whether a participant agrees to narrow the deck to current matches.
+func (s *Service) SetNextRoundReady(ctx context.Context, code, token string, expectedRound int, ready bool) (RoundResult, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
 	participant, err := s.store.ParticipantByToken(ctx, code, hashToken(token))
 	if err != nil {
 		return RoundResult{}, err
 	}
-	round, titles, _, err := s.store.AdvanceRound(ctx, code, participant.ID, expectedRound)
+	round, titles, readyCount, required, advanced, err := s.store.SetRoundReady(ctx, code, participant.ID, expectedRound, ready)
 	if err != nil {
 		return RoundResult{}, err
 	}
 	s.Notify(code)
-	return RoundResult{Round: round, Titles: titles}, nil
+	return RoundResult{Round: round, Titles: titles, Ready: readyCount, Required: required, Advanced: advanced}, nil
 }
 
 // Leave removes a participant from a room.

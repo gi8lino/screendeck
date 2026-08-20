@@ -67,7 +67,8 @@ export function renderJoinRoom(navigation, initialCode = "") {
     if (!/^[A-HJ-NP-Z2-9]{6}$/.test(roomCode)) {
       loadedCode = "";
       genres.replaceChildren();
-      genreStatus.textContent = "Enter a valid room code to load genre choices.";
+      genreStatus.textContent =
+        "Enter a valid room code to load genre choices.";
       return;
     }
     const selected = selectedGenres(genres);

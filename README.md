@@ -11,11 +11,13 @@ It is designed for a home network: one Go process, one SQLite file, and no accou
 - Discovers accessible Plex servers and prefers their local non-relay connection.
 - Loads movie and TV-show libraries and metadata from Plex.
 - Filters rooms by library, genre, release year, maximum movie runtime, and watched state.
+- Lets the host cap the shuffled first round at 50, 100, 250, or 500 titles, or use every matching title; the UI defaults to 250.
 - Lets each participant choose optional personal genres that only affect their own swipe deck.
 - Touch and mouse swipe interface, with accessible like/pass buttons.
 - Temporary rooms with anonymous display names.
 - Unanimous matches for two or more participants, with an immediate animated match reveal for the deciding swipe.
-- Repeatable “Another round” narrowing that turns the current matches into the next deck until one title remains.
+- Unanimous next-round requests that can narrow the current matches into a new deck at any time, without waiting for everyone to finish a large round.
+- Collapsed match piles that expand on demand instead of filling the room view with every poster.
 - Live participant and match updates using Server-Sent Events.
 - Plex credentials remain on the server; posters are proxied and cached by the browser.
 - Embedded frontend, SQLite persistence, graceful shutdown, and a `/healthz` endpoint.
@@ -117,4 +119,4 @@ web                 embedded browser application
 
 ## Current scope
 
-Movies and top-level TV shows are supported. Participants can apply personal genre preferences, and completed rounds can repeatedly narrow unanimous matches down to one title. Individual seasons/episodes, configurable majority thresholds, permanent profiles, and direct playback are intentionally outside the current version.
+Movies and top-level TV shows are supported. Participants can apply personal genre preferences, hosts can limit the shuffled first-round deck size, and the group can unanimously narrow current matches into repeatable follow-up rounds without finishing the entire deck. Individual seasons/episodes, configurable majority thresholds, permanent profiles, and direct playback are intentionally outside the current version.

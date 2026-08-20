@@ -17,6 +17,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 		LibraryKeys []string     `json:"libraryKeys"`
 		Filters     room.Filters `json:"filters"`
 		Genres      []string     `json:"genres"`
+		RoundSize   int          `json:"roundSize"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -24,7 +25,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres)
+		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.RoundSize)
 		if err != nil {
 			a.fail(r, w, err)
 			return
@@ -104,10 +105,11 @@ func (a *API) Vote() http.HandlerFunc {
 	}
 }
 
-// NextRound returns the handler that narrows the deck to the current matches.
-func (a *API) NextRound() http.HandlerFunc {
+// NextRoundReady returns the handler that records agreement to narrow the deck to current matches.
+func (a *API) NextRoundReady() http.HandlerFunc {
 	type request struct {
-		Round int `json:"round"`
+		Round int  `json:"round"`
+		Ready bool `json:"ready"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -115,7 +117,7 @@ func (a *API) NextRound() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		result, err := a.Rooms.NextRound(r.Context(), r.PathValue("code"), participantToken(r), input.Round)
+		result, err := a.Rooms.SetNextRoundReady(r.Context(), r.PathValue("code"), participantToken(r), input.Round, input.Ready)
 		if err != nil {
 			a.fail(r, w, err)
 			return

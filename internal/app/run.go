@@ -32,7 +32,11 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 
 	logger := logging.SetupLogger(cfg.LogFormat, cfg.Debug, stdout)
 	setupLogger := logger.With("component", "setup")
-	setupLogger.Info("starting ScreenDeck", "event", "app_starting", "version", version, "commit", commit)
+	setupLogger.Info("starting ScreenDeck",
+		"event", "app_starting",
+		"version", version,
+		"commit", commit,
+	)
 	if len(cfg.Overridden) > 0 {
 		setupLogger.Info("CLI overrides", "event", "cli_overrides", "overrides", cfg.Overridden)
 	}

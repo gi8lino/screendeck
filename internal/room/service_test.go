@@ -52,7 +52,7 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 	assert.Equal(t, 2010, options.MinYear)
 	assert.Equal(t, 2023, options.MaxYear)
 
-	session, err := service.Create(context.Background(), "Host", []string{"1", "2"}, Filters{Genres: []string{"Drama"}, YearFrom: 2020, MaxDurationMinutes: 120}, nil)
+	session, err := service.Create(context.Background(), "Host", []string{"1", "2"}, Filters{Genres: []string{"Drama"}, YearFrom: 2020, MaxDurationMinutes: 120}, nil, 0)
 	require.NoError(t, err)
 
 	state, err := service.State(context.Background(), session.Code, session.Token)
@@ -79,7 +79,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	}
 	service := NewService(database, catalog, time.Hour)
 
-	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Drama"})
+	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Drama"}, 0)
 	require.NoError(t, err)
 
 	hostState, err := service.State(context.Background(), host.Code, host.Token)
@@ -97,4 +97,35 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	require.NotNil(t, guestState.Candidate)
 	assert.Equal(t, "action", guestState.Candidate.RatingKey)
 	assert.Equal(t, []string{"Action"}, guestState.Me.Genres)
+}
+
+// TestCreateRoundSizeLimitsInitialDeck verifies the host can cap the shuffled first round.
+func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
+	database, err := store.Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close()
+
+	catalog := fakeCatalog{
+		libraries: []plex.Library{{Key: "1", Title: "Films", Type: "movie"}},
+		items: map[string][]plex.Item{
+			"1": {
+				{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+				{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+				{RatingKey: "c", Library: "1", Type: "movie", Title: "Gamma"},
+				{RatingKey: "d", Library: "1", Type: "movie", Title: "Delta"},
+			},
+		},
+	}
+	service := NewService(database, catalog, time.Hour)
+
+	session, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, 2)
+	require.NoError(t, err)
+
+	state, err := service.State(context.Background(), session.Code, session.Token)
+	require.NoError(t, err)
+	assert.Equal(t, 2, state.Progress.Total)
+	require.NotNil(t, state.Candidate)
+
+	_, err = service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, -1)
+	require.Error(t, err)
 }

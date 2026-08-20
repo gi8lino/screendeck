@@ -33,14 +33,7 @@ export async function renderCreateRoom(navigation) {
   const error = el("p", "error");
   const submit = el("button", "btn primary", "Create room");
   submit.type = "submit";
-  form.append(
-    nameRow,
-    libRow,
-    filters.personalBox,
-    filters.box,
-    error,
-    submit,
-  );
+  form.append(nameRow, libRow, filters.personalBox, filters.box, error, submit);
   panel.append(form);
   root.append(panel);
 
@@ -74,6 +67,7 @@ export async function renderCreateRoom(navigation) {
           name: name.value,
           libraryKeys: selectedLibraries(),
           genres: selectedGenres(filters.personalGenres),
+          roundSize: Number(filters.roundSize.value) || 0,
           filters: filterValues(filters),
         }),
       });
@@ -110,6 +104,30 @@ function createFilterFields() {
     "muted",
     "Choose at least one library to load its filters.",
   );
+  const roundSizeRow = el("div", "form-row compact");
+  roundSizeRow.append(el("label", "", "Maximum titles in the first round"));
+  const roundSize = el("select");
+  [
+    ["50", "50 titles"],
+    ["100", "100 titles"],
+    ["250", "250 titles · recommended"],
+    ["500", "500 titles"],
+    ["0", "All matching titles"],
+  ].forEach(([value, label]) => {
+    const option = el("option", "", label);
+    option.value = value;
+    if (value === "250") option.selected = true;
+    roundSize.append(option);
+  });
+  roundSizeRow.append(
+    roundSize,
+    el(
+      "p",
+      "muted",
+      "Applied after room filters and shuffling. You can ask the group to narrow to the current matches at any time.",
+    ),
+  );
+
   const genreRow = el("div", "form-row compact");
   genreRow.append(el("label", "", "Room genres · select any that fit"));
   const genres = el("div", "genre-chips");
@@ -128,12 +146,13 @@ function createFilterFields() {
     watchedBox,
     el("span", "", "Only include fully unwatched titles"),
   );
-  box.append(status, genreRow, range, watched);
+  box.append(status, roundSizeRow, genreRow, range, watched);
   return {
     personalBox,
     personalGenres,
     box,
     status,
+    roundSize,
     genres,
     yearFrom,
     yearTo,
