@@ -13,7 +13,7 @@ for (let i = 2; i < process.argv.length; i += 2) {
   args.set(process.argv[i], process.argv[i + 1]);
 }
 const host = args.get("--host") || "127.0.0.1";
-const port = Number(args.get("--port") || 18080);
+const port = Number(args.get("--port") || 8080);
 
 const participants = [
   {
@@ -43,19 +43,63 @@ const participants = [
 ];
 
 const items = {
-  arrival: media("arrival", "Arrival", 2016, "movie", 7.9, ["Drama", "Science Fiction", "Mystery"], 6960000),
-  dune: media("dune", "Dune", 2021, "movie", 8.0, ["Adventure", "Drama", "Science Fiction"], 9300000),
-  knives: media("knives", "Knives Out", 2019, "movie", 7.9, ["Comedy", "Crime", "Mystery"], 7860000),
-  severance: media("severance", "Severance", 2022, "show", 8.7, ["Drama", "Mystery", "Thriller"], 0),
-  expanse: media("expanse", "The Expanse", 2015, "show", 8.5, ["Drama", "Science Fiction", "Thriller"], 0),
+  arrival: media(
+    "arrival",
+    "Arrival",
+    2016,
+    "movie",
+    7.9,
+    ["Drama", "Science Fiction", "Mystery"],
+    6960000,
+  ),
+  dune: media(
+    "dune",
+    "Dune",
+    2021,
+    "movie",
+    8.0,
+    ["Adventure", "Drama", "Science Fiction"],
+    9300000,
+  ),
+  knives: media(
+    "knives",
+    "Knives Out",
+    2019,
+    "movie",
+    7.9,
+    ["Comedy", "Crime", "Mystery"],
+    7860000,
+  ),
+  severance: media(
+    "severance",
+    "Severance",
+    2022,
+    "show",
+    8.7,
+    ["Drama", "Mystery", "Thriller"],
+    0,
+  ),
+  expanse: media(
+    "expanse",
+    "The Expanse",
+    2015,
+    "show",
+    8.5,
+    ["Drama", "Science Fiction", "Thriller"],
+    0,
+  ),
 };
 
 const summaries = {
-  arrival: "A linguist works with the military to communicate with mysterious visitors whose arrival could reshape humanity.",
+  arrival:
+    "A linguist works with the military to communicate with mysterious visitors whose arrival could reshape humanity.",
   dune: "A young heir travels to a dangerous desert world where rival houses fight over its most valuable resource.",
-  knives: "A detective untangles a family full of motives after a celebrated novelist dies under suspicious circumstances.",
-  severance: "Office workers discover that separating work memories from personal life creates more questions than it answers.",
-  expanse: "A missing-person case pulls strangers into a conspiracy that stretches across a colonized solar system.",
+  knives:
+    "A detective untangles a family full of motives after a celebrated novelist dies under suspicious circumstances.",
+  severance:
+    "Office workers discover that separating work memories from personal life creates more questions than it answers.",
+  expanse:
+    "A missing-person case pulls strangers into a conspiracy that stretches across a colonized solar system.",
 };
 for (const item of Object.values(items)) item.summary = summaries[item.id];
 
@@ -177,7 +221,9 @@ function posterSVG(item) {
 function demoSession(response, token) {
   const session = JSON.stringify({ code: roomCode, token });
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  response.end(`<!doctype html><meta charset="utf-8"><script>localStorage.setItem("screendeck.session", ${JSON.stringify(session)});location.replace("/");</script>`);
+  response.end(
+    `<!doctype html><meta charset="utf-8"><script>localStorage.setItem("screendeck.session", ${JSON.stringify(session)});location.replace("/");</script>`,
+  );
 }
 
 const contentTypes = new Map([
@@ -188,9 +234,13 @@ const contentTypes = new Map([
 ]);
 
 async function serveStatic(pathname, response) {
-  const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const relative =
+    pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const filePath = path.resolve(webRoot, relative);
-  if (!filePath.startsWith(`${webRoot}${path.sep}`) && filePath !== path.join(webRoot, "index.html")) {
+  if (
+    !filePath.startsWith(`${webRoot}${path.sep}`) &&
+    filePath !== path.join(webRoot, "index.html")
+  ) {
     response.writeHead(403);
     response.end("forbidden");
     return;
@@ -198,7 +248,8 @@ async function serveStatic(pathname, response) {
   try {
     const body = await fs.readFile(filePath);
     response.writeHead(200, {
-      "Content-Type": contentTypes.get(path.extname(filePath)) || "application/octet-stream",
+      "Content-Type":
+        contentTypes.get(path.extname(filePath)) || "application/octet-stream",
     });
     response.end(body);
   } catch {
@@ -209,7 +260,10 @@ async function serveStatic(pathname, response) {
 }
 
 const server = http.createServer(async (request, response) => {
-  const url = new URL(request.url, `http://${request.headers.host || `${host}:${port}`}`);
+  const url = new URL(
+    request.url,
+    `http://${request.headers.host || `${host}:${port}`}`,
+  );
 
   if (request.method === "GET" && url.pathname === "/healthz") {
     sendJSON(response, 200, { status: "ok" });
@@ -226,18 +280,36 @@ const server = http.createServer(async (request, response) => {
     });
     return;
   }
-  if (request.method === "GET" && url.pathname === `/api/rooms/${roomCode}/genres`) {
+  if (
+    request.method === "GET" &&
+    url.pathname === `/api/rooms/${roomCode}/genres`
+  ) {
     sendJSON(response, 200, {
-      genres: ["Adventure", "Comedy", "Crime", "Drama", "Mystery", "Science Fiction", "Thriller"],
+      genres: [
+        "Adventure",
+        "Comedy",
+        "Crime",
+        "Drama",
+        "Mystery",
+        "Science Fiction",
+        "Thriller",
+      ],
     });
     return;
   }
   if (request.method === "GET" && url.pathname === `/api/rooms/${roomCode}`) {
     const token = String(request.headers["x-participant-token"] || "");
-    sendJSON(response, 200, token === "demo-winner" ? winnerState() : activeState(token));
+    sendJSON(
+      response,
+      200,
+      token === "demo-winner" ? winnerState() : activeState(token),
+    );
     return;
   }
-  if (request.method === "GET" && url.pathname === `/api/rooms/${roomCode}/events`) {
+  if (
+    request.method === "GET" &&
+    url.pathname === `/api/rooms/${roomCode}/events`
+  ) {
     response.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -281,5 +353,7 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
-  process.stdout.write(`ScreenDeck screenshot demo listening on http://${host}:${port}\n`);
+  process.stdout.write(
+    `ScreenDeck screenshot demo listening on http://${host}:${port}\n`,
+  );
 });

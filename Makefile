@@ -107,7 +107,10 @@ download: node-dependencies ## Download Go and Node.js dependencies.
 
 .PHONY: run
 run: ## Run ScreenDeck locally.
-	go run $(COMMAND)
+	go run $(COMMAND) \
+    --plex-url-override http://127.0.0.1:32400 \
+    --debug \
+    --log-format text
 
 .PHONY: build
 build: ## Build the ScreenDeck binary.
