@@ -185,6 +185,9 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	assert.True(t, state.Me.ReadyForNextRound)
 	assert.Equal(t, RoomPhaseNextRoundRequested, state.Room.Phase)
 	assert.Equal(t, 1, state.NextRound.Ready)
+	require.NotNil(t, state.NextRound.RequestedBy)
+	assert.Equal(t, "p1", state.NextRound.RequestedBy.ID)
+	assert.Equal(t, "One", state.NextRound.RequestedBy.Name)
 
 	_, _, ready, required, advanced, err = database.SetRoundReady(ctx, "ROUND1", "p1", 1, false)
 	require.NoError(t, err)
@@ -214,6 +217,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	assert.Equal(t, 2, state.Progress.Total)
 	assert.Empty(t, state.Matches)
 	assert.Equal(t, 0, state.NextRound.Ready)
+	assert.Nil(t, state.NextRound.RequestedBy)
 	assert.False(t, state.Me.ReadyForNextRound)
 
 	_, err = database.Vote(ctx, "ROUND1", "p1", "a", true)
