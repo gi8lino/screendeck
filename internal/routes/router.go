@@ -56,7 +56,10 @@ func recoverPanics(logger *slog.Logger) middleware.Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if value := recover(); value != nil {
-					logger.Error("request panic", "event", "request_panic", "value", value)
+					logger.Error("request panic",
+						"event", "request_panic",
+						"value", value,
+					)
 					http.Error(w, "internal server error", http.StatusInternalServerError)
 				}
 			}()

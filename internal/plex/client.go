@@ -12,69 +12,117 @@ import (
 	"time"
 )
 
+// Library describes a supported Plex library.
 type Library struct {
-	Key   string `json:"key"`
+	// Key identifies a Plex library section.
+	Key string `json:"key"`
+	// Title is the display title.
 	Title string `json:"title"`
-	Type  string `json:"type"`
+	// Type identifies the Plex media or library type.
+	Type string `json:"type"`
 }
 
+// Item contains the Plex metadata ScreenDeck needs for a movie or show.
 type Item struct {
-	RatingKey string   `json:"id"`
-	Library   string   `json:"libraryKey"`
-	Type      string   `json:"type"`
-	GUID      string   `json:"guid"`
-	Title     string   `json:"title"`
-	Year      int      `json:"year"`
-	Summary   string   `json:"summary"`
-	Duration  int      `json:"duration"`
-	Rating    float64  `json:"rating"`
-	Thumb     string   `json:"-"`
-	Genres    []string `json:"genres"`
-	Viewed    bool     `json:"viewed"`
-	AddedAt   int64    `json:"addedAt"`
+	// RatingKey is Plex's stable media identifier.
+	RatingKey string `json:"id"`
+	// Library identifies the Plex library containing the item.
+	Library string `json:"libraryKey"`
+	// Type identifies the Plex media or library type.
+	Type string `json:"type"`
+	// GUID is Plex's globally unique media identifier.
+	GUID string `json:"guid"`
+	// Title is the display title.
+	Title string `json:"title"`
+	// Year is the release year when available.
+	Year int `json:"year"`
+	// Summary is the Plex description text.
+	Summary string `json:"summary"`
+	// Duration is the Plex duration in milliseconds.
+	Duration int `json:"duration"`
+	// Rating is Plex's numeric rating.
+	Rating float64 `json:"rating"`
+	// Thumb is the Plex poster path.
+	Thumb string `json:"-"`
+	// Genres contains the genre names reported by Plex.
+	Genres []string `json:"genres"`
+	// Viewed reports whether the item has been watched.
+	Viewed bool `json:"viewed"`
+	// AddedAt is the Plex added-at Unix timestamp.
+	AddedAt int64 `json:"addedAt"`
 }
 
+// Client performs authenticated read-only requests against a Plex Media Server.
 type Client struct {
-	baseURL    *url.URL
-	token      string
-	clientID   string
+	// baseURL is the parsed Plex server URL.
+	baseURL *url.URL
+	// token is the Plex token sent with server requests.
+	token string
+	// clientID is the Plex client identifier sent with requests.
+	clientID string
+	// httpClient executes Plex HTTP requests.
 	httpClient *http.Client
 }
 
+// librariesResponse models the top-level Plex library response.
 type librariesResponse struct {
+	// MediaContainer contains the Plex response payload.
 	MediaContainer librariesContainer `json:"MediaContainer"`
 }
 
+// librariesContainer contains Plex library directory entries.
 type librariesContainer struct {
+	// Directories contains library section entries.
 	Directories []Library `json:"Directory"`
 }
 
+// itemsResponse models the top-level Plex media item response.
 type itemsResponse struct {
+	// MediaContainer contains the Plex response payload.
 	MediaContainer itemsContainer `json:"MediaContainer"`
 }
 
+// itemsContainer contains Plex media metadata entries.
 type itemsContainer struct {
+	// Metadata contains media entries.
 	Metadata []metadataItem `json:"Metadata"`
 }
 
+// metadataItem models the raw Plex fields used to build an Item.
 type metadataItem struct {
-	RatingKey       string          `json:"ratingKey"`
-	GUID            string          `json:"guid"`
-	Title           string          `json:"title"`
-	Year            int             `json:"year"`
-	Summary         string          `json:"summary"`
-	Duration        int             `json:"duration"`
-	Rating          float64         `json:"rating"`
-	Thumb           string          `json:"thumb"`
-	ViewCount       int             `json:"viewCount"`
-	LeafCount       int             `json:"leafCount"`
-	ViewedLeafCount int             `json:"viewedLeafCount"`
-	Type            string          `json:"type"`
-	AddedAt         int64           `json:"addedAt"`
-	Genres          []metadataGenre `json:"Genre"`
+	// RatingKey is Plex's stable media identifier.
+	RatingKey string `json:"ratingKey"`
+	// GUID is Plex's globally unique media identifier.
+	GUID string `json:"guid"`
+	// Title is the display title.
+	Title string `json:"title"`
+	// Year is the release year when available.
+	Year int `json:"year"`
+	// Summary is the Plex description text.
+	Summary string `json:"summary"`
+	// Duration is the Plex duration in milliseconds.
+	Duration int `json:"duration"`
+	// Rating is Plex's numeric rating.
+	Rating float64 `json:"rating"`
+	// Thumb is the Plex poster path.
+	Thumb string `json:"thumb"`
+	// ViewCount is the Plex play count for a movie.
+	ViewCount int `json:"viewCount"`
+	// LeafCount is the number of episodes in a show.
+	LeafCount int `json:"leafCount"`
+	// ViewedLeafCount is the number of watched episodes in a show.
+	ViewedLeafCount int `json:"viewedLeafCount"`
+	// Type identifies the Plex media or library type.
+	Type string `json:"type"`
+	// AddedAt is the Plex added-at Unix timestamp.
+	AddedAt int64 `json:"addedAt"`
+	// Genres contains the raw genre tags reported by Plex.
+	Genres []metadataGenre `json:"Genre"`
 }
 
+// metadataGenre models one Plex genre tag.
 type metadataGenre struct {
+	// Tag is the genre text returned by Plex.
 	Tag string `json:"tag"`
 }
 
@@ -167,7 +215,7 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() // nolint:errcheck
 	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<20)).Decode(target); err != nil {
 		return fmt.Errorf("%w: %w", ErrServerDecode, err)
 	}
@@ -193,8 +241,8 @@ func (c *Client) do(ctx context.Context, path string, query url.Values) (*http.R
 		return nil, fmt.Errorf("%w: %s %s: %w", ErrServerContact, req.Method, u.Redacted(), err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		defer response.Body.Close()
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+		defer response.Body.Close()                                // nolint:errcheck
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024)) // nolint:errcheck
 		return nil, fmt.Errorf("%w: %s %s: %s", ErrServerResponse, req.Method, response.Status, strconv.Quote(strings.TrimSpace(string(body))))
 	}
 	return response, nil

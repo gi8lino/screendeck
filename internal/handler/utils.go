@@ -50,8 +50,7 @@ func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
 		errors.Is(err, plex.ErrAuthenticationRefresh) {
 		status = http.StatusBadGateway
 	}
-	logging.WithRequestIDLogger(a.Logger, r.Context()).Error(
-		"API request failed",
+	logging.WithRequestIDLogger(a.Logger, r.Context()).Error("API request failed",
 		"event", "api_request_failed",
 		"method", r.Method,
 		"path", r.URL.Path,
@@ -66,6 +65,9 @@ func (a *API) respond(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(value); err != nil {
-		logging.WithRequestIDLogger(a.Logger, nil).Error("encode response", "event", "encode_response_failed", "error", err)
+		logging.WithRequestIDLogger(a.Logger, nil).Error("encode response",
+			"event", "encode_response_failed",
+			"error", err,
+		)
 	}
 }

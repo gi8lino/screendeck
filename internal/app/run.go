@@ -23,10 +23,10 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 	cfg, err := config.Parse(args, version)
 	if err != nil {
 		if tinyflags.IsHelpRequested(err) || tinyflags.IsVersionRequested(err) {
-			_, _ = fmt.Fprint(stdout, err.Error())
+			fmt.Fprint(stdout, err.Error()) // nolint:errcheck
 			return nil
 		}
-		_, _ = fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, err) // nolint:errcheck
 		return err
 	}
 
@@ -38,19 +38,37 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 		"commit", commit,
 	)
 	if len(cfg.Overridden) > 0 {
-		setupLogger.Info("CLI overrides", "event", "cli_overrides", "overrides", cfg.Overridden)
+		setupLogger.Info("CLI overrides",
+			"event", "cli_overrides",
+			"overrides", cfg.Overridden,
+		)
 	}
 
 	database, err := store.Open(cfg.DatabasePath, cfg.AuthKeyPath)
 	if err != nil {
-		setupLogger.Error("application failed", "event", "app_failed", "stage", "open_database", "error", err)
+		setupLogger.Error("application failed",
+			"event", "app_failed",
+			"stage", "open_database",
+			"error", err,
+		)
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer database.Close() // nolint:errcheck
 
-	authManager, err := plex.NewAuthManager(ctx, database, logger.With("component", "plex"), "https://clients.plex.tv", cfg.PlexURLOverride, cfg.Experimental)
+	authManager, err := plex.NewAuthManager(
+		ctx,
+		database,
+		logger.With("component", "plex"),
+		"https://clients.plex.tv",
+		cfg.PlexURLOverride,
+		cfg.Experimental,
+	)
 	if err != nil {
-		setupLogger.Error("application failed", "event", "app_failed", "stage", "configure_plex", "error", err)
+		setupLogger.Error("application failed",
+			"event", "app_failed",
+			"stage", "configure_plex",
+			"error", err,
+		)
 		return fmt.Errorf("configure Plex: %w", err)
 	}
 
@@ -61,7 +79,11 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 
 	router, err := routes.NewRouter(appFS, api, serverLogger, cfg.Debug)
 	if err != nil {
-		setupLogger.Error("application failed", "event", "app_failed", "stage", "create_router", "error", err)
+		setupLogger.Error("application failed",
+			"event", "app_failed",
+			"stage", "create_router",
+			"error", err,
+		)
 		return fmt.Errorf("configure router: %w", err)
 	}
 

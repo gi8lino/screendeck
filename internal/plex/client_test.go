@@ -21,11 +21,11 @@ func TestClientLoadsLibrariesAndMovies(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/library/sections":
-			fmt.Fprint(w, `{"MediaContainer":{"Directory":[{"key":"1","title":"Films","type":"movie"},{"key":"2","title":"TV","type":"show"}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"Directory":[{"key":"1","title":"Films","type":"movie"},{"key":"2","title":"TV","type":"show"}]}}`) // nolint:errcheck
 		case "/library/sections/1/all":
-			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"42","guid":"plex://movie/42","title":"Arrival","year":2016,"summary":"First contact.","duration":6960000,"rating":7.9,"thumb":"/poster/42","viewCount":1,"addedAt":1700000000,"Genre":[{"tag":"Science Fiction"}]}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"42","guid":"plex://movie/42","title":"Arrival","year":2016,"summary":"First contact.","duration":6960000,"rating":7.9,"thumb":"/poster/42","viewCount":1,"addedAt":1700000000,"Genre":[{"tag":"Science Fiction"}]}]}}`) // nolint:errcheck
 		case "/library/sections/2/all":
-			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"84","type":"show","guid":"plex://show/84","title":"Severance","year":2022,"thumb":"/poster/84","leafCount":19,"viewedLeafCount":19,"addedAt":1700000100,"Genre":[{"tag":"Drama"}]}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"84","type":"show","guid":"plex://show/84","title":"Severance","year":2022,"thumb":"/poster/84","leafCount":19,"viewedLeafCount":19,"addedAt":1700000100,"Genre":[{"tag":"Drama"}]}]}}`) // nolint:errcheck
 		default:
 			http.NotFound(w, r)
 		}

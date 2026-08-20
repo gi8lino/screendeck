@@ -8,8 +8,11 @@ import (
 	"github.com/gi8lino/screendeck/internal/logging"
 )
 
+// responseRecorder records HTTP response metadata while preserving streaming support.
 type responseRecorder struct {
+	// ResponseWriter provides the embedded ResponseWriter behavior.
 	http.ResponseWriter
+	// status records the HTTP status written by the wrapped handler.
 	status int
 }
 
@@ -33,8 +36,7 @@ func RequestLogging(logger *slog.Logger) Middleware {
 			started := time.Now()
 			recorder := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(recorder, r)
-			logging.WithRequestIDLogger(logger, r.Context()).Info(
-				"HTTP request",
+			logging.WithRequestIDLogger(logger, r.Context()).Info("HTTP request",
 				"event", "http_request",
 				"method", r.Method,
 				"path", r.URL.Path,

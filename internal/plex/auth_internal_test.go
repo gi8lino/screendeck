@@ -2,7 +2,6 @@ package plex
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +9,9 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestVerifyServerFallsBackToResourceToken verifies compatibility with servers that reject the account JWT.
@@ -22,7 +24,7 @@ func TestVerifyServerFallsBackToResourceToken(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"MediaContainer":{"Directory":[]}}`)
+		fmt.Fprint(w, `{"MediaContainer":{"Directory":[]}}`) // nolint:errcheck
 	}))
 	defer server.Close()
 
@@ -31,27 +33,20 @@ func TestVerifyServerFallsBackToResourceToken(t *testing.T) {
 		tokenCandidate{kind: "account_jwt", value: "account-jwt"},
 		tokenCandidate{kind: "resource_token", value: "resource-token"},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if token != "resource-token" || requests.Load() != 2 {
-		t.Fatalf("token=%q requests=%d", token, requests.Load())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "resource-token", token)
+	assert.Equal(t, int32(2), requests.Load())
 }
 
 // TestSafeURLRedactsSensitiveParts verifies diagnostic URLs cannot expose credentials or queries.
 func TestSafeURLRedactsSensitiveParts(t *testing.T) {
 	redacted := safeURL("https://user:secret@plex.example:32400/library?X-Plex-Token=secret#fragment")
-	if redacted != "https://user:xxxxx@plex.example:32400/library" {
-		t.Fatalf("unexpected redacted URL: %q", redacted)
-	}
+	assert.Equal(t, "https://user:xxxxx@plex.example:32400/library", redacted)
 }
 
 // TestVerifyServerReturnsSentinelError verifies connection errors retain their stable category.
 func TestVerifyServerReturnsSentinelError(t *testing.T) {
 	manager := &AuthManager{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	_, err := manager.verifyServer(context.Background(), "http://127.0.0.1:1", "client", tokenCandidate{kind: "account_jwt", value: "token"})
-	if !errors.Is(err, ErrServerContact) {
-		t.Fatalf("expected ErrServerContact, got %v", err)
-	}
+	require.ErrorIs(t, err, ErrServerContact)
 }

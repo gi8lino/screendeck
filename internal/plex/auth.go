@@ -23,161 +23,271 @@ import (
 	"github.com/gi8lino/screendeck/internal/logging"
 )
 
+// AuthMethod identifies a supported Plex authorization flow.
 type AuthMethod string
 
 const (
+	// AuthMethodLegacy uses Plex's server-compatible PIN authorization flow.
 	AuthMethodLegacy AuthMethod = "legacy"
-	AuthMethodJWT    AuthMethod = "jwt"
+	// AuthMethodJWT uses the experimental Ed25519 device-JWT authorization flow.
+	AuthMethodJWT AuthMethod = "jwt"
 )
 
+// AuthState contains the persisted Plex authorization and selected-server state.
 type AuthState struct {
-	Method         AuthMethod
-	ClientID       string
-	KeyID          string
-	PrivateKey     ed25519.PrivateKey
-	UserToken      string
+	// Method identifies the selected Plex authorization flow.
+	Method AuthMethod
+	// ClientID is the Plex client identifier associated with the authorization.
+	ClientID string
+	// KeyID identifies the registered experimental device key.
+	KeyID string
+	// PrivateKey is the Ed25519 device key used for experimental JWT authorization.
+	PrivateKey ed25519.PrivateKey
+	// UserToken is the Plex account token returned by authorization.
+	UserToken string
+	// TokenExpiresAt is the known expiry time of the account token.
 	TokenExpiresAt time.Time
-	ServerID       string
-	ServerName     string
-	ServerURL      string
-	ServerToken    string
+	// ServerID identifies the Plex server selected by the user.
+	ServerID string
+	// ServerName is the friendly name of the selected Plex server.
+	ServerName string
+	// ServerURL is the discovered URL of the selected Plex server.
+	ServerURL string
+	// ServerToken is the token verified for the selected Plex server.
+	ServerToken string
 }
 
+// AuthStore persists and restores Plex authorization state.
 type AuthStore interface {
 	LoadPlexAuth(context.Context) (AuthState, error)
 	SavePlexAuth(context.Context, AuthState) error
 }
 
+// AuthStart describes a newly started Plex authorization session.
 type AuthStart struct {
-	AuthURL    string    `json:"authUrl"`
-	SetupToken string    `json:"setupToken"`
-	ExpiresAt  time.Time `json:"expiresAt"`
+	// AuthURL is the Plex URL the user opens to authorize ScreenDeck.
+	AuthURL string `json:"authUrl"`
+	// SetupToken authenticates temporary setup polling and server selection.
+	SetupToken string `json:"setupToken"`
+	// ExpiresAt is the time at which the temporary setup session expires.
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
+// AuthStatus reports the current Plex authorization state.
 type AuthStatus struct {
-	Status  string       `json:"status"`
+	// Status is the current authorization state.
+	Status string `json:"status"`
+	// Servers contains Plex servers available after authorization.
 	Servers []ServerInfo `json:"servers,omitempty"`
 }
 
+// ServerInfo describes a Plex Media Server available for selection.
 type ServerInfo struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Owned    bool   `json:"owned"`
-	Local    bool   `json:"local"`
-	Relay    bool   `json:"relay"`
+	// ID is the stable identifier.
+	ID string `json:"id"`
+	// Name is the display name.
+	Name string `json:"name"`
+	// Owned reports whether the Plex account owns the server.
+	Owned bool `json:"owned"`
+	// Local reports whether the selected connection is local.
+	Local bool `json:"local"`
+	// Relay reports whether the selected connection uses Plex Relay.
+	Relay bool `json:"relay"`
+	// Platform is the server platform reported by Plex.
 	Platform string `json:"platform,omitempty"`
 }
 
+// resource models a server resource returned by the Plex cloud API.
 type resource struct {
-	Name             string       `json:"name"`
-	ClientIdentifier string       `json:"clientIdentifier"`
-	Provides         string       `json:"provides"`
-	Owned            bool         `json:"owned"`
-	AccessToken      string       `json:"accessToken"`
-	Platform         string       `json:"platform"`
-	Connections      []connection `json:"connections"`
+	// Name is the display name.
+	Name string `json:"name"`
+	// ClientIdentifier is Plex's stable identifier for the resource.
+	ClientIdentifier string `json:"clientIdentifier"`
+	// Provides lists capabilities advertised by the resource.
+	Provides string `json:"provides"`
+	// Owned reports whether the Plex account owns the server.
+	Owned bool `json:"owned"`
+	// AccessToken is the resource-specific Plex token.
+	AccessToken string `json:"accessToken"`
+	// Platform is the server platform reported by Plex.
+	Platform string `json:"platform"`
+	// Connections lists advertised endpoints for the resource.
+	Connections []connection `json:"connections"`
 }
 
+// connection describes a connection endpoint advertised for a Plex resource.
 type connection struct {
-	URI   string `json:"uri"`
-	Local bool   `json:"local"`
-	Relay bool   `json:"relay"`
+	// URI is the advertised connection URL.
+	URI string `json:"uri"`
+	// Local reports whether the selected connection is local.
+	Local bool `json:"local"`
+	// Relay reports whether the selected connection uses Plex Relay.
+	Relay bool `json:"relay"`
 }
 
+// authorizationPINResponse decodes the Plex PIN creation response.
 type authorizationPINResponse struct {
-	ID        int64  `json:"id"`
-	Code      string `json:"code"`
-	ExpiresIn int    `json:"expiresIn"`
+	// ID is the stable identifier.
+	ID int64 `json:"id"`
+	// Code is the Plex PIN code used by the browser authorization flow.
+	Code string `json:"code"`
+	// ExpiresIn is the PIN lifetime in seconds.
+	ExpiresIn int `json:"expiresIn"`
 }
 
+// authorizationStatusResponse decodes the Plex PIN status response.
 type authorizationStatusResponse struct {
+	// AuthToken is the token returned after successful authorization.
 	AuthToken string `json:"authToken"`
 }
 
+// authNonceResponse decodes the nonce returned for JWT refresh.
 type authNonceResponse struct {
+	// Nonce is the one-time value used when signing a refresh JWT.
 	Nonce string `json:"nonce"`
 }
 
+// authTokenResponse decodes the refreshed Plex account token.
 type authTokenResponse struct {
+	// AuthToken is the token returned after successful authorization.
 	AuthToken string `json:"auth_token"`
 }
 
+// deviceJWK represents the Ed25519 public key registered for experimental JWT authorization.
 type deviceJWK struct {
-	KeyType   string `json:"kty"`
-	Curve     string `json:"crv"`
-	X         string `json:"x"`
-	KeyID     string `json:"kid"`
-	Use       string `json:"use"`
+	// KeyType identifies the JWK key family.
+	KeyType string `json:"kty"`
+	// Curve identifies the Ed25519 JWK curve.
+	Curve string `json:"crv"`
+	// X contains the base64url-encoded public key bytes.
+	X string `json:"x"`
+	// KeyID identifies the registered experimental device key.
+	KeyID string `json:"kid"`
+	// Use identifies the JWK as a signing key.
+	Use string `json:"use"`
+	// Algorithm identifies the JWK signing algorithm.
 	Algorithm string `json:"alg"`
 }
 
+// authorizationPINRequest encodes the experimental Plex PIN request.
 type authorizationPINRequest struct {
-	JWK    *deviceJWK `json:"jwk,omitempty"`
-	Strong bool       `json:"strong"`
+	// JWK is the public device key registered with Plex.
+	JWK *deviceJWK `json:"jwk,omitempty"`
+	// Strong requests Plex's strong authorization flow.
+	Strong bool `json:"strong"`
 }
 
+// legacyResourcesResponse decodes the legacy XML resource listing.
 type legacyResourcesResponse struct {
+	// Devices contains resources returned by the legacy Plex endpoint.
 	Devices []legacyResource `xml:"Device"`
 }
 
+// legacyResource models a Plex resource from the legacy XML API.
 type legacyResource struct {
-	Name             string             `xml:"name,attr"`
-	ClientIdentifier string             `xml:"clientIdentifier,attr"`
-	Provides         string             `xml:"provides,attr"`
-	Owned            int                `xml:"owned,attr"`
-	AccessToken      string             `xml:"accessToken,attr"`
-	Platform         string             `xml:"platform,attr"`
-	Connections      []legacyConnection `xml:"Connection"`
+	// Name is the display name.
+	Name string `xml:"name,attr"`
+	// ClientIdentifier is Plex's stable identifier for the resource.
+	ClientIdentifier string `xml:"clientIdentifier,attr"`
+	// Provides lists capabilities advertised by the resource.
+	Provides string `xml:"provides,attr"`
+	// Owned reports whether the Plex account owns the server.
+	Owned int `xml:"owned,attr"`
+	// AccessToken is the resource-specific Plex token.
+	AccessToken string `xml:"accessToken,attr"`
+	// Platform is the server platform reported by Plex.
+	Platform string `xml:"platform,attr"`
+	// Connections lists advertised endpoints for the resource.
+	Connections []legacyConnection `xml:"Connection"`
 }
 
+// legacyConnection models a Plex connection from the legacy XML API.
 type legacyConnection struct {
-	URI   string `xml:"uri,attr"`
-	Local int    `xml:"local,attr"`
-	Relay int    `xml:"relay,attr"`
+	// URI is the advertised connection URL.
+	URI string `xml:"uri,attr"`
+	// Local reports whether the selected connection is local.
+	Local int `xml:"local,attr"`
+	// Relay reports whether the selected connection uses Plex Relay.
+	Relay int `xml:"relay,attr"`
 }
 
+// tokenRefreshRequest carries a signed device JWT for token refresh.
 type tokenRefreshRequest struct {
+	// JWT is the signed device token submitted during refresh.
 	JWT string `json:"jwt"`
 }
 
+// tokenClaims contains the JWT claims needed to determine token expiry.
 type tokenClaims struct {
+	// ExpiresAt contains the exp claim as a Unix timestamp.
 	ExpiresAt int64 `json:"exp"`
 }
 
+// tokenCandidate associates a candidate Plex token with a diagnostic label.
 type tokenCandidate struct {
-	kind  string
+	// kind is the diagnostic label for the token candidate.
+	kind string
+	// value is the candidate token value.
 	value string
 }
 
+// pendingAuth contains transient state for an in-progress Plex authorization.
 type pendingAuth struct {
-	method     AuthMethod
-	clientID   string
-	keyID      string
+	// method is the authorization method used by the pending session.
+	method AuthMethod
+	// clientID is the Plex client identifier sent with requests.
+	clientID string
+	// keyID identifies the pending JWT device key.
+	keyID string
+	// privateKey is the pending JWT device private key.
 	privateKey ed25519.PrivateKey
-	pinID      int64
-	expiresAt  time.Time
-	userToken  string
-	tokenExp   time.Time
-	resources  map[string]resource
+	// pinID is the Plex PIN identifier being polled.
+	pinID int64
+	// expiresAt is the pending authorization expiry time.
+	expiresAt time.Time
+	// userToken is populated once Plex authorization completes.
+	userToken string
+	// tokenExp is the parsed account-token expiry time.
+	tokenExp time.Time
+	// resources contains Plex servers discovered after authorization.
+	resources map[string]resource
 }
 
+// AuthManager coordinates Plex authorization, server selection, and token refresh.
 type AuthManager struct {
-	store             AuthStore
-	logger            *slog.Logger
-	cloudBase         *url.URL
+	// store persists Plex authorization state.
+	store AuthStore
+	// logger records Plex diagnostics.
+	logger *slog.Logger
+	// cloudBase is the Plex cloud API base URL.
+	cloudBase *url.URL
+	// serverURLOverride replaces discovered server URLs at runtime.
 	serverURLOverride string
-	experimental      bool
-	httpClient        *http.Client
+	// experimental reports whether JWT authorization is enabled.
+	experimental bool
+	// httpClient executes Plex HTTP requests.
+	httpClient *http.Client
 
-	mu        sync.Mutex
+	// mu protects mutable in-memory state.
+	mu sync.Mutex
+	// refreshMu serializes Plex token refresh operations.
 	refreshMu sync.Mutex
-	state     AuthState
-	pending   map[string]*pendingAuth
-	now       func() time.Time
+	// state is the active persisted Plex authorization state.
+	state AuthState
+	// pending contains temporary authorization sessions keyed by setup token.
+	pending map[string]*pendingAuth
+	// now supplies the current time and is replaceable in tests.
+	now func() time.Time
 }
 
 // NewAuthManager creates an authentication manager and restores saved state.
-func NewAuthManager(ctx context.Context, store AuthStore, logger *slog.Logger, cloudURL, serverURLOverride string, experimental bool) (*AuthManager, error) {
+func NewAuthManager(
+	ctx context.Context,
+	store AuthStore,
+	logger *slog.Logger,
+	cloudURL, serverURLOverride string,
+	experimental bool,
+) (*AuthManager, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -208,8 +318,7 @@ func NewAuthManager(ctx context.Context, store AuthStore, logger *slog.Logger, c
 	} else if !errors.Is(err, ErrAuthNotFound) {
 		return nil, fmt.Errorf("load Plex authentication: %w", err)
 	}
-	manager.requestLogger(ctx).Info(
-		"Plex authentication manager ready",
+	manager.requestLogger(ctx).Info("Plex authentication manager ready",
 		"event", "plex_auth_ready",
 		"configured", state.ServerURL != "" && state.ServerToken != "",
 		"server_name", state.ServerName,
@@ -258,6 +367,8 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 	var body any
 	query := url.Values{}
 	if method == AuthMethodJWT {
+		// The experimental flow registers an ephemeral device key with Plex and
+		// keeps the private half server-side for subsequent signed JWT requests.
 		publicKey, generatedPrivateKey, keyErr := ed25519.GenerateKey(rand.Reader)
 		if keyErr != nil {
 			return AuthStart{}, fmt.Errorf("generate Plex device key: %w", keyErr)
@@ -292,6 +403,7 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 	}
 	pending := &pendingAuth{method: method, clientID: clientID, keyID: keyID, privateKey: privateKey, pinID: pin.ID, expiresAt: m.now().Add(ttl)}
 	m.mu.Lock()
+	// Opportunistically discard expired setup sessions whenever a new one starts.
 	for token, auth := range m.pending {
 		if m.now().After(auth.expiresAt) {
 			delete(m.pending, token)
@@ -299,8 +411,7 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 	}
 	m.pending[setupToken] = pending
 	m.mu.Unlock()
-	logger.Info(
-		"Plex authorization started",
+	logger.Info("Plex authorization started",
 		"event", "plex_auth_started",
 		"pin_id", pin.ID,
 		"auth_method", method,
@@ -369,8 +480,7 @@ func (m *AuthManager) Status(ctx context.Context, setupToken string) (AuthStatus
 		}
 		pending.resources = resources
 		m.mu.Unlock()
-		logger.Info(
-			"Plex authorization completed",
+		logger.Info("Plex authorization completed",
 			"event", "plex_auth_authorized",
 			"server_count", len(resources),
 			"auth_method", pending.method,
@@ -397,8 +507,7 @@ func (m *AuthManager) SelectServer(ctx context.Context, setupToken, serverID str
 		)
 		return ErrServerUnavailable
 	}
-	logger.Info(
-		"selecting Plex server",
+	logger.Info("selecting Plex server",
 		"event", "plex_server_selecting",
 		"server_id", server.ClientIdentifier,
 		"server_name", server.Name,
@@ -407,8 +516,7 @@ func (m *AuthManager) SelectServer(ctx context.Context, setupToken, serverID str
 		"connection_count", len(server.Connections),
 	)
 	for _, candidate := range server.Connections {
-		logger.Debug(
-			"discovered Plex connection",
+		logger.Debug("discovered Plex connection",
 			"event", "plex_connection_discovered",
 			"server_id", server.ClientIdentifier,
 			"url", safeURL(candidate.URI),
@@ -421,8 +529,7 @@ func (m *AuthManager) SelectServer(ctx context.Context, setupToken, serverID str
 		return ErrNoUsableConnection
 	}
 	effectiveURL := m.serverURL(selected.URI)
-	logger.Info(
-		"selected Plex connection",
+	logger.Info("selected Plex connection",
 		"event", "plex_connection_selected",
 		"server_id", server.ClientIdentifier,
 		"discovered_url", safeURL(selected.URI),
@@ -431,6 +538,8 @@ func (m *AuthManager) SelectServer(ctx context.Context, setupToken, serverID str
 		"relay", selected.Relay,
 		"url_override", m.serverURLOverride != "",
 	)
+	// Plex deployments differ in which account or resource token they accept,
+	// so verification tries candidates in the safest method-specific order.
 	candidates := []tokenCandidate{{kind: "resource_token", value: server.AccessToken}}
 	if pending.method == AuthMethodJWT {
 		candidates = append([]tokenCandidate{{kind: "account_jwt", value: pending.userToken}}, candidates...)
@@ -553,6 +662,8 @@ func (m *AuthManager) refresh(ctx context.Context, force bool) error {
 	if err != nil {
 		return err
 	}
+	// Refresh can also return updated server connection metadata and a new
+	// resource token, both of which must be verified before they are persisted.
 	resourceToken := ""
 	if server, ok := resources[state.ServerID]; ok {
 		if selected, found := preferredConnection(server.Connections); found {
@@ -798,14 +909,22 @@ func (m *AuthManager) cloudJSON(ctx context.Context, method, path, clientID, tok
 	req.Header.Set("X-Plex-Version", "1.0")
 	req.Header.Set("X-Plex-Client-Identifier", clientID)
 	if token != "" {
+		// Keep credentials in headers rather than URLs so they cannot leak through
+		// query strings, upstream error messages, or request logs.
 		req.Header.Set("X-Plex-Token", token)
 	}
 	response, err := m.httpClient.Do(req)
 	if err != nil {
-		logger.Error("Plex authentication request failed", "event", "plex_cloud_request_failed", "method", method, "path", path, "duration_ms", time.Since(started).Milliseconds(), "error", err)
+		logger.Error("Plex authentication request failed",
+			"event", "plex_cloud_request_failed",
+			"method", method,
+			"path", path,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"error", err,
+		)
 		return fmt.Errorf("%w: %s %s: %w", ErrCloudUnavailable, method, path, err)
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() // nolint:errcheck
 	logger.Debug("Plex authentication response received",
 		"event", "plex_cloud_response",
 		"method", method,
@@ -814,7 +933,7 @@ func (m *AuthManager) cloudJSON(ctx context.Context, method, path, clientID, tok
 		"duration_ms", time.Since(started).Milliseconds(),
 	)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		message, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+		message, _ := io.ReadAll(io.LimitReader(response.Body, 1024)) // nolint:errcheck
 		return fmt.Errorf("%w: %s %s: %s: %s", ErrCloudResponse, method, path, response.Status, strings.TrimSpace(string(message)))
 	}
 	if target == nil {
@@ -833,8 +952,8 @@ func (m *AuthManager) cloudXML(ctx context.Context, method, path, clientID, toke
 	logger.Debug("sending Plex authentication request",
 		"event", "plex_cloud_request",
 		"method", method,
-		"path", path, "authenticated",
-		token != "",
+		"path", path,
+		"authenticated", token != "",
 	)
 	u := *m.cloudBase
 	u.Path = strings.TrimRight(u.Path, "/") + path
@@ -852,13 +971,25 @@ func (m *AuthManager) cloudXML(ctx context.Context, method, path, clientID, toke
 	}
 	response, err := m.httpClient.Do(req)
 	if err != nil {
-		logger.Error("Plex authentication request failed", "event", "plex_cloud_request_failed", "method", method, "path", path, "duration_ms", time.Since(started).Milliseconds(), "error", err)
+		logger.Error("Plex authentication request failed",
+			"event", "plex_cloud_request_failed",
+			"method", method,
+			"path", path,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"error", err,
+		)
 		return fmt.Errorf("%w: %s %s: %w", ErrCloudUnavailable, method, path, err)
 	}
-	defer response.Body.Close()
-	logger.Debug("Plex authentication response received", "event", "plex_cloud_response", "method", method, "path", path, "status", response.StatusCode, "duration_ms", time.Since(started).Milliseconds())
+	defer response.Body.Close() // nolint:errcheck
+	logger.Debug("Plex authentication response received",
+		"event", "plex_cloud_response",
+		"method", method,
+		"path", path,
+		"status", response.StatusCode,
+		"duration_ms", time.Since(started).Milliseconds(),
+	)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		message, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+		message, _ := io.ReadAll(io.LimitReader(response.Body, 1024)) // nolint:errcheck
 		return fmt.Errorf("%w: %s %s: %s: %s", ErrCloudResponse, method, path, response.Status, strings.TrimSpace(string(message)))
 	}
 	if err := xml.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(target); err != nil {

@@ -21,7 +21,9 @@ func (a *API) Libraries() http.HandlerFunc {
 
 // CatalogOptions returns the catalog filter options handler.
 func (a *API) CatalogOptions() http.HandlerFunc {
+	// request describes the JSON payload accepted by this handler.
 	type request struct {
+		// LibraryKeys identifies the Plex libraries included in the room.
 		LibraryKeys []string `json:"libraryKeys"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {

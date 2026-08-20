@@ -12,13 +12,21 @@ import (
 
 // CreateRoom returns the room creation handler.
 func (a *API) CreateRoom() http.HandlerFunc {
+	// request describes the JSON payload accepted by this handler.
 	type request struct {
-		Name             string                `json:"name"`
-		LibraryKeys      []string              `json:"libraryKeys"`
-		Filters          room.Filters          `json:"filters"`
-		Genres           []string              `json:"genres"`
-		GenreMode        room.GenreMode        `json:"genreMode"`
-		RoundSize        int                   `json:"roundSize"`
+		// Name is the display name.
+		Name string `json:"name"`
+		// LibraryKeys identifies the Plex libraries included in the room.
+		LibraryKeys []string `json:"libraryKeys"`
+		// Filters contains room-wide catalog filters.
+		Filters room.Filters `json:"filters"`
+		// Genres contains selected genre names.
+		Genres []string `json:"genres"`
+		// GenreMode controls whether selected genres match any or all.
+		GenreMode room.GenreMode `json:"genreMode"`
+		// RoundSize limits the number of titles initially activated.
+		RoundSize int `json:"roundSize"`
+		// SamplingStrategy controls how the initial title pool is ordered.
 		SamplingStrategy room.SamplingStrategy `json:"samplingStrategy"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -38,10 +46,15 @@ func (a *API) CreateRoom() http.HandlerFunc {
 
 // JoinRoom returns the room joining handler.
 func (a *API) JoinRoom() http.HandlerFunc {
+	// request describes the JSON payload accepted by this handler.
 	type request struct {
-		Code      string         `json:"code"`
-		Name      string         `json:"name"`
-		Genres    []string       `json:"genres"`
+		// Code is the six-character room identifier.
+		Code string `json:"code"`
+		// Name is the display name.
+		Name string `json:"name"`
+		// Genres contains selected genre names.
+		Genres []string `json:"genres"`
+		// GenreMode controls whether selected genres match any or all.
 		GenreMode room.GenreMode `json:"genreMode"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -85,10 +98,14 @@ func (a *API) RoomState() http.HandlerFunc {
 
 // Vote returns the media voting handler.
 func (a *API) Vote() http.HandlerFunc {
+	// request describes the JSON payload accepted by this handler.
 	type request struct {
-		ItemID   string `json:"itemId"`
+		// ItemID identifies the canonical media item being voted on.
+		ItemID string `json:"itemId"`
+		// LegacyID accepts the former movieId field for cached clients during migration.
 		LegacyID string `json:"movieId"`
-		Liked    bool   `json:"liked"`
+		// Liked records whether the participant accepted the item.
+		Liked bool `json:"liked"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -114,7 +131,9 @@ func (a *API) Vote() http.HandlerFunc {
 
 // AddMoreTitles returns the handler that expands the first round from its unused pool.
 func (a *API) AddMoreTitles() http.HandlerFunc {
+	// request describes the JSON payload accepted by this handler.
 	type request struct {
+		// Count is the requested number of additional titles.
 		Count int `json:"count"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -134,8 +153,11 @@ func (a *API) AddMoreTitles() http.HandlerFunc {
 
 // NextRoundReady returns the handler that records agreement to narrow the deck to current matches.
 func (a *API) NextRoundReady() http.HandlerFunc {
+	// request describes the JSON payload accepted by this handler.
 	type request struct {
-		Round int  `json:"round"`
+		// Round identifies the room round the readiness update applies to.
+		Round int `json:"round"`
+		// Ready records whether the participant is ready to advance.
 		Ready bool `json:"ready"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +204,9 @@ func (a *API) Events() http.HandlerFunc {
 		w.Header().Set("X-Accel-Buffering", "no")
 		events, unsubscribe := a.Rooms.Subscribe(code)
 		defer unsubscribe()
-		_, _ = io.WriteString(w, "event: update\ndata: connected\n\n")
+		if _, err := io.WriteString(w, "event: update\ndata: connected\n\n"); err != nil {
+			return
+		}
 		flusher.Flush()
 		heartbeat := time.NewTicker(20 * time.Second)
 		defer heartbeat.Stop()
@@ -191,10 +215,14 @@ func (a *API) Events() http.HandlerFunc {
 			case <-r.Context().Done():
 				return
 			case <-events:
-				_, _ = io.WriteString(w, "event: update\ndata: changed\n\n")
+				if _, err := io.WriteString(w, "event: update\ndata: changed\n\n"); err != nil {
+					return
+				}
 				flusher.Flush()
 			case <-heartbeat.C:
-				_, _ = io.WriteString(w, ": keepalive\n\n")
+				if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
+					return
+				}
 				flusher.Flush()
 			}
 		}

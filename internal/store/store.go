@@ -14,13 +14,18 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// ErrNotFound indicates that a requested persisted entity does not exist.
 var ErrNotFound = errors.New("not found")
 
+// Store owns the SQLite database and the cipher used for stored secrets.
 type Store struct {
-	db     *sql.DB
+	// db is the underlying SQLite connection pool.
+	db *sql.DB
+	// cipher encrypts and decrypts persisted Plex secrets.
 	cipher cipher.AEAD
 }
 
+// Open opens the SQLite database, prepares encryption, and applies schema migrations.
 func Open(path string, configuredKeyPath ...string) (*Store, error) {
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -38,22 +43,22 @@ func Open(path string, configuredKeyPath ...string) (*Store, error) {
 	}
 	key, err := loadEncryptionKey(path, keyPath)
 	if err != nil {
-		db.Close()
+		db.Close() // nolint:errcheck
 		return nil, err
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		db.Close()
+		db.Close() // nolint:errcheck
 		return nil, err
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		db.Close()
+		db.Close() // nolint:errcheck
 		return nil, err
 	}
 	store := &Store{db: db, cipher: aead}
 	if err := store.migrate(context.Background()); err != nil {
-		db.Close()
+		db.Close() // nolint:errcheck
 		return nil, err
 	}
 	return store, nil
@@ -98,7 +103,7 @@ func loadEncryptionKey(databasePath, configuredPath string) ([]byte, error) {
 		return nil, fmt.Errorf("create authentication key: %w", err)
 	}
 	if _, err := file.Write(key); err != nil {
-		file.Close()
+		file.Close() // nolint:errcheck
 		return nil, fmt.Errorf("write authentication key: %w", err)
 	}
 	if err := file.Close(); err != nil {

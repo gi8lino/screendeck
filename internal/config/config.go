@@ -11,18 +11,30 @@ import (
 	"github.com/gi8lino/screendeck/internal/logging"
 )
 
+// Config contains runtime configuration for ScreenDeck.
 type Config struct {
-	ListenAddress       string
-	DatabasePath        string
-	AuthKeyPath         string
-	BaseURL             string
-	PlexURLOverride     string
-	RoomTTL             time.Duration
-	LogFormat           logging.LogFormat
-	Debug               bool
-	Experimental        bool
+	// ListenAddress is the TCP address used by the HTTP server.
+	ListenAddress string
+	// DatabasePath is the path to the SQLite database.
+	DatabasePath string
+	// AuthKeyPath is the path to the local encryption key.
+	AuthKeyPath string
+	// BaseURL is the public URL used to generate room links.
+	BaseURL string
+	// PlexURLOverride replaces the discovered Plex server URL at runtime.
+	PlexURLOverride string
+	// RoomTTL controls how long rooms remain active.
+	RoomTTL time.Duration
+	// LogFormat selects structured text or JSON logging.
+	LogFormat logging.LogFormat
+	// Debug enables verbose request and diagnostic logging.
+	Debug bool
+	// Experimental enables experimental application features.
+	Experimental bool
+	// RoomCleanupInterval controls how often expired rooms are removed.
 	RoomCleanupInterval time.Duration
-	Overridden          map[string]any
+	// Overridden records configuration values explicitly overridden by flags or environment variables.
+	Overridden map[string]any
 }
 
 // Parse reads command-line and environment configuration.

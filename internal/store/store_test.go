@@ -21,7 +21,7 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	item := plex.Item{RatingKey: "42", Library: "1", Type: "movie", Title: "Arrival", Genres: []string{"Science Fiction"}}
 	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
@@ -78,7 +78,15 @@ func TestPlexAuthenticationIsEncryptedAtRest(t *testing.T) {
 	assert.Equal(t, state.PrivateKey, loaded.PrivateKey)
 
 	var encryptedPrivate, encryptedUser, encryptedServer []byte
-	require.NoError(t, database.db.QueryRow(`SELECT private_key,user_token,server_token FROM plex_auth WHERE id=1`).Scan(&encryptedPrivate, &encryptedUser, &encryptedServer))
+	const encryptedAuthQuery = `
+SELECT
+  private_key,
+  user_token,
+  server_token
+FROM plex_auth
+WHERE id = 1
+`
+	require.NoError(t, database.db.QueryRow(encryptedAuthQuery).Scan(&encryptedPrivate, &encryptedUser, &encryptedServer))
 	assert.False(t, bytes.Contains(encryptedPrivate, privateKey))
 	assert.False(t, bytes.Contains(encryptedUser, []byte(state.UserToken)))
 	assert.False(t, bytes.Contains(encryptedServer, []byte(state.ServerToken)))
@@ -90,7 +98,7 @@ func TestPlexAuthenticationIsEncryptedAtRest(t *testing.T) {
 	require.NoError(t, database.Close())
 	reopened, err := Open(filepath.Join(directory, "test.db"), keyPath)
 	require.NoError(t, err)
-	defer reopened.Close()
+	defer reopened.Close() // nolint:errcheck
 
 	reloaded, err := reopened.LoadPlexAuth(ctx)
 	require.NoError(t, err)
@@ -102,7 +110,7 @@ func TestPlexAuthenticationIsEncryptedAtRest(t *testing.T) {
 func TestLegacyPlexAuthenticationRoundTrip(t *testing.T) {
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	state := plex.AuthState{
 		Method: plex.AuthMethodLegacy, ClientID: "client", UserToken: "legacy-user-token",
@@ -123,7 +131,7 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	item := plex.Item{RatingKey: "7", Library: "1", Type: "movie", Title: "Alien"}
 	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
@@ -150,7 +158,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	items := []plex.Item{
 		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
@@ -253,7 +261,7 @@ func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	items := []plex.Item{
 		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
@@ -286,7 +294,7 @@ func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	items := []plex.Item{
 		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
@@ -321,7 +329,7 @@ func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	items := []plex.Item{
 		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
@@ -355,7 +363,7 @@ func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
 	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
@@ -382,38 +390,114 @@ func TestLegacyMediaSchemaMigration(t *testing.T) {
 	databasePath := filepath.Join(directory, "legacy.db")
 	legacy, err := sql.Open("sqlite", databasePath)
 	require.NoError(t, err)
-	_, err = legacy.Exec(`
-CREATE TABLE libraries (key TEXT PRIMARY KEY,title TEXT NOT NULL,synced_at INTEGER NOT NULL);
-CREATE TABLE movies (
-  rating_key TEXT PRIMARY KEY,library_key TEXT NOT NULL,guid TEXT NOT NULL DEFAULT '',title TEXT NOT NULL,
-  year INTEGER NOT NULL DEFAULT 0,summary TEXT NOT NULL DEFAULT '',duration INTEGER NOT NULL DEFAULT 0,
-  rating REAL NOT NULL DEFAULT 0,thumb TEXT NOT NULL DEFAULT '',genres TEXT NOT NULL DEFAULT '[]',viewed INTEGER NOT NULL DEFAULT 0
+	const legacySchema = `
+CREATE TABLE libraries (
+  key TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  synced_at INTEGER NOT NULL
 );
-CREATE TABLE rooms (code TEXT PRIMARY KEY,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL);
-CREATE TABLE room_movies (room_code TEXT NOT NULL,movie_id TEXT NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(room_code,movie_id));
-CREATE TABLE participants (id TEXT PRIMARY KEY,room_code TEXT NOT NULL,name TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,joined_at INTEGER NOT NULL);
-CREATE TABLE votes (room_code TEXT NOT NULL,participant_id TEXT NOT NULL,movie_id TEXT NOT NULL,liked INTEGER NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(room_code,participant_id,movie_id));
-CREATE TABLE matches (room_code TEXT NOT NULL,movie_id TEXT NOT NULL,matched_at INTEGER NOT NULL,PRIMARY KEY(room_code,movie_id));
-INSERT INTO libraries(key,title,synced_at) VALUES('1','Films',1);
-INSERT INTO movies(rating_key,library_key,title,genres) VALUES('42','1','Arrival','["Science Fiction"]');
-INSERT INTO rooms(code,created_at,expires_at) VALUES('LEGACY',1,4102444800);
-INSERT INTO room_movies(room_code,movie_id,position) VALUES('LEGACY','42',0);
-INSERT INTO participants(id,room_code,name,token_hash,joined_at) VALUES('p1','LEGACY','One','hash1',1);
-INSERT INTO votes(room_code,participant_id,movie_id,liked,created_at) VALUES('LEGACY','p1','42',1,1);
-INSERT INTO matches(room_code,movie_id,matched_at) VALUES('LEGACY','42',1);
-`)
+
+CREATE TABLE movies (
+  rating_key TEXT PRIMARY KEY,
+  library_key TEXT NOT NULL,
+  guid TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL,
+  year INTEGER NOT NULL DEFAULT 0,
+  summary TEXT NOT NULL DEFAULT '',
+  duration INTEGER NOT NULL DEFAULT 0,
+  rating REAL NOT NULL DEFAULT 0,
+  thumb TEXT NOT NULL DEFAULT '',
+  genres TEXT NOT NULL DEFAULT '[]',
+  viewed INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE rooms (
+  code TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE TABLE room_movies (
+  room_code TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (room_code, movie_id)
+);
+
+CREATE TABLE participants (
+  id TEXT PRIMARY KEY,
+  room_code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  joined_at INTEGER NOT NULL
+);
+
+CREATE TABLE votes (
+  room_code TEXT NOT NULL,
+  participant_id TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  liked INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (room_code, participant_id, movie_id)
+);
+
+CREATE TABLE matches (
+  room_code TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  matched_at INTEGER NOT NULL,
+  PRIMARY KEY (room_code, movie_id)
+);
+
+INSERT INTO libraries (key, title, synced_at)
+VALUES ('1', 'Films', 1);
+
+INSERT INTO movies (rating_key, library_key, title, genres)
+VALUES ('42', '1', 'Arrival', '["Science Fiction"]');
+
+INSERT INTO rooms (code, created_at, expires_at)
+VALUES ('LEGACY', 1, 4102444800);
+
+INSERT INTO room_movies (room_code, movie_id, position)
+VALUES ('LEGACY', '42', 0);
+
+INSERT INTO participants (id, room_code, name, token_hash, joined_at)
+VALUES ('p1', 'LEGACY', 'One', 'hash1', 1);
+
+INSERT INTO votes (room_code, participant_id, movie_id, liked, created_at)
+VALUES ('LEGACY', 'p1', '42', 1, 1);
+
+INSERT INTO matches (room_code, movie_id, matched_at)
+VALUES ('LEGACY', '42', 1);
+`
+	_, err = legacy.Exec(legacySchema)
 	require.NoError(t, err)
 	require.NoError(t, legacy.Close())
 
 	database, err := Open(databasePath, filepath.Join(directory, "auth.key"))
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	var mediaItems, roomItems, votes, matches int
-	require.NoError(t, database.db.QueryRow(`SELECT COUNT(*) FROM media_items`).Scan(&mediaItems))
-	require.NoError(t, database.db.QueryRow(`SELECT COUNT(*) FROM room_items`).Scan(&roomItems))
-	require.NoError(t, database.db.QueryRow(`SELECT COUNT(*) FROM item_votes`).Scan(&votes))
-	require.NoError(t, database.db.QueryRow(`SELECT COUNT(*) FROM item_matches`).Scan(&matches))
+	const mediaItemCountQuery = `
+SELECT COUNT(*)
+FROM media_items
+`
+	require.NoError(t, database.db.QueryRow(mediaItemCountQuery).Scan(&mediaItems))
+	const roomItemCountQuery = `
+SELECT COUNT(*)
+FROM room_items
+`
+	require.NoError(t, database.db.QueryRow(roomItemCountQuery).Scan(&roomItems))
+	const voteCountQuery = `
+SELECT COUNT(*)
+FROM item_votes
+`
+	require.NoError(t, database.db.QueryRow(voteCountQuery).Scan(&votes))
+	const matchCountQuery = `
+SELECT COUNT(*)
+FROM item_matches
+`
+	require.NoError(t, database.db.QueryRow(matchCountQuery).Scan(&matches))
 	assert.Equal(t, 1, mediaItems)
 	assert.Equal(t, 1, roomItems)
 	assert.Equal(t, 1, votes)
@@ -444,7 +528,7 @@ func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	ctx := context.Background()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
 	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
@@ -452,9 +536,12 @@ func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "RACE01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a"}))
 	require.NoError(t, database.JoinRoom(ctx, "RACE01", Participant{ID: "p2", Name: "Two"}, "hash2"))
 
+	// voteResult captures the outcome of a concurrent vote in tests.
 	type voteResult struct {
+		// matched stores the matched value.
 		matched bool
-		err     error
+		// err stores the err value.
+		err error
 	}
 	start := make(chan struct{})
 	results := make(chan voteResult, 2)
@@ -485,12 +572,16 @@ func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 func TestConcurrentReadinessAdvancesExactlyOneRound(t *testing.T) {
 	ctx := context.Background()
 	database := seedReadyConcurrencyRoom(t, ctx, "RACE02")
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
+	// readyResult captures the outcome of a concurrent readiness update in tests.
 	type readyResult struct {
-		round    int
+		// round stores the round value.
+		round int
+		// advanced stores the advanced value.
 		advanced bool
-		err      error
+		// err stores the err value.
+		err error
 	}
 	start := make(chan struct{})
 	results := make(chan readyResult, 2)
@@ -522,11 +613,14 @@ func TestConcurrentReadinessAdvancesExactlyOneRound(t *testing.T) {
 func TestConcurrentDuplicateReadinessIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	database := seedReadyConcurrencyRoom(t, ctx, "RACE03")
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
+	// readyResult captures the outcome of a concurrent readiness update in tests.
 	type readyResult struct {
+		// ready stores the ready value.
 		ready int
-		err   error
+		// err stores the err value.
+		err error
 	}
 	start := make(chan struct{})
 	results := make(chan readyResult, 2)
@@ -558,15 +652,19 @@ func TestConcurrentDuplicateReadinessIsIdempotent(t *testing.T) {
 func TestConcurrentFinalReadyRequestIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	database := seedReadyConcurrencyRoom(t, ctx, "RACE04")
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 	_, _, _, _, advanced, err := database.SetRoundReady(ctx, "RACE04", "p1", 1, true)
 	require.NoError(t, err)
 	assert.False(t, advanced)
 
+	// readyResult captures the outcome of a concurrent readiness update in tests.
 	type readyResult struct {
-		round    int
+		// round stores the round value.
+		round int
+		// advanced stores the advanced value.
 		advanced bool
-		err      error
+		// err stores the err value.
+		err error
 	}
 	start := make(chan struct{})
 	results := make(chan readyResult, 2)
@@ -600,7 +698,7 @@ func TestConcurrentFinalReadyRequestIsIdempotent(t *testing.T) {
 func TestReadyParticipantDepartureCancelsConsensus(t *testing.T) {
 	ctx := context.Background()
 	database := seedReadyConcurrencyRoom(t, ctx, "RACE05")
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 	require.NoError(t, database.JoinRoom(ctx, "RACE05", Participant{ID: "p3", Name: "Three"}, "hash3"))
 
 	_, _, _, _, _, err := database.SetRoundReady(ctx, "RACE05", "p1", 1, true)

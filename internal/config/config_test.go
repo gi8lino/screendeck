@@ -3,6 +3,9 @@ package config
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestParseFlags verifies command-line configuration parsing.
@@ -18,15 +21,14 @@ func TestParseFlags(t *testing.T) {
 		"--experimental",
 		"--debug",
 	}, "test")
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if cfg.ListenAddress != "127.0.0.1:9090" || cfg.BaseURL != "http://movies.test" || cfg.PlexURLOverride != "http://127.0.0.1:32400" {
-		t.Fatalf("unexpected addresses: %#v", cfg)
-	}
-	if cfg.RoomTTL != 2*time.Hour || cfg.LogFormat != "text" || !cfg.Debug || !cfg.Experimental {
-		t.Fatalf("unexpected options: %#v", cfg)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:9090", cfg.ListenAddress)
+	assert.Equal(t, "http://movies.test", cfg.BaseURL)
+	assert.Equal(t, "http://127.0.0.1:32400", cfg.PlexURLOverride)
+	assert.Equal(t, 2*time.Hour, cfg.RoomTTL)
+	assert.Equal(t, "text", string(cfg.LogFormat))
+	assert.True(t, cfg.Debug)
+	assert.True(t, cfg.Experimental)
 }
 
 // TestParseEnvironment verifies environment configuration parsing.
@@ -34,18 +36,16 @@ func TestParseEnvironment(t *testing.T) {
 	t.Setenv("SCREENDECK__AUTH_KEY_PATH", "/tmp/from-env.key")
 	t.Setenv("SCREENDECK__PLEX_URL_OVERRIDE", "http://127.0.0.1:32400")
 	t.Setenv("SCREENDECK__ROOM_TTL", "30m")
+
 	cfg, err := Parse(nil, "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.AuthKeyPath != "/tmp/from-env.key" || cfg.PlexURLOverride != "http://127.0.0.1:32400" || cfg.RoomTTL != 30*time.Minute {
-		t.Fatalf("environment was not applied: %#v", cfg)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "/tmp/from-env.key", cfg.AuthKeyPath)
+	assert.Equal(t, "http://127.0.0.1:32400", cfg.PlexURLOverride)
+	assert.Equal(t, 30*time.Minute, cfg.RoomTTL)
 }
 
 // TestParseRejectsInvalidPlexURLOverride verifies the override requires an absolute HTTP URL.
 func TestParseRejectsInvalidPlexURLOverride(t *testing.T) {
-	if _, err := Parse([]string{"--plex-url-override", "localhost:32400"}, "test"); err == nil {
-		t.Fatal("expected invalid Plex URL override to fail")
-	}
+	_, err := Parse([]string{"--plex-url-override", "localhost:32400"}, "test")
+	require.Error(t, err)
 }

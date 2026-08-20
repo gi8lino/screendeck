@@ -6,11 +6,15 @@ import (
 	"github.com/gi8lino/screendeck/internal/plex"
 )
 
+// plexAuthRequest describes a request to start Plex authorization.
 type plexAuthRequest struct {
+	// Method identifies the selected Plex authorization flow.
 	Method plex.AuthMethod `json:"method"`
 }
 
+// selectPlexServerRequest identifies the Plex server selected during setup.
 type selectPlexServerRequest struct {
+	// ServerID identifies the Plex server selected by the user.
 	ServerID string `json:"serverId"`
 }
 

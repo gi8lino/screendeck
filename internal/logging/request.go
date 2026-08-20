@@ -10,6 +10,7 @@ import (
 
 const RequestIDHeader = "X-Request-Id"
 
+// requestIDKey is the private context key used for request identifiers.
 type requestIDKey struct{}
 
 // NewRequestID creates a random request identifier.

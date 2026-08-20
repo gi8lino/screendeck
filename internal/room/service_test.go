@@ -12,9 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// fakeCatalog is an in-memory catalog used by room service tests.
 type fakeCatalog struct {
+	// libraries contains fake Plex libraries.
 	libraries []plex.Library
-	items     map[string][]plex.Item
+	// items contains cached Plex items.
+	items map[string][]plex.Item
 }
 
 // Libraries returns the fake catalog libraries.
@@ -32,7 +35,7 @@ func (f fakeCatalog) Poster(context.Context, string) (*http.Response, error) { r
 func TestCatalogOptionsAndFilters(t *testing.T) {
 	database, err := store.Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
 		libraries: []plex.Library{{Key: "1", Title: "Films", Type: "movie"}, {Key: "2", Title: "Series", Type: "show"}},
@@ -66,7 +69,7 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	database, err := store.Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
 		libraries: []plex.Library{{Key: "1", Title: "Films", Type: "movie"}},
@@ -107,7 +110,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 	database, err := store.Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
 		libraries: []plex.Library{{Key: "1", Title: "Films", Type: "movie"}},
@@ -168,7 +171,7 @@ func TestInitialSamplingStrategies(t *testing.T) {
 func TestParticipantGenreModeAllRequiresEveryGenre(t *testing.T) {
 	database, err := store.Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
 		libraries: []plex.Library{{Key: "1", Title: "Films", Type: "movie"}},

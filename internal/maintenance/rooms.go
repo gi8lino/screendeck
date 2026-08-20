@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// expiredRoomStore defines the persistence operation required by room cleanup.
 type expiredRoomStore interface {
 	DeleteExpired(context.Context) error
 }
@@ -20,7 +21,10 @@ func RunRoomCleanup(ctx context.Context, store expiredRoomStore, roomCleanupInte
 			return
 		case <-ticker.C:
 			if err := store.DeleteExpired(ctx); err != nil {
-				logger.Error("delete expired rooms", "event", "delete_expired_rooms_failed", "error", err)
+				logger.Error("delete expired rooms",
+					"event", "delete_expired_rooms_failed",
+					"error", err,
+				)
 			}
 		}
 	}

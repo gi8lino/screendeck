@@ -29,9 +29,9 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/library/sections":
-			_, _ = fmt.Fprint(w, `{"MediaContainer":{"Directory":[{"key":"1","title":"Films","type":"movie"}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"Directory":[{"key":"1","title":"Films","type":"movie"}]}}`) // nolint:errcheck
 		case "/library/sections/1/all":
-			_, _ = fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"42","title":"Arrival","year":2016,"thumb":"/poster"}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"42","title":"Arrival","year":2016,"thumb":"/poster"}]}}`) // nolint:errcheck
 		default:
 			http.NotFound(w, r)
 		}
@@ -40,7 +40,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 
 	database, err := store.Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	plexClient, err := plex.New(plexServer.URL, "token")
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ func decodeResponse(t *testing.T, recorder *httptest.ResponseRecorder, target an
 func TestHealthAndFrontend(t *testing.T) {
 	database, err := store.Open(":memory:")
 	require.NoError(t, err)
-	defer database.Close()
+	defer database.Close() // nolint:errcheck
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authManager, err := plex.NewAuthManager(context.Background(), database, logger, "http://plex.test", "", false)
