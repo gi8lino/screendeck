@@ -5,6 +5,14 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
+PRETTIER ?= npx --yes prettier@3.9.6
+PRETTIER_MD_SOURCES := README.md
+PRETTIER_YAML_SOURCES := ".github/**/*.{yml,yaml}"
+PRETTIER_JSON_SOURCES := ".github/**/*.json"
+PRETTIER_JS_SOURCES := "web/dist/**/*.js"
+PRETTIER_CSS_SOURCES := "web/dist/**/*.css"
+PRETTIER_HTML_SOURCES := "web/dist/*.html"
+
 ## Tool Binaries
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
@@ -100,6 +108,32 @@ lint: golangci-lint ## Run golangci-lint.
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint and apply fixes.
 	$(GOLANGCI_LINT) run --fix
+
+##@ Formatting
+
+.PHONY: fmt fmt-md fmt-yaml fmt-json lint lint-md lint-yaml lint-json
+fmt: fmt-md fmt-yaml fmt-json ## Format all supported documentation and configuration files.
+
+fmt-md: ## Format Markdown files with Prettier.
+	@$(PRETTIER) --write $(PRETTIER_MD_SOURCES)
+
+fmt-yaml: ## Format YAML files with Prettier.
+	@$(PRETTIER) --write $(PRETTIER_YAML_SOURCES)
+
+fmt-json: ## Format JSON configuration files with Prettier.
+	@$(PRETTIER) --write $(PRETTIER_JSON_SOURCES)
+
+lint: lint-md lint-yaml lint-json ## Check formatting without changing files.
+
+lint-md: ## Check Markdown formatting with Prettier.
+	@$(PRETTIER) --check $(PRETTIER_MD_SOURCES)
+
+lint-yaml: ## Check YAML formatting with Prettier.
+	@$(PRETTIER) --check $(PRETTIER_YAML_SOURCES)
+
+lint-json: ## Check JSON formatting with Prettier.
+	@$(PRETTIER) --check $(PRETTIER_JSON_SOURCES)
+
 
 ##@ Dependencies
 
