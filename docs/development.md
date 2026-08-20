@@ -2,13 +2,25 @@
 
 ScreenDeck is a Go application with an embedded, dependency-free browser frontend. The module currently targets Go 1.25.
 
+Node.js is used only for development tooling such as Prettier and documentation screenshots. It is not required by the ScreenDeck application at runtime.
+
 ## Get started
 
-Download dependencies, run the tests, and start the application:
+Install the Go and Node.js dependencies:
 
 ```sh
 make download
+```
+
+Run the tests:
+
+```sh
 make test
+```
+
+Start the application:
+
+```sh
 make run
 ```
 
@@ -39,12 +51,14 @@ internal/store       SQLite schema and persistence
 web                  embedded browser application
 deploy               deployment examples
 docs                 project documentation and screenshots
-scripts              development/documentation helpers
+scripts              development and documentation helpers
 ```
 
 ## Formatting and checks
 
-Go code is formatted with `gofmt`. Markdown, YAML, and JSON are formatted with Prettier through the Makefile.
+Go code is formatted with `gofmt`.
+
+Markdown, YAML, and JSON are formatted with the repository-pinned version of Prettier.
 
 ```sh
 make fmt
@@ -55,13 +69,29 @@ make test
 
 The CI workflow also runs `staticcheck` and `git diff --check`.
 
+## Node.js dependencies
+
+Development dependencies are declared in the root `package.json` and pinned by `package-lock.json`.
+
+Install exactly the locked versions with:
+
+```sh
+npm ci
+```
+
+Do not commit `node_modules/`.
+
+When changing a Node.js development dependency, update the lock file with `npm install` and commit both `package.json` and `package-lock.json`.
+
 ## Create documentation screenshots
 
-Run:
+Generate the screenshots with:
 
 ```sh
 make screenshots
 ```
+
+The first invocation installs the Chromium build used by Playwright.
 
 The target starts a local demo server that uses the real ScreenDeck frontend with deterministic fixture data. It creates room `DECK42` with a host plus **Alice** and **Bob**, then captures:
 
@@ -69,9 +99,15 @@ The target starts a local demo server that uses the real ScreenDeck frontend wit
 - `docs/screenshots/room.png`
 - `docs/screenshots/winner.png`
 
-The target uses Playwright through `npx`; the Playwright Chromium build is installed on the first run and cached for later runs. Node.js and `curl` are required for this documentation-only workflow.
-
 The demo server never contacts Plex and does not touch the normal ScreenDeck database.
+
+`make printscreens` is an alias for `make screenshots`.
+
+If you only want to install the screenshot browser dependency, run:
+
+```sh
+make playwright-browser
+```
 
 ## Developing against a forwarded Plex server
 
@@ -86,4 +122,6 @@ The override is not persisted. Supply it again whenever ScreenDeck starts with t
 
 ## Release builds
 
-GoReleaser builds Linux `amd64` and `arm64` binaries and publishes the container image. The Makefile also provides `patch`, `minor`, `major`, and `push` targets for repository tag workflows.
+GoReleaser builds Linux `amd64` and `arm64` binaries and publishes the container image.
+
+The Makefile also provides `patch`, `minor`, `major`, and `push` targets for repository tag workflows.

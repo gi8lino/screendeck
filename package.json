@@ -1,0 +1,8 @@
+{
+  "name": "screendeck",
+  "private": true,
+  "devDependencies": {
+    "playwright": "1.57.0",
+    "prettier": "3.9.6"
+  }
+}

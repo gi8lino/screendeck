@@ -5,7 +5,10 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
-PRETTIER ?= npx --yes prettier@3.9.6
+NODE_BIN ?= ./node_modules/.bin
+PRETTIER ?= $(NODE_BIN)/prettier
+PLAYWRIGHT ?= $(NODE_BIN)/playwright
+
 PRETTIER_MD_SOURCES := README.md "docs/**/*.md"
 PRETTIER_YAML_SOURCES := ".github/**/*.{yml,yaml}" "deploy/**/*.{yml,yaml}"
 PRETTIER_JSON_SOURCES := ".github/**/*.json"
@@ -67,8 +70,9 @@ push: ## Push tags to the configured remote.
 ##@ Development
 
 .PHONY: download
-download: ## Download Go packages.
+download: ## Download Go and Node.js dependencies.
 	go mod download
+	npm ci
 
 .PHONY: run
 run: ## Run ScreenDeck locally.
@@ -77,10 +81,6 @@ run: ## Run ScreenDeck locally.
 .PHONY: build
 build: ## Build the ScreenDeck binary.
 	go build -ldflags="$(LDFLAGS)" -o $(BINARY) $(COMMAND)
-
-.PHONY: fmt
-fmt: ## Format Go code.
-	go fmt ./...
 
 .PHONY: vet
 vet: ## Run Go static analysis.
@@ -103,53 +103,72 @@ cover: ## Display test coverage.
 clean: ## Clean up generated files.
 	rm -f $(BINARY) coverage.out coverage.html
 
+##@ Formatting
+
+.PHONY: fmt
+fmt: fmt-go fmt-md fmt-yaml fmt-json ## Format all supported files.
+
+.PHONY: fmt-go
+fmt-go: ## Format Go code.
+	go fmt ./...
+
+.PHONY: fmt-md
+fmt-md: node-dependencies ## Format Markdown files with Prettier.
+	@$(PRETTIER) --write $(PRETTIER_MD_SOURCES)
+
+.PHONY: fmt-yaml
+fmt-yaml: node-dependencies ## Format YAML files with Prettier.
+	@$(PRETTIER) --write $(PRETTIER_YAML_SOURCES)
+
+.PHONY: fmt-json
+fmt-json: node-dependencies ## Format JSON configuration files with Prettier.
+	@$(PRETTIER) --write $(PRETTIER_JSON_SOURCES)
+
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint.
+lint: lint-go lint-md lint-yaml lint-json ## Run all linters.
+
+.PHONY: lint-go
+lint-go: golangci-lint ## Run golangci-lint.
 	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint and apply fixes.
 	$(GOLANGCI_LINT) run --fix
 
-##@ Formatting
-
-.PHONY: fmt fmt-md fmt-yaml fmt-json lint lint-md lint-yaml lint-json
-fmt: fmt-md fmt-yaml fmt-json ## Format all supported documentation and configuration files.
-
-fmt-md: ## Format Markdown files with Prettier.
-	@$(PRETTIER) --write $(PRETTIER_MD_SOURCES)
-
-fmt-yaml: ## Format YAML files with Prettier.
-	@$(PRETTIER) --write $(PRETTIER_YAML_SOURCES)
-
-fmt-json: ## Format JSON configuration files with Prettier.
-	@$(PRETTIER) --write $(PRETTIER_JSON_SOURCES)
-
-lint: lint-md lint-yaml lint-json ## Check formatting without changing files.
-
-lint-md: ## Check Markdown formatting with Prettier.
+.PHONY: lint-md
+lint-md: node-dependencies ## Check Markdown formatting.
 	@$(PRETTIER) --check $(PRETTIER_MD_SOURCES)
 
-lint-yaml: ## Check YAML formatting with Prettier.
+.PHONY: lint-yaml
+lint-yaml: node-dependencies ## Check YAML formatting.
 	@$(PRETTIER) --check $(PRETTIER_YAML_SOURCES)
 
-lint-json: ## Check JSON formatting with Prettier.
+.PHONY: lint-json
+lint-json: node-dependencies ## Check JSON formatting.
 	@$(PRETTIER) --check $(PRETTIER_JSON_SOURCES)
-
 
 ##@ Documentation
 
 .PHONY: screenshots
-screenshots: ## Create README screenshots with a demo room containing Alice and Bob.
-	@PLAYWRIGHT_VERSION=$(PLAYWRIGHT_VERSION) ./scripts/screenshots/screenshots.sh
+screenshots: playwright-browser ## Create README screenshots with a demo room containing Alice and Bob.
+	@PLAYWRIGHT=$(PLAYWRIGHT) ./scripts/screenshots/screenshots.sh
 
 .PHONY: printscreens
 printscreens: screenshots ## Alias for screenshots.
 
 ##@ Dependencies
 
+.PHONY: node-dependencies
+node-dependencies: ## Install locked Node.js development dependencies.
+	npm ci
+
+.PHONY: playwright-browser
+playwright-browser: node-dependencies ## Install Chromium used for documentation screenshots.
+	$(PLAYWRIGHT) install chromium
+
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
