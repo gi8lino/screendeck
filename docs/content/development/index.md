@@ -1,3 +1,8 @@
+---
+hide:
+  - navigation
+---
+
 # Development
 
 ScreenDeck is a Go application with an embedded, dependency-free browser frontend. The module currently targets Go 1.25.
@@ -100,6 +105,12 @@ https://gi8lino.github.io/screendeck/
 
 The repository must have **Settings → Pages → Build and deployment → Source** set to **GitHub Actions**.
 
+## Documentation navigation
+
+The main ScreenDeck documentation sections are already available as tabs in the MkDocs Material header. The top-level pages therefore hide Material's left navigation sidebar with page metadata so the current section title is not repeated in a one-item sidebar.
+
+Nested documentation sections can still enable normal navigation when they eventually contain multiple pages.
+
 ## Documentation screenshots
 
 The screenshot workflow separates browser capture from committed documentation assets:
@@ -177,32 +188,3 @@ The override is not persisted. Supply it again whenever ScreenDeck starts with t
 ## Release builds
 
 GoReleaser builds Linux `amd64` and `arm64` binaries and publishes the container image. The Makefile also provides `patch`, `minor`, `major`, and `push` targets for repository tag workflows.
-
-After replacing those files, I would do this once to get rid of the old root-level Node installation:
-
-```sh
-rm -rf node_modules
-make screenshots
-```
-
-The **first** run should produce something like:
-
-```text
-npm --prefix docs ci
-PLAYWRIGHT_BROWSERS_PATH=".../docs/.playwright" \
-  docs/node_modules/.bin/playwright install chromium
-
-Captured docs/screenshots/raw/home.png
-Captured docs/screenshots/raw/room.png
-Captured docs/screenshots/raw/winner.png
-```
-
-The **second** run should skip both dependency installation and Chromium installation and go directly to screenshot capture:
-
-```text
-make screenshots
-
-Captured docs/screenshots/raw/home.png
-Captured docs/screenshots/raw/room.png
-Captured docs/screenshots/raw/winner.png
-```

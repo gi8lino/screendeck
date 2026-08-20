@@ -20,7 +20,8 @@ ScreenDeck turns a Plex library into a shared swipe deck. Create a room, invite 
 3. **Share the room code** so friends can join from their phones or browsers.
 4. **Swipe independently** without seeing or influencing each other's votes.
 5. **Collect unanimous matches** and ask the group to narrow them into another round whenever you are ready.
-6. **Repeat until one title wins.**
+6. **Return later or switch rooms** from **Your rooms** without joining again while the room is still active.
+7. **Repeat until one title wins.**
 
 ## Highlights
 
@@ -31,8 +32,10 @@ ScreenDeck turns a Plex library into a shared swipe deck. Create a room, invite 
 - Add more unseen titles without starting over.
 - Unanimous matches and unanimous next-round requests.
 - Live room updates, match reveals, a compact match pile, and a dedicated winner screen.
-- Persistent **Your rooms** history per browser, so you can switch between active rooms without rejoining.
+- Persistent **Your rooms** history per browser, so you can switch between active rooms and resume the same participant without rejoining.
 - No guest accounts: friends only need a room code and a display name.
+
+Saved rooms belong to the current browser profile rather than to a ScreenDeck account. They do not automatically sync between browsers or devices. Leaving a room, being removed by the host, or the room expiring removes that membership from **Your rooms**.
 
 <p align="center">
   <img src="docs/content/assets/screenshots/winner.png" alt="ScreenDeck winner screen" width="760" />
@@ -64,7 +67,7 @@ Environment variables use the `SCREENDECK__` prefix.
 | ---------------------------- | ----------------------- | ------------------------------------------------------------ |
 | `SCREENDECK__BASE_URL`       | `http://localhost:8080` | Public URL used for room invitation links.                   |
 | `SCREENDECK__LISTEN_ADDRESS` | `:8080`                 | Address and port ScreenDeck listens on.                      |
-| `SCREENDECK__ROOM_TTL`       | `24h`                   | How long rooms remain available.                             |
+| `SCREENDECK__ROOM_TTL`       | `24h`                   | How long rooms and saved memberships remain available.       |
 | `SCREENDECK__LOG_FORMAT`     | `json`                  | Log output: `json` or `text`.                                |
 | `SCREENDECK__DEBUG`          | `false`                 | Enables verbose request and diagnostic logs.                 |
 | `SCREENDECK__EXPERIMENTAL`   | `false`                 | Shows experimental features such as Plex JWT authentication. |
@@ -79,7 +82,7 @@ The full documentation is published with MkDocs Material at:
 
 ## Current scope
 
-ScreenDeck supports movies and top-level TV shows. Individual seasons and episodes, configurable majority thresholds, permanent user profiles, and direct Plex playback are intentionally outside the current scope.
+ScreenDeck supports movies and top-level TV shows. Individual seasons and episodes, configurable majority thresholds, permanent user accounts, cross-device room syncing, and direct Plex playback are intentionally outside the current scope.
 
 ## License
 

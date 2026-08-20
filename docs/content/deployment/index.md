@@ -1,6 +1,11 @@
+---
+hide:
+  - navigation
+---
+
 # Deployment
 
-ScreenDeck is designed to run as a single application instance with persistent storage for its SQLite database and Plex authentication key.
+ScreenDeck is designed to run as a single application instance with persistent storage for its SQLite database and authentication encryption key.
 
 ## Docker Compose
 
@@ -12,7 +17,7 @@ From the repository root:
 cp .env.example .env
 ```
 
-Set `SCREENDECK_BASE_URL` in `.env` to the URL devices on your network will use, then start ScreenDeck:
+Set `SCREENDECK__BASE_URL` in `.env` to the URL devices on your network will use, then start ScreenDeck:
 
 ```sh
 docker compose -f deploy/compose.yaml up -d
@@ -47,7 +52,11 @@ Keep these two files together when backing up or restoring ScreenDeck:
 - `/data/screendeck.db`
 - `/data/auth.key`
 
-The database contains encrypted Plex credentials and resumable room-session tokens. The key file is required to decrypt both.
+The SQLite database contains application state including Plex configuration, active rooms, participants, votes, browser identity hashes, and saved room memberships.
+
+The authentication key encrypts sensitive values stored in the database, including Plex credentials and the participant session tokens used to resume saved rooms. Restoring `screendeck.db` without the matching `auth.key` prevents those encrypted values from being recovered.
+
+Browser identity cookies remain on the users' browsers and are not part of the server backup. After a server restore, a browser can rediscover its saved rooms when its existing identity cookie still matches the restored membership data.
 
 ## Remote access
 

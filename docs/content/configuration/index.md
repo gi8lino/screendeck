@@ -1,3 +1,8 @@
+---
+hide:
+  - navigation
+---
+
 # Configuration
 
 ScreenDeck accepts command-line flags and environment variables. Environment variables use the `SCREENDECK__` prefix followed by the upper-case flag name with hyphens replaced by underscores.
@@ -9,7 +14,7 @@ ScreenDeck accepts command-line flags and environment variables. Environment var
 | `--auth-key-path`         | `SCREENDECK__AUTH_KEY_PATH`         | `./data/auth.key`       | Local encryption-key path.                                     |
 | `--base-url`              | `SCREENDECK__BASE_URL`              | `http://localhost:8080` | Public URL used for room invitation links.                     |
 | `--plex-url-override`     | `SCREENDECK__PLEX_URL_OVERRIDE`     | empty                   | Runtime override for the discovered Plex server URL.           |
-| `--room-ttl`              | `SCREENDECK__ROOM_TTL`              | `24h`                   | How long rooms remain available.                               |
+| `--room-ttl`              | `SCREENDECK__ROOM_TTL`              | `24h`                   | How long rooms and their saved memberships remain available.   |
 | `--room-cleanup-interval` | `SCREENDECK__ROOM_CLEANUP_INTERVAL` | `1h`                    | How often expired rooms are deleted.                           |
 | `--log-format` / `-l`     | `SCREENDECK__LOG_FORMAT`            | `json`                  | Log format: `json` or `text`.                                  |
 | `--debug` / `-d`          | `SCREENDECK__DEBUG`                 | `false`                 | Enables verbose request and diagnostic logging.                |
@@ -31,6 +36,16 @@ Examples:
 http://192.168.1.10:8080
 https://screendeck.home.example
 ```
+
+## Saved rooms and room lifetime
+
+ScreenDeck remembers the rooms created or joined by each browser profile and displays active memberships under **Your rooms** on the startup page.
+
+Opening a saved room restores the same participant session. This preserves participant identity, votes, host status, and the room's current round instead of creating a duplicate participant.
+
+`room-ttl` controls the lifetime of the room itself. Saved membership is useful only while that room remains active. Once a room expires and cleanup removes it, it can no longer be resumed and disappears from **Your rooms**.
+
+Saved room discovery is browser-profile-specific. ScreenDeck does not provide user accounts or automatically synchronize memberships between browsers or devices.
 
 ## Plex URL override
 
