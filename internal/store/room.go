@@ -75,7 +75,7 @@ type NextRoundState struct {
 	RequestedBy *Participant `json:"requestedBy,omitempty"`
 }
 
-func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, movieIDs, poolIDs []string) error {
+func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, itemIDs, poolIDs []string) error {
 	if room.Round <= 0 {
 		room.Round = 1
 	}
@@ -106,27 +106,27 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 	if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,genre_mode,token_hash,joined_at) VALUES(?,?,?,?,?,?,?)`, participant.ID, room.Code, participant.Name, string(participantGenres), participant.GenreMode, tokenHash, time.Now().Unix()); err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_items(room_code,item_id,position) VALUES(?,?,?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
-	for position, movieID := range movieIDs {
-		if _, err := stmt.ExecContext(ctx, room.Code, movieID, position); err != nil {
+	for position, itemID := range itemIDs {
+		if _, err := stmt.ExecContext(ctx, room.Code, itemID, position); err != nil {
 			return err
 		}
 	}
-	poolStmt, err := tx.PrepareContext(ctx, `INSERT INTO room_pool(room_code,movie_id,position,used) VALUES(?,?,?,?)`)
+	poolStmt, err := tx.PrepareContext(ctx, `INSERT INTO room_item_pool(room_code,item_id,position,used) VALUES(?,?,?,?)`)
 	if err != nil {
 		return err
 	}
-	used := make(map[string]struct{}, len(movieIDs))
-	for _, movieID := range movieIDs {
-		used[movieID] = struct{}{}
+	used := make(map[string]struct{}, len(itemIDs))
+	for _, itemID := range itemIDs {
+		used[itemID] = struct{}{}
 	}
-	for position, movieID := range poolIDs {
-		_, active := used[movieID]
-		if _, err := poolStmt.ExecContext(ctx, room.Code, movieID, position, active); err != nil {
+	for position, itemID := range poolIDs {
+		_, active := used[itemID]
+		if _, err := poolStmt.ExecContext(ctx, room.Code, itemID, position, active); err != nil {
 			poolStmt.Close()
 			return err
 		}
@@ -172,8 +172,8 @@ SELECT ?,code,?,?,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.I
 	}
 	// A newly joined participant has not voted yet, so prior matches are no
 	// longer unanimous until that participant also likes them.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM matches
-WHERE room_code=? AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=matches.movie_id AND liked=1)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM item_matches
+WHERE room_code=? AND (SELECT COUNT(*) FROM item_votes WHERE room_code=? AND item_id=item_matches.item_id AND liked=1)
   < (SELECT COUNT(*) FROM participants WHERE room_code=?)`, code, code, code); err != nil {
 		return err
 	}
@@ -209,11 +209,11 @@ func (s *Store) RoomGenres(ctx context.Context, code string) ([]string, error) {
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT CAST(j.value AS TEXT)
 FROM (
-  SELECT room_code,movie_id FROM room_pool WHERE room_code=?
+  SELECT room_code,item_id FROM room_item_pool WHERE room_code=?
   UNION
-  SELECT room_code,movie_id FROM room_movies WHERE room_code=?
+  SELECT room_code,item_id FROM room_items WHERE room_code=?
 ) rp
-JOIN movies m ON m.rating_key=rp.movie_id
+JOIN media_items m ON m.rating_key=rp.item_id
 JOIN json_each(m.genres) j
 WHERE trim(CAST(j.value AS TEXT))<>''
 ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE`, code, code)
@@ -273,11 +273,11 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 		return state, err
 	}
 
-	state.Candidate, err = s.nextMovie(ctx, code, participantID)
+	state.Candidate, err = s.nextItem(ctx, code, participantID)
 	if err != nil {
 		return state, err
 	}
-	state.Matches, err = s.matchMovies(ctx, code)
+	state.Matches, err = s.matchItems(ctx, code)
 	if err != nil {
 		return state, err
 	}
@@ -301,11 +301,11 @@ WHERE rr.room_code=? AND rr.round=?`, code, state.Room.Round).Scan(&state.NextRo
 		}
 	}
 	state.NextRound.Available = state.NextRound.Required > 1 && len(state.Matches) > 1
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(v.movie_id),COUNT(rm.movie_id)
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(v.item_id),COUNT(rm.item_id)
 FROM participants p
-JOIN room_movies rm ON rm.room_code=p.room_code
-JOIN movies m ON m.rating_key=rm.movie_id
-LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
+JOIN room_items rm ON rm.room_code=p.room_code
+JOIN media_items m ON m.rating_key=rm.item_id
+LEFT JOIN item_votes v ON v.room_code=rm.room_code AND v.item_id=rm.item_id AND v.participant_id=p.id
 WHERE p.id=? AND p.room_code=?
 AND (json_array_length(p.genres)=0 OR (
   p.genre_mode='all' AND NOT EXISTS (
@@ -323,7 +323,7 @@ AND (json_array_length(p.genres)=0 OR (
 ))`, participantID, code).Scan(&state.Progress.Voted, &state.Progress.Total); err != nil {
 		return state, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_movies WHERE room_code=?`, code).Scan(&state.Progress.RoundTotal); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_items WHERE room_code=?`, code).Scan(&state.Progress.RoundTotal); err != nil {
 		return state, err
 	}
 	state.Progress.FilteredOut = state.Progress.RoundTotal - state.Progress.Total
@@ -338,8 +338,8 @@ AND (json_array_length(p.genres)=0 OR (
 	if state.Room.Phase == RoomPhaseFinished && len(state.Matches) == 1 {
 		winner := &WinnerState{Item: state.Matches[0]}
 		rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.name,p.genres,p.genre_mode
-FROM participants p JOIN votes v ON v.participant_id=p.id AND v.room_code=p.room_code
-WHERE p.room_code=? AND v.movie_id=? AND v.liked=1 ORDER BY p.joined_at`, code, state.Matches[0].RatingKey)
+FROM participants p JOIN item_votes v ON v.participant_id=p.id AND v.room_code=p.room_code
+WHERE p.room_code=? AND v.item_id=? AND v.liked=1 ORDER BY p.joined_at`, code, state.Matches[0].RatingKey)
 		if err != nil {
 			return state, err
 		}
@@ -360,7 +360,7 @@ WHERE p.room_code=? AND v.movie_id=? AND v.liked=1 ORDER BY p.joined_at`, code, 
 		state.Winner = winner
 	}
 	if state.Room.Round == 1 {
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_pool WHERE room_code=? AND used=0`, code).Scan(&state.MoreTitles.Available); err != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_item_pool WHERE room_code=? AND used=0`, code).Scan(&state.MoreTitles.Available); err != nil {
 			return state, err
 		}
 		state.MoreTitles.CanAdd = state.MoreTitles.Available > 0
@@ -368,14 +368,14 @@ WHERE p.room_code=? AND v.movie_id=? AND v.liked=1 ORDER BY p.joined_at`, code, 
 	return state, nil
 }
 
-// nextMovie returns the next unvoted media item for a participant.
-func (s *Store) nextMovie(ctx context.Context, code, participantID string) (*plex.Item, error) {
+// nextItem returns the next unvoted media item for a participant.
+func (s *Store) nextItem(ctx context.Context, code, participantID string) (*plex.Item, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed,m.added_at
 FROM participants p
-JOIN room_movies rm ON rm.room_code=p.room_code
-JOIN movies m ON m.rating_key=rm.movie_id
-LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
-WHERE p.id=? AND p.room_code=? AND v.movie_id IS NULL
+JOIN room_items rm ON rm.room_code=p.room_code
+JOIN media_items m ON m.rating_key=rm.item_id
+LEFT JOIN item_votes v ON v.room_code=rm.room_code AND v.item_id=rm.item_id AND v.participant_id=p.id
+WHERE p.id=? AND p.room_code=? AND v.item_id IS NULL
 AND (json_array_length(p.genres)=0 OR (
   p.genre_mode='all' AND NOT EXISTS (
     SELECT 1 FROM json_each(p.genres) pg
@@ -391,43 +391,43 @@ AND (json_array_length(p.genres)=0 OR (
   )
 ))
 ORDER BY rm.position LIMIT 1`, participantID, code)
-	movie, err := scanMovie(row)
+	item, err := scanItem(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return movie, err
+	return item, err
 }
 
-// matchMovies returns media liked by every active participant.
-func (s *Store) matchMovies(ctx context.Context, code string) ([]plex.Item, error) {
+// matchItems returns media liked by every active participant.
+func (s *Store) matchItems(ctx context.Context, code string) ([]plex.Item, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed,m.added_at
-FROM matches x JOIN movies m ON m.rating_key=x.movie_id WHERE x.room_code=? ORDER BY x.matched_at DESC,m.title`, code)
+FROM item_matches x JOIN media_items m ON m.rating_key=x.item_id WHERE x.room_code=? ORDER BY x.matched_at DESC,m.title`, code)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var movies []plex.Item
+	var items []plex.Item
 	for rows.Next() {
-		movie, err := scanMovie(rows)
+		item, err := scanItem(rows)
 		if err != nil {
 			return nil, err
 		}
-		movies = append(movies, *movie)
+		items = append(items, *item)
 	}
-	return movies, rows.Err()
+	return items, rows.Err()
 }
 
 type scanner interface{ Scan(...any) error }
 
-// scanMovie decodes a media item from a database row.
-func scanMovie(row scanner) (*plex.Item, error) {
-	var movie plex.Item
+// scanItem decodes a media item from a database row.
+func scanItem(row scanner) (*plex.Item, error) {
+	var item plex.Item
 	var genres string
-	if err := row.Scan(&movie.RatingKey, &movie.Library, &movie.Type, &movie.GUID, &movie.Title, &movie.Year, &movie.Summary, &movie.Duration, &movie.Rating, &genres, &movie.Viewed, &movie.AddedAt); err != nil {
+	if err := row.Scan(&item.RatingKey, &item.Library, &item.Type, &item.GUID, &item.Title, &item.Year, &item.Summary, &item.Duration, &item.Rating, &genres, &item.Viewed, &item.AddedAt); err != nil {
 		return nil, err
 	}
-	decodeGenres(genres, &movie.Genres)
-	return &movie, nil
+	decodeGenres(genres, &item.Genres)
+	return &item, nil
 }
 
 // decodeGenres decodes a stored JSON genre list and falls back to an empty list.
@@ -438,14 +438,14 @@ func decodeGenres(raw string, target *[]string) {
 }
 
 // Vote persists a participant vote and reports a unanimous match.
-func (s *Store) Vote(ctx context.Context, code, participantID, movieID string, liked bool) (bool, error) {
+func (s *Store) Vote(ctx context.Context, code, participantID, itemID string, liked bool) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO votes(room_code,participant_id,movie_id,liked,created_at)
-SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM participants p JOIN movies m ON m.rating_key=? WHERE p.id=? AND p.room_code=?
+	result, err := tx.ExecContext(ctx, `INSERT INTO item_votes(room_code,participant_id,item_id,liked,created_at)
+SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM participants p JOIN media_items m ON m.rating_key=? WHERE p.id=? AND p.room_code=?
 AND (json_array_length(p.genres)=0 OR (
   p.genre_mode='all' AND NOT EXISTS (
     SELECT 1 FROM json_each(p.genres) pg
@@ -460,9 +460,9 @@ AND (json_array_length(p.genres)=0 OR (
       ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
   )
 )))
-AND EXISTS(SELECT 1 FROM room_movies WHERE room_code=? AND movie_id=?)
-ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.liked,created_at=excluded.created_at`,
-		code, participantID, movieID, liked, time.Now().Unix(), movieID, participantID, code, code, movieID)
+AND EXISTS(SELECT 1 FROM room_items WHERE room_code=? AND item_id=?)
+ON CONFLICT(room_code,participant_id,item_id) DO UPDATE SET liked=excluded.liked,created_at=excluded.created_at`,
+		code, participantID, itemID, liked, time.Now().Unix(), itemID, participantID, code, code, itemID)
 	if err != nil {
 		return false, err
 	}
@@ -472,15 +472,15 @@ ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.like
 	var participants, likes int
 	if err := tx.QueryRowContext(ctx, `SELECT
 (SELECT COUNT(*) FROM participants WHERE room_code=?),
-(SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=? AND liked=1)`, code, code, movieID).Scan(&participants, &likes); err != nil {
+(SELECT COUNT(*) FROM item_votes WHERE room_code=? AND item_id=? AND liked=1)`, code, code, itemID).Scan(&participants, &likes); err != nil {
 		return false, err
 	}
 	matched := participants > 1 && likes == participants
 	if matched {
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO matches(room_code,movie_id,matched_at) VALUES(?,?,?)`, code, movieID, time.Now().Unix()); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO item_matches(room_code,item_id,matched_at) VALUES(?,?,?)`, code, itemID, time.Now().Unix()); err != nil {
 			return false, err
 		}
-	} else if _, err := tx.ExecContext(ctx, `DELETE FROM matches WHERE room_code=? AND movie_id=?`, code, movieID); err != nil {
+	} else if _, err := tx.ExecContext(ctx, `DELETE FROM item_matches WHERE room_code=? AND item_id=?`, code, itemID); err != nil {
 		return false, err
 	}
 	if err := cancelNextRoundIfUnavailableTx(ctx, tx, code); err != nil {
@@ -515,11 +515,11 @@ func (s *Store) LeaveRoom(ctx context.Context, code, tokenHash string) error {
 	}
 	// A departure can make previously cast likes unanimous. Completed matches
 	// are intentionally retained even if the room membership later changes.
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO matches(room_code,movie_id,matched_at)
-SELECT rm.room_code,rm.movie_id,? FROM room_movies rm
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO item_matches(room_code,item_id,matched_at)
+SELECT rm.room_code,rm.item_id,? FROM room_items rm
 WHERE rm.room_code=?
 AND (SELECT COUNT(*) FROM participants WHERE room_code=?)>1
-AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=rm.movie_id AND liked=1)
+AND (SELECT COUNT(*) FROM item_votes WHERE room_code=? AND item_id=rm.item_id AND liked=1)
   =(SELECT COUNT(*) FROM participants WHERE room_code=?)`, time.Now().Unix(), code, code, code, code)
 	if err != nil {
 		return err

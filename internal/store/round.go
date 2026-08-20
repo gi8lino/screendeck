@@ -33,36 +33,36 @@ func (s *Store) AddMoreTitles(ctx context.Context, code, participantID string, c
 		return 0, 0, errors.New("more titles can only be added during the first round")
 	}
 
-	rows, err := tx.QueryContext(ctx, `SELECT movie_id FROM room_pool WHERE room_code=? AND used=0 ORDER BY position LIMIT ?`, code, count)
+	rows, err := tx.QueryContext(ctx, `SELECT item_id FROM room_item_pool WHERE room_code=? AND used=0 ORDER BY position LIMIT ?`, code, count)
 	if err != nil {
 		return 0, 0, err
 	}
-	var movieIDs []string
+	var itemIDs []string
 	for rows.Next() {
-		var movieID string
-		if err := rows.Scan(&movieID); err != nil {
+		var itemID string
+		if err := rows.Scan(&itemID); err != nil {
 			rows.Close()
 			return 0, 0, err
 		}
-		movieIDs = append(movieIDs, movieID)
+		itemIDs = append(itemIDs, itemID)
 	}
 	if err := rows.Close(); err != nil {
 		return 0, 0, err
 	}
-	if len(movieIDs) == 0 {
+	if len(itemIDs) == 0 {
 		return 0, 0, errors.New("no more titles are available")
 	}
 
 	var nextPosition int
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(position)+1,0) FROM room_movies WHERE room_code=?`, code).Scan(&nextPosition); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(position)+1,0) FROM room_items WHERE room_code=?`, code).Scan(&nextPosition); err != nil {
 		return 0, 0, err
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO room_items(room_code,item_id,position) VALUES(?,?,?)`)
 	if err != nil {
 		return 0, 0, err
 	}
-	for offset, movieID := range movieIDs {
-		if _, err := stmt.ExecContext(ctx, code, movieID, nextPosition+offset); err != nil {
+	for offset, itemID := range itemIDs {
+		if _, err := stmt.ExecContext(ctx, code, itemID, nextPosition+offset); err != nil {
 			stmt.Close()
 			return 0, 0, err
 		}
@@ -70,8 +70,8 @@ func (s *Store) AddMoreTitles(ctx context.Context, code, participantID string, c
 	if err := stmt.Close(); err != nil {
 		return 0, 0, err
 	}
-	for _, movieID := range movieIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE room_pool SET used=1 WHERE room_code=? AND movie_id=?`, code, movieID); err != nil {
+	for _, itemID := range itemIDs {
+		if _, err := tx.ExecContext(ctx, `UPDATE room_item_pool SET used=1 WHERE room_code=? AND item_id=?`, code, itemID); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -84,13 +84,13 @@ func (s *Store) AddMoreTitles(ctx context.Context, code, participantID string, c
 	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
 		return 0, 0, err
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_pool WHERE room_code=? AND used=0`, code).Scan(&remaining); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_item_pool WHERE room_code=? AND used=0`, code).Scan(&remaining); err != nil {
 		return 0, 0, err
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, err
 	}
-	return len(movieIDs), remaining, nil
+	return len(itemIDs), remaining, nil
 }
 
 // SetRoundReady updates one participant's next-round readiness and advances once everyone agrees.
@@ -109,7 +109,7 @@ func (s *Store) SetRoundReady(ctx context.Context, code, participantID string, e
 	}
 	if expectedRound > 0 && round != expectedRound {
 		if round > expectedRound {
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_movies WHERE room_code=?`, code).Scan(&titles); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_items WHERE room_code=?`, code).Scan(&titles); err != nil {
 				return 0, 0, 0, 0, false, err
 			}
 			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=?`, code).Scan(&required); err != nil {
@@ -136,7 +136,7 @@ func (s *Store) SetRoundReady(ctx context.Context, code, participantID string, e
 
 	if ready {
 		var matches int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE room_code=?`, code).Scan(&matches); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM item_matches WHERE room_code=?`, code).Scan(&matches); err != nil {
 			return 0, 0, 0, 0, false, err
 		}
 		if matches < 2 {
@@ -185,46 +185,46 @@ WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&readyCount); err != nil
 
 // advanceRoundTx snapshots the current matches and makes them the next shuffled deck.
 func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (int, int, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT movie_id FROM matches WHERE room_code=?`, code)
+	rows, err := tx.QueryContext(ctx, `SELECT item_id FROM item_matches WHERE room_code=?`, code)
 	if err != nil {
 		return 0, 0, err
 	}
-	var movieIDs []string
+	var itemIDs []string
 	for rows.Next() {
-		var movieID string
-		if err := rows.Scan(&movieID); err != nil {
+		var itemID string
+		if err := rows.Scan(&itemID); err != nil {
 			rows.Close()
 			return 0, 0, err
 		}
-		movieIDs = append(movieIDs, movieID)
+		itemIDs = append(itemIDs, itemID)
 	}
 	if err := rows.Close(); err != nil {
 		return 0, 0, err
 	}
-	if len(movieIDs) < 2 {
+	if len(itemIDs) < 2 {
 		return 0, 0, errors.New("another round requires at least two matches")
 	}
 
-	mathrand.Shuffle(len(movieIDs), func(i, j int) { movieIDs[i], movieIDs[j] = movieIDs[j], movieIDs[i] })
-	if _, err := tx.ExecContext(ctx, `DELETE FROM votes WHERE room_code=?`, code); err != nil {
+	mathrand.Shuffle(len(itemIDs), func(i, j int) { itemIDs[i], itemIDs[j] = itemIDs[j], itemIDs[i] })
+	if _, err := tx.ExecContext(ctx, `DELETE FROM item_votes WHERE room_code=?`, code); err != nil {
 		return 0, 0, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM matches WHERE room_code=?`, code); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM item_matches WHERE room_code=?`, code); err != nil {
 		return 0, 0, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM room_movies WHERE room_code=?`, code); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM room_items WHERE room_code=?`, code); err != nil {
 		return 0, 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM round_ready WHERE room_code=?`, code); err != nil {
 		return 0, 0, err
 	}
 
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO room_items(room_code,item_id,position) VALUES(?,?,?)`)
 	if err != nil {
 		return 0, 0, err
 	}
-	for position, movieID := range movieIDs {
-		if _, err := stmt.ExecContext(ctx, code, movieID, position); err != nil {
+	for position, itemID := range itemIDs {
+		if _, err := stmt.ExecContext(ctx, code, itemID, position); err != nil {
 			stmt.Close()
 			return 0, 0, err
 		}
@@ -237,7 +237,7 @@ func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (in
 	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET round=?,phase=?,next_round_requester_id='' WHERE code=? AND round=?`, nextRound, RoomPhaseSwiping, code, round); err != nil {
 		return 0, 0, err
 	}
-	return nextRound, len(movieIDs), nil
+	return nextRound, len(itemIDs), nil
 }
 
 // cancelNextRoundRequestTx clears every participant's pending next-round agreement.
@@ -252,7 +252,7 @@ func cancelNextRoundRequestTx(ctx context.Context, tx *sql.Tx, code string) erro
 // cancelNextRoundIfUnavailableTx clears a request once fewer than two matches remain.
 func cancelNextRoundIfUnavailableTx(ctx context.Context, tx *sql.Tx, code string) error {
 	var matches int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE room_code=?`, code).Scan(&matches); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM item_matches WHERE room_code=?`, code).Scan(&matches); err != nil {
 		return err
 	}
 	if matches >= 2 {
@@ -275,7 +275,7 @@ WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&ready); err != nil {
 	if err := roundRemainingQuery(ctx, tx, code, &remaining); err != nil {
 		return err
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE room_code=?`, code).Scan(&matches); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM item_matches WHERE room_code=?`, code).Scan(&matches); err != nil {
 		return err
 	}
 
@@ -307,10 +307,10 @@ type queryRower interface {
 func roundRemainingQuery(ctx context.Context, db queryRower, code string, remaining *int) error {
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*)
 FROM participants p
-JOIN room_movies rm ON rm.room_code=p.room_code
-JOIN movies m ON m.rating_key=rm.movie_id
-LEFT JOIN votes v ON v.room_code=rm.room_code AND v.movie_id=rm.movie_id AND v.participant_id=p.id
-WHERE p.room_code=? AND v.movie_id IS NULL
+JOIN room_items rm ON rm.room_code=p.room_code
+JOIN media_items m ON m.rating_key=rm.item_id
+LEFT JOIN item_votes v ON v.room_code=rm.room_code AND v.item_id=rm.item_id AND v.participant_id=p.id
+WHERE p.room_code=? AND v.item_id IS NULL
 AND (json_array_length(p.genres)=0 OR (
   p.genre_mode='all' AND NOT EXISTS (
     SELECT 1 FROM json_each(p.genres) pg

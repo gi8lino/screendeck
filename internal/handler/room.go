@@ -86,8 +86,9 @@ func (a *API) RoomState() http.HandlerFunc {
 // Vote returns the media voting handler.
 func (a *API) Vote() http.HandlerFunc {
 	type request struct {
-		MovieID string `json:"movieId"`
-		Liked   bool   `json:"liked"`
+		ItemID   string `json:"itemId"`
+		LegacyID string `json:"movieId"`
+		Liked    bool   `json:"liked"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -95,11 +96,14 @@ func (a *API) Vote() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		if input.MovieID == "" {
-			a.fail(r, w, errors.New("movieId is required"))
+		if input.ItemID == "" {
+			input.ItemID = input.LegacyID
+		}
+		if input.ItemID == "" {
+			a.fail(r, w, errors.New("itemId is required"))
 			return
 		}
-		matched, err := a.Rooms.Vote(r.Context(), r.PathValue("code"), participantToken(r), input.MovieID, input.Liked)
+		matched, err := a.Rooms.Vote(r.Context(), r.PathValue("code"), participantToken(r), input.ItemID, input.Liked)
 		if err != nil {
 			a.fail(r, w, err)
 			return

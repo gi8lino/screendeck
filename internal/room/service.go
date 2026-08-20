@@ -414,13 +414,13 @@ func (s *Service) State(ctx context.Context, code, token string) (store.RoomStat
 }
 
 // Vote records a participant vote and reports whether it produced a match.
-func (s *Service) Vote(ctx context.Context, code, token, movieID string, liked bool) (bool, error) {
+func (s *Service) Vote(ctx context.Context, code, token, itemID string, liked bool) (bool, error) {
 	code = strings.ToUpper(code)
 	participant, err := s.store.ParticipantByToken(ctx, code, hashToken(token))
 	if err != nil {
 		return false, err
 	}
-	matched, err := s.store.Vote(ctx, code, participant.ID, movieID, liked)
+	matched, err := s.store.Vote(ctx, code, participant.ID, itemID, liked)
 	if err == nil {
 		s.Notify(code)
 	}
@@ -468,11 +468,11 @@ func (s *Service) Leave(ctx context.Context, code, token string) error {
 }
 
 // Poster retrieves the poster associated with a stored media item.
-func (s *Service) Poster(ctx context.Context, movieID string) (*plexResponse, error) {
+func (s *Service) Poster(ctx context.Context, itemID string) (*plexResponse, error) {
 	if s.catalog == nil {
 		return nil, errors.New("Plex is not configured")
 	}
-	path, err := s.store.MoviePoster(ctx, movieID)
+	path, err := s.store.ItemPoster(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}

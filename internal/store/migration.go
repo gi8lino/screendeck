@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// migrate creates the canonical schema and copies data from pre-media-item tables when present.
 func (s *Store) migrate(ctx context.Context) error {
 	const schema = `
 CREATE TABLE IF NOT EXISTS libraries (
@@ -12,7 +13,7 @@ CREATE TABLE IF NOT EXISTS libraries (
   title TEXT NOT NULL,
   synced_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS movies (
+CREATE TABLE IF NOT EXISTS media_items (
   rating_key TEXT PRIMARY KEY,
   library_key TEXT NOT NULL,
   media_type TEXT NOT NULL DEFAULT 'movie',
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS movies (
   viewed INTEGER NOT NULL DEFAULT 0,
   added_at INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS movies_library_idx ON movies(library_key);
+CREATE INDEX IF NOT EXISTS media_items_library_idx ON media_items(library_key);
 CREATE TABLE IF NOT EXISTS rooms (
   code TEXT PRIMARY KEY,
   round INTEGER NOT NULL DEFAULT 1,
@@ -37,21 +38,21 @@ CREATE TABLE IF NOT EXISTS rooms (
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS room_movies (
+CREATE TABLE IF NOT EXISTS room_items (
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
-  movie_id TEXT NOT NULL REFERENCES movies(rating_key),
+  item_id TEXT NOT NULL REFERENCES media_items(rating_key),
   position INTEGER NOT NULL,
-  PRIMARY KEY(room_code, movie_id)
+  PRIMARY KEY(room_code, item_id)
 );
-CREATE INDEX IF NOT EXISTS room_movies_order_idx ON room_movies(room_code, position);
-CREATE TABLE IF NOT EXISTS room_pool (
+CREATE INDEX IF NOT EXISTS room_items_order_idx ON room_items(room_code, position);
+CREATE TABLE IF NOT EXISTS room_item_pool (
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
-  movie_id TEXT NOT NULL REFERENCES movies(rating_key),
+  item_id TEXT NOT NULL REFERENCES media_items(rating_key),
   position INTEGER NOT NULL,
   used INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY(room_code, movie_id)
+  PRIMARY KEY(room_code, item_id)
 );
-CREATE INDEX IF NOT EXISTS room_pool_order_idx ON room_pool(room_code, used, position);
+CREATE INDEX IF NOT EXISTS room_item_pool_order_idx ON room_item_pool(room_code, used, position);
 CREATE TABLE IF NOT EXISTS participants (
   id TEXT PRIMARY KEY,
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
@@ -69,19 +70,19 @@ CREATE TABLE IF NOT EXISTS round_ready (
   created_at INTEGER NOT NULL,
   PRIMARY KEY(room_code, round, participant_id)
 );
-CREATE TABLE IF NOT EXISTS votes (
+CREATE TABLE IF NOT EXISTS item_votes (
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
   participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
-  movie_id TEXT NOT NULL REFERENCES movies(rating_key),
+  item_id TEXT NOT NULL REFERENCES media_items(rating_key),
   liked INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  PRIMARY KEY(room_code, participant_id, movie_id)
+  PRIMARY KEY(room_code, participant_id, item_id)
 );
-CREATE TABLE IF NOT EXISTS matches (
+CREATE TABLE IF NOT EXISTS item_matches (
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
-  movie_id TEXT NOT NULL REFERENCES movies(rating_key),
+  item_id TEXT NOT NULL REFERENCES media_items(rating_key),
   matched_at INTEGER NOT NULL,
-  PRIMARY KEY(room_code, movie_id)
+  PRIMARY KEY(room_code, item_id)
 );
 CREATE TABLE IF NOT EXISTS plex_auth (
   id INTEGER PRIMARY KEY CHECK(id=1),
@@ -99,12 +100,6 @@ CREATE TABLE IF NOT EXISTS plex_auth (
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
-	if err := s.ensureColumn(ctx, "movies", "media_type", "TEXT NOT NULL DEFAULT 'movie'"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn(ctx, "movies", "added_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
 	if err := s.ensureColumn(ctx, "rooms", "round", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
@@ -117,16 +112,101 @@ CREATE TABLE IF NOT EXISTS plex_auth (
 	if err := s.ensureColumn(ctx, "rooms", "owner_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE rooms SET owner_id=COALESCE((SELECT id FROM participants WHERE room_code=rooms.code ORDER BY joined_at,id LIMIT 1),'') WHERE owner_id=''`); err != nil {
-		return fmt.Errorf("backfill room owners: %w", err)
-	}
 	if err := s.ensureColumn(ctx, "participants", "genres", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
 		return err
 	}
 	if err := s.ensureColumn(ctx, "participants", "genre_mode", "TEXT NOT NULL DEFAULT 'any'"); err != nil {
 		return err
 	}
+	if err := s.migrateLegacyMediaSchema(ctx); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE rooms SET owner_id=COALESCE((SELECT id FROM participants WHERE room_code=rooms.code ORDER BY joined_at,id LIMIT 1),'') WHERE owner_id=''`); err != nil {
+		return fmt.Errorf("backfill room owners: %w", err)
+	}
 	return nil
+}
+
+// migrateLegacyMediaSchema copies data from the original movie-named tables without keeping them active.
+func (s *Store) migrateLegacyMediaSchema(ctx context.Context) error {
+	exists, err := s.tableExists(ctx, "movies")
+	if err != nil || !exists {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "movies", "media_type", "TEXT NOT NULL DEFAULT 'movie'"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "movies", "added_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO media_items
+(rating_key,library_key,media_type,guid,title,year,summary,duration,rating,thumb,genres,viewed,added_at)
+SELECT rating_key,library_key,media_type,guid,title,year,summary,duration,rating,thumb,genres,viewed,added_at FROM movies`); err != nil {
+		return fmt.Errorf("migrate legacy media items: %w", err)
+	}
+	if err := s.copyLegacyTable(ctx, "room_movies", `INSERT OR IGNORE INTO room_items(room_code,item_id,position) SELECT room_code,movie_id,position FROM room_movies`); err != nil {
+		return err
+	}
+	if err := s.copyLegacyTable(ctx, "room_pool", `INSERT OR IGNORE INTO room_item_pool(room_code,item_id,position,used) SELECT room_code,movie_id,position,used FROM room_pool`); err != nil {
+		return err
+	}
+	if err := s.copyLegacyTable(ctx, "votes", `INSERT OR IGNORE INTO item_votes(room_code,participant_id,item_id,liked,created_at) SELECT room_code,participant_id,movie_id,liked,created_at FROM votes`); err != nil {
+		return err
+	}
+	if err := s.copyLegacyTable(ctx, "matches", `INSERT OR IGNORE INTO item_matches(room_code,item_id,matched_at) SELECT room_code,movie_id,matched_at FROM matches`); err != nil {
+		return err
+	}
+	// Remove the legacy tables after all copies succeed. Leaving them behind
+	// would allow stale votes or matches to be copied back on a later start.
+	if err := s.dropLegacyTable(ctx, "matches"); err != nil {
+		return err
+	}
+	if err := s.dropLegacyTable(ctx, "votes"); err != nil {
+		return err
+	}
+	if err := s.dropLegacyTable(ctx, "room_pool"); err != nil {
+		return err
+	}
+	if err := s.dropLegacyTable(ctx, "room_movies"); err != nil {
+		return err
+	}
+	if err := s.dropLegacyTable(ctx, "movies"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// copyLegacyTable runs a copy statement only when its source table exists.
+func (s *Store) copyLegacyTable(ctx context.Context, table, statement string) error {
+	exists, err := s.tableExists(ctx, table)
+	if err != nil || !exists {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, statement); err != nil {
+		return fmt.Errorf("migrate legacy %s: %w", table, err)
+	}
+	return nil
+}
+
+// dropLegacyTable removes a migrated legacy table when it exists.
+func (s *Store) dropLegacyTable(ctx context.Context, table string) error {
+	exists, err := s.tableExists(ctx, table)
+	if err != nil || !exists {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `DROP TABLE `+table); err != nil {
+		return fmt.Errorf("drop legacy %s: %w", table, err)
+	}
+	return nil
+}
+
+// tableExists reports whether a SQLite table is present.
+func (s *Store) tableExists(ctx context.Context, table string) (bool, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // ensureColumn adds a database column when it is absent.

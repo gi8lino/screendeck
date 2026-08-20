@@ -98,9 +98,9 @@ function drawRoom(state) {
   if (state.room.phase === "finished" && state.winner) {
     left.append(winnerCard(state));
   } else if (state.candidate) {
-    const showDetails = () => showMovieDetails(state.candidate);
+    const showDetails = () => showItemDetails(state.candidate);
     const deck = el("div", "deck");
-    const card = movieCard(state.candidate, showDetails);
+    const card = itemCard(state.candidate, showDetails);
     deck.append(card);
     left.append(deck);
 
@@ -183,9 +183,9 @@ function matchSummary(state) {
   pile.onclick = () => showMatches(matches, state.room.round);
 
   const stack = el("span", "match-pile-stack");
-  matches.slice(0, 3).forEach((movie) => {
+  matches.slice(0, 3).forEach((item) => {
     const image = el("img", "match-pile-poster");
-    image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
+    image.src = `/api/posters/${encodeURIComponent(item.id)}`;
     image.alt = "";
     stack.append(image);
   });
@@ -222,17 +222,17 @@ function showMatches(matches, round) {
   );
 
   const list = el("div", "matches-dialog-grid");
-  matches.forEach((movie) => {
+  matches.forEach((item) => {
     const button = el("button", "match-grid-item");
     button.type = "button";
-    button.title = `View details for ${movie.title}`;
+    button.title = `View details for ${item.title}`;
     const image = el("img");
-    image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
-    image.alt = `Poster for ${movie.title}`;
-    button.append(image, el("span", "", movie.title));
+    image.src = `/api/posters/${encodeURIComponent(item.id)}`;
+    image.alt = `Poster for ${item.title}`;
+    button.append(image, el("span", "", item.title));
     button.onclick = () => {
       dialog.close();
-      showMovieDetails(movie);
+      showItemDetails(item);
     };
     list.append(button);
   });
@@ -409,23 +409,23 @@ async function toggleNextRoundReady(state, button) {
 // winnerCard renders the final shared choice as a dedicated result screen.
 function winnerCard(state) {
   const winner = state.winner;
-  const movie = winner.item;
+  const item = winner.item;
   const card = el("section", "winner-card");
   const poster = el("img", "winner-poster");
-  poster.src = `/api/posters/${encodeURIComponent(movie.id)}`;
-  poster.alt = `Poster for ${movie.title}`;
+  poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  poster.alt = `Poster for ${item.title}`;
 
   const content = el("div", "winner-content");
   content.append(
     el("div", "eyebrow", "Tonight, decided."),
-    el("h2", "", movie.title),
-    el("p", "winner-meta", movieMetadata(movie)),
+    el("h2", "", item.title),
+    el("p", "winner-meta", itemMetadata(item)),
   );
-  if (movie.genres?.length) {
-    content.append(el("p", "dialog-genres", movie.genres.join(" · ")));
+  if (item.genres?.length) {
+    content.append(el("p", "dialog-genres", item.genres.join(" · ")));
   }
-  if (movie.summary) {
-    content.append(el("p", "winner-summary", movie.summary));
+  if (item.summary) {
+    content.append(el("p", "winner-summary", item.summary));
   }
   const supporters = (winner.likedBy || []).map((participant) => participant.name);
   content.append(
@@ -441,7 +441,7 @@ function winnerCard(state) {
   const actions = el("div", "winner-actions");
   const details = el("button", "btn ghost", "View details");
   details.type = "button";
-  details.onclick = () => showMovieDetails(movie);
+  details.onclick = () => showItemDetails(item);
   const restart = el("button", "btn primary", "Start new room");
   restart.type = "button";
   restart.onclick = startNewRoom;
@@ -547,12 +547,12 @@ function roomURL(roomCode) {
   return url.toString();
 }
 
-// movieCard builds a swipeable card for one movie or TV show.
-function movieCard(movie, showDetails) {
+// itemCard builds a swipeable card for one media item.
+function itemCard(item, showDetails) {
   const card = el("article", "card");
   card.tabIndex = 0;
   card.setAttribute("role", "button");
-  card.setAttribute("aria-label", `View details for ${movie.title}`);
+  card.setAttribute("aria-label", `View details for ${item.title}`);
   card.title = "View details";
   card.onclick = showDetails;
   card.onkeydown = (event) => {
@@ -561,20 +561,20 @@ function movieCard(movie, showDetails) {
     showDetails();
   };
   const image = el("img", "poster");
-  image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
-  image.alt = `Poster for ${movie.title}`;
+  image.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  image.alt = `Poster for ${item.title}`;
   const nope = el("div", "stamp nope", "NOPE");
   const like = el("div", "stamp like", "LIKE");
   const body = el("div", "card-body");
-  body.append(el("h2", "movie-title", movie.title));
+  body.append(el("h2", "item-title", item.title));
   const meta = el("div", "meta");
   const bits = [
-    movie.type === "show" ? "TV series" : "Movie",
-    movie.year || null,
-    movie.type === "movie" && movie.duration
-      ? `${Math.round(movie.duration / 60000)} min`
+    item.type === "show" ? "TV series" : "Movie",
+    item.year || null,
+    item.type === "movie" && item.duration
+      ? `${Math.round(item.duration / 60000)} min`
       : null,
-    movie.rating ? `★ ${movie.rating.toFixed(1)}` : null,
+    item.rating ? `★ ${item.rating.toFixed(1)}` : null,
   ].filter(Boolean);
   meta.textContent = bits.join("  ·  ");
   body.append(
@@ -582,33 +582,33 @@ function movieCard(movie, showDetails) {
     el(
       "p",
       "summary",
-      movie.summary || movie.genres?.join(" · ") || "No synopsis available.",
+      item.summary || item.genres?.join(" · ") || "No synopsis available.",
     ),
   );
   card.append(image, nope, like, body);
   return card;
 }
 
-// showMovieDetails opens the complete metadata and synopsis for a title.
-function showMovieDetails(movie) {
-  document.querySelector(".movie-dialog")?.remove();
-  const dialog = el("dialog", "movie-dialog");
+// showItemDetails opens the complete metadata and synopsis for a title.
+function showItemDetails(item) {
+  document.querySelector(".item-dialog")?.remove();
+  const dialog = el("dialog", "item-dialog");
   const close = el("button", "dialog-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "Close details");
   close.onclick = () => dialog.close();
   const image = el("img", "dialog-poster");
-  image.src = `/api/posters/${encodeURIComponent(movie.id)}`;
-  image.alt = `Poster for ${movie.title}`;
+  image.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  image.alt = `Poster for ${item.title}`;
   const content = el("div", "dialog-content");
   content.append(
-    el("div", "eyebrow", movie.type === "show" ? "TV series" : "Movie"),
-    el("h2", "", movie.title),
-    el("div", "meta", movieMetadata(movie).join("  ·  ")),
-    el("p", "dialog-summary", movie.summary || "No synopsis available."),
+    el("div", "eyebrow", item.type === "show" ? "TV series" : "Movie"),
+    el("h2", "", item.title),
+    el("div", "meta", itemMetadata(item).join("  ·  ")),
+    el("p", "dialog-summary", item.summary || "No synopsis available."),
   );
-  if (movie.genres?.length) {
-    content.append(el("p", "dialog-genres", movie.genres.join(" · ")));
+  if (item.genres?.length) {
+    content.append(el("p", "dialog-genres", item.genres.join(" · ")));
   }
   dialog.append(close, image, content);
   dialog.addEventListener("click", (event) => {
@@ -629,7 +629,7 @@ function showMovieDetails(movie) {
 // trackMatches notices matches created by other participants without interrupting swiping.
 function trackMatches(state) {
   const matches = state.matches || [];
-  const matchIDs = new Set(matches.map((movie) => movie.id));
+  const matchIDs = new Set(matches.map((item) => item.id));
 
   if (trackedRoomCode !== state.room.code || trackedRound !== state.room.round) {
     trackedRoomCode = state.room.code;
@@ -639,7 +639,7 @@ function trackMatches(state) {
     return;
   }
 
-  const newMatches = matches.filter((movie) => !knownMatchIDs.has(movie.id));
+  const newMatches = matches.filter((item) => !knownMatchIDs.has(item.id));
   knownMatchIDs = matchIDs;
   if (newMatches.length === 1) {
     showToast(`New match: ${newMatches[0].title}`);
@@ -649,17 +649,17 @@ function trackMatches(state) {
 }
 
 // queueMatch adds a locally completed match to the full-screen reveal queue.
-function queueMatch(movie, markKnown) {
-  if (markKnown) knownMatchIDs.add(movie.id);
+function queueMatch(item, markKnown) {
+  if (markKnown) knownMatchIDs.add(item.id);
   if (
-    matchQueue.some((queued) => queued.id === movie.id) ||
+    matchQueue.some((queued) => queued.id === item.id) ||
     [...document.querySelectorAll(".match-dialog")].some(
-      (dialog) => dialog.dataset.movieId === movie.id,
+      (dialog) => dialog.dataset.itemId === item.id,
     )
   ) {
     return;
   }
-  matchQueue.push(movie);
+  matchQueue.push(item);
 }
 
 // resetMatchTracking clears match notification state when leaving a room.
@@ -681,15 +681,15 @@ function showNextMatch() {
   if (
     matchDialogOpen ||
     matchQueue.length === 0 ||
-    document.querySelector(".movie-dialog[open], .matches-dialog[open]")
+    document.querySelector(".item-dialog[open], .matches-dialog[open]")
   ) {
     return;
   }
 
   matchDialogOpen = true;
-  const movie = matchQueue.shift();
+  const item = matchQueue.shift();
   const dialog = el("dialog", "match-dialog");
-  dialog.dataset.movieId = movie.id;
+  dialog.dataset.itemId = item.id;
   const close = el("button", "dialog-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "Close match");
@@ -703,22 +703,22 @@ function showNextMatch() {
   });
 
   const poster = el("img", "match-dialog-poster");
-  poster.src = `/api/posters/${encodeURIComponent(movie.id)}`;
-  poster.alt = `Poster for ${movie.title}`;
+  poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  poster.alt = `Poster for ${item.title}`;
 
   const content = el("div", "match-dialog-content");
   content.append(
     el("p", "eyebrow match-eyebrow", "Everyone said yes"),
     el("h2", "", "It’s a match!"),
-    el("p", "match-dialog-title", movie.title),
+    el("p", "match-dialog-title", item.title),
   );
-  const metadata = movieMetadata(movie);
+  const metadata = itemMetadata(item);
   if (metadata.length) content.append(el("p", "muted", metadata.join("  ·  ")));
-  if (movie.genres?.length) {
-    content.append(el("p", "match-dialog-genres", movie.genres.join(" · ")));
+  if (item.genres?.length) {
+    content.append(el("p", "match-dialog-genres", item.genres.join(" · ")));
   }
-  if (movie.summary) {
-    content.append(el("p", "match-dialog-summary", movie.summary));
+  if (item.summary) {
+    content.append(el("p", "match-dialog-summary", item.summary));
   }
   const continueButton = el(
     "button",
@@ -748,19 +748,19 @@ function showNextMatch() {
   dialog.showModal();
 }
 
-// movieMetadata returns display-ready metadata for a movie or TV show.
-function movieMetadata(movie) {
+// itemMetadata returns display-ready metadata for a media item.
+function itemMetadata(item) {
   return [
-    movie.year || null,
-    movie.type === "movie" && movie.duration
-      ? `${Math.round(movie.duration / 60000)} min`
+    item.year || null,
+    item.type === "movie" && item.duration
+      ? `${Math.round(item.duration / 60000)} min`
       : null,
-    movie.rating ? `★ ${movie.rating.toFixed(1)}` : null,
+    item.rating ? `★ ${item.rating.toFixed(1)}` : null,
   ].filter(Boolean);
 }
 
 // enableSwipe adds pointer-driven voting gestures to a card.
-function enableSwipe(card, movie) {
+function enableSwipe(card, item) {
   let start = 0;
   let delta = 0;
   let active = false;
@@ -787,7 +787,7 @@ function enableSwipe(card, movie) {
     if (!active) return;
     active = false;
     if (Math.abs(delta) > 90) {
-      vote(movie, delta > 0, card);
+      vote(item, delta > 0, card);
       return;
     }
     card.style.transition = "";
@@ -808,7 +808,7 @@ function enableSwipe(card, movie) {
 }
 
 // vote records a choice and advances to the next candidate.
-async function vote(movie, liked, card) {
+async function vote(item, liked, card) {
   if (voting) return;
   const session = getSession();
   voting = true;
@@ -820,11 +820,11 @@ async function vote(movie, liked, card) {
       `/api/rooms/${encodeURIComponent(session.code)}/votes`,
       {
         method: "POST",
-        body: JSON.stringify({ movieId: movie.id, liked }),
+        body: JSON.stringify({ itemId: item.id, liked }),
       },
     );
     if (result.matched) {
-      queueMatch(movie, true);
+      queueMatch(item, true);
       showNextMatch();
     }
     await renderRoom();

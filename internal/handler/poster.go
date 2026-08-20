@@ -9,7 +9,7 @@ import (
 // Poster returns the proxied media poster handler.
 func (a *API) Poster() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		response, err := a.Rooms.Poster(r.Context(), r.PathValue("movieID"))
+		response, err := a.Rooms.Poster(r.Context(), r.PathValue("itemID"))
 		if err != nil {
 			a.fail(r, w, err)
 			return

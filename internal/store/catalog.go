@@ -22,7 +22,7 @@ func (s *Store) SaveLibrary(ctx context.Context, library plex.Library, items []p
 ON CONFLICT(key) DO UPDATE SET title=excluded.title,synced_at=excluded.synced_at`, library.Key, library.Title, time.Now().Unix()); err != nil {
 		return fmt.Errorf("save library: %w", err)
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO movies
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO media_items
 (rating_key,library_key,media_type,guid,title,year,summary,duration,rating,thumb,genres,viewed,added_at)
 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(rating_key) DO UPDATE SET
 library_key=excluded.library_key,media_type=excluded.media_type,guid=excluded.guid,title=excluded.title,year=excluded.year,
@@ -42,9 +42,9 @@ genres=excluded.genres,viewed=excluded.viewed,added_at=excluded.added_at`)
 	return tx.Commit()
 }
 
-func (s *Store) MoviePoster(ctx context.Context, ratingKey string) (string, error) {
+func (s *Store) ItemPoster(ctx context.Context, ratingKey string) (string, error) {
 	var thumb string
-	if err := s.db.QueryRowContext(ctx, `SELECT thumb FROM movies WHERE rating_key=?`, ratingKey).Scan(&thumb); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT thumb FROM media_items WHERE rating_key=?`, ratingKey).Scan(&thumb); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrNotFound
 		}

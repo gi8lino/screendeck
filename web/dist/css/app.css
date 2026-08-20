@@ -484,7 +484,7 @@ select option {
   background: linear-gradient(transparent, #111014f2 42%);
   pointer-events: none;
 }
-.movie-title {
+.item-title {
   font-family: Georgia, serif;
   font-size: 32px;
   line-height: 1;
@@ -507,7 +507,7 @@ select option {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.movie-dialog {
+.item-dialog {
   width: min(760px, calc(100vw - 32px));
   max-height: min(760px, calc(100vh - 32px));
   padding: 0;
@@ -518,7 +518,7 @@ select option {
   background: #1b191f;
   box-shadow: 0 36px 100px #000d;
 }
-.movie-dialog::backdrop {
+.item-dialog::backdrop {
   background: #08070acc;
   backdrop-filter: blur(8px);
 }
@@ -971,7 +971,7 @@ select option {
   .summary {
     -webkit-line-clamp: 2;
   }
-  .movie-dialog {
+  .item-dialog {
     overflow-y: auto;
   }
   .dialog-poster {
