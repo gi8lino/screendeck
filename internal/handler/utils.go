@@ -36,6 +36,10 @@ func decode(r *http.Request, target any) error {
 // statusForError maps application errors to their public HTTP status.
 func statusForError(err error) int {
 	switch {
+	case errors.Is(err, errBrowserIdentityUnavailable):
+		return http.StatusInternalServerError
+	case errors.Is(err, store.ErrMembershipConflict):
+		return http.StatusConflict
 	case errors.Is(err, store.ErrForbidden):
 		return http.StatusForbidden
 	case errors.Is(err, store.ErrNotFound):

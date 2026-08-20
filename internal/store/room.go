@@ -122,7 +122,7 @@ type NextRoundState struct {
 }
 
 // CreateRoom persists a room, its owner, the active deck, and the original eligible item pool.
-func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, itemIDs, poolIDs []string) error {
+func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, itemIDs, poolIDs []string, memberships ...RoomMembershipCredential) error {
 	if room.Round <= 0 {
 		room.Round = 1
 	}
@@ -202,6 +202,10 @@ INSERT INTO participants (
 		return err
 	}
 
+	if err := s.saveOptionalRoomMembershipTx(ctx, tx, room.Code, participant.ID, memberships); err != nil {
+		return err
+	}
+
 	const insertRoomItemQuery = `
 INSERT INTO room_items (
   room_code,
@@ -255,7 +259,7 @@ INSERT INTO room_item_pool (
 }
 
 // JoinRoom persists a participant in an active room.
-func (s *Store) JoinRoom(ctx context.Context, code string, participant Participant, tokenHash string) error {
+func (s *Store) JoinRoom(ctx context.Context, code string, participant Participant, tokenHash string, memberships ...RoomMembershipCredential) error {
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
@@ -317,6 +321,9 @@ WHERE code = ?
 	}
 	if count == 0 {
 		return ErrNotFound
+	}
+	if err := s.saveOptionalRoomMembershipTx(ctx, tx, code, participant.ID, memberships); err != nil {
+		return err
 	}
 
 	// Membership changed, so any pending next-round agreement must be renewed

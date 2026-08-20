@@ -42,6 +42,60 @@ export function backButton(onBack) {
   return button;
 }
 
+// confirmAction displays a ScreenDeck-styled confirmation dialog and resolves with the user's choice.
+export function confirmAction({
+  title,
+  message,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  destructive = false,
+}) {
+  return new Promise((resolve) => {
+    const dialog = el("dialog", "confirm-dialog");
+    dialog.setAttribute("aria-labelledby", "confirm-dialog-title");
+    dialog.setAttribute("aria-describedby", "confirm-dialog-message");
+
+    const form = el("form", "confirm-dialog-panel");
+    form.method = "dialog";
+    const titleNode = el("h2", "", title);
+    titleNode.id = "confirm-dialog-title";
+    const messageNode = el("p", "confirm-dialog-message", message);
+    messageNode.id = "confirm-dialog-message";
+
+    const actions = el("div", "confirm-dialog-actions");
+    const cancel = el("button", "btn ghost", cancelLabel);
+    cancel.type = "submit";
+    cancel.value = "cancel";
+    const confirm = el(
+      "button",
+      destructive ? "btn danger" : "btn primary",
+      confirmLabel,
+    );
+    confirm.type = "submit";
+    confirm.value = "confirm";
+    actions.append(cancel, confirm);
+    form.append(titleNode, messageNode, actions);
+    dialog.append(form);
+
+    dialog.addEventListener(
+      "close",
+      () => {
+        const accepted = dialog.returnValue === "confirm";
+        dialog.remove();
+        resolve(accepted);
+      },
+      { once: true },
+    );
+    dialog.addEventListener("cancel", () => {
+      dialog.returnValue = "cancel";
+    });
+
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus();
+  });
+}
+
 // showToast displays a temporary status message.
 export function showToast(message) {
   toast.textContent = message;

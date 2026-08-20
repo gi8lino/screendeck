@@ -31,6 +31,7 @@ ScreenDeck turns a Plex library into a shared swipe deck. Create a room, invite 
 - Add more unseen titles without starting over.
 - Unanimous matches and unanimous next-round requests.
 - Live room updates, match reveals, a compact match pile, and a dedicated winner screen.
+- Persistent **Your rooms** history per browser, so you can switch between active rooms without rejoining.
 - No guest accounts: friends only need a room code and a display name.
 
 <p align="center">

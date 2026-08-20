@@ -20,6 +20,9 @@ var ErrNotFound = errors.New("not found")
 // ErrForbidden indicates that the authenticated caller is not allowed to perform an operation.
 var ErrForbidden = errors.New("forbidden")
 
+// ErrMembershipConflict indicates that a browser identity is already linked to another participant in a room.
+var ErrMembershipConflict = errors.New("browser identity already linked to another room participant")
+
 // Store owns the SQLite database and the cipher used for stored secrets.
 type Store struct {
 	// db is the underlying SQLite connection pool.

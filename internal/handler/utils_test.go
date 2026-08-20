@@ -16,6 +16,14 @@ func TestStatusForError(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, statusForError(errors.New("invalid input")))
 	})
 
+	t.Run("identity unavailable", func(t *testing.T) {
+		assert.Equal(t, http.StatusInternalServerError, statusForError(errBrowserIdentityUnavailable))
+	})
+
+	t.Run("conflict", func(t *testing.T) {
+		assert.Equal(t, http.StatusConflict, statusForError(store.ErrMembershipConflict))
+	})
+
 	t.Run("forbidden", func(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, statusForError(store.ErrForbidden))
 	})

@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { getConfig, getSession, saveSession } from "./state.js";
-import { el, root, showToast, topbar } from "./ui.js";
+import { confirmAction, el, root, showToast, topbar } from "./ui.js";
 
 let eventSource;
 let voting = false;
@@ -40,8 +40,30 @@ function drawRoom(state) {
   const session = getSession();
   root.replaceChildren();
 
+  const rooms = el("button", "btn ghost", "My rooms");
+  rooms.onclick = () => {
+    stopRoomEvents();
+    resetMatchTracking();
+    saveSession(null);
+    navigation.renderHome();
+  };
+
   const leave = el("button", "btn ghost", "Leave");
   leave.onclick = async () => {
+    if (leave.disabled) return;
+    leave.disabled = true;
+    const confirmed = await confirmAction({
+      title: "Leave room?",
+      message:
+        "Leaving removes your membership from this room. Your votes will no longer count toward matches.",
+      confirmLabel: "Leave room",
+      destructive: true,
+    });
+    if (!confirmed) {
+      leave.disabled = false;
+      return;
+    }
+
     try {
       await api(`/api/rooms/${encodeURIComponent(session.code)}`, {
         method: "DELETE",
@@ -54,7 +76,10 @@ function drawRoom(state) {
     saveSession(null);
     navigation.renderHome();
   };
-  root.append(topbar(leave));
+
+  const roomActions = el("div", "topbar-actions");
+  roomActions.append(rooms, leave);
+  root.append(topbar(roomActions));
 
   const head = el("section", "room-head");
   const intro = el("div");
@@ -486,18 +511,8 @@ function winnerCard(state) {
   return card;
 }
 
-// startNewRoom leaves the current room and opens a fresh host flow.
+// startNewRoom keeps the current membership and opens a fresh host flow.
 async function startNewRoom() {
-  const session = getSession();
-  if (session) {
-    try {
-      await api(`/api/rooms/${encodeURIComponent(session.code)}`, {
-        method: "DELETE",
-      });
-    } catch {
-      /* the room may already have expired */
-    }
-  }
   stopRoomEvents();
   resetMatchTracking();
   saveSession(null);
@@ -576,9 +591,19 @@ function finishedCard(state) {
 // removeParticipant lets the room host kick another participant out of the room.
 async function removeParticipant(participant, button) {
   if (button.disabled) return;
-  if (!window.confirm(`Remove ${participant.name} from this room?`)) return;
-  const session = getSession();
   button.disabled = true;
+  const confirmed = await confirmAction({
+    title: "Remove participant?",
+    message: `Remove ${participant.name} from this room? Their votes and round readiness will no longer count.`,
+    confirmLabel: "Remove",
+    destructive: true,
+  });
+  if (!confirmed) {
+    button.disabled = false;
+    return;
+  }
+
+  const session = getSession();
   try {
     await api(
       `/api/rooms/${encodeURIComponent(session.code)}/participants/${encodeURIComponent(participant.id)}`,

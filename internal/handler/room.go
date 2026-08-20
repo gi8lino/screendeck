@@ -35,7 +35,22 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.GenreMode, input.SamplingStrategy, input.RoundSize)
+		identityToken, err := ensureBrowserIdentity(w, r)
+		if err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		session, err := a.Rooms.CreateForIdentity(
+			r.Context(),
+			input.Name,
+			input.LibraryKeys,
+			input.Filters,
+			input.Genres,
+			input.GenreMode,
+			input.SamplingStrategy,
+			input.RoundSize,
+			identityToken,
+		)
 		if err != nil {
 			a.fail(r, w, err)
 			return
@@ -63,7 +78,19 @@ func (a *API) JoinRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Join(r.Context(), input.Code, input.Name, input.Genres, input.GenreMode)
+		identityToken, err := ensureBrowserIdentity(w, r)
+		if err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		session, err := a.Rooms.JoinForIdentity(
+			r.Context(),
+			input.Code,
+			input.Name,
+			input.Genres,
+			input.GenreMode,
+			identityToken,
+		)
 		if err != nil {
 			a.fail(r, w, err)
 			return

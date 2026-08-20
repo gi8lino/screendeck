@@ -70,6 +70,49 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	var guestSession room.Session
 	decodeResponse(t, guest, &guestSession)
 
+	hostCookies := host.Result().Cookies()
+	require.Len(t, hostCookies, 1)
+	roomsRequest := httptest.NewRequest(http.MethodGet, "/api/me/rooms", nil)
+	roomsRequest.AddCookie(hostCookies[0])
+	roomsResponse := httptest.NewRecorder()
+	router.ServeHTTP(roomsResponse, roomsRequest)
+	require.Equal(t, http.StatusOK, roomsResponse.Code, roomsResponse.Body.String())
+	var memberships []store.RoomMembership
+	decodeResponse(t, roomsResponse, &memberships)
+	require.Len(t, memberships, 1)
+	assert.Equal(t, hostSession.Code, memberships[0].Code)
+	assert.True(t, memberships[0].IsHost)
+	assert.Equal(t, 2, memberships[0].ParticipantCount)
+
+	resumeRequest := httptest.NewRequest(http.MethodPost, "/api/me/rooms/"+hostSession.Code+"/session", nil)
+	resumeRequest.AddCookie(hostCookies[0])
+	resumeResponse := httptest.NewRecorder()
+	router.ServeHTTP(resumeResponse, resumeRequest)
+	require.Equal(t, http.StatusOK, resumeResponse.Code, resumeResponse.Body.String())
+	var resumed room.Session
+	decodeResponse(t, resumeResponse, &resumed)
+	assert.Equal(t, hostSession, resumed)
+
+	claimRequest := httptest.NewRequest(http.MethodPost, "/api/me/rooms/"+hostSession.Code+"/claim", nil)
+	claimRequest.AddCookie(hostCookies[0])
+	claimRequest.Header.Set("X-Participant-Token", hostSession.Token)
+	claimResponse := httptest.NewRecorder()
+	router.ServeHTTP(claimResponse, claimRequest)
+	require.Equal(t, http.StatusOK, claimResponse.Code, claimResponse.Body.String())
+
+	rejoinRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/rooms/join",
+		bytes.NewBufferString(fmt.Sprintf(`{"name":"Duplicate","code":%q}`, hostSession.Code)),
+	)
+	rejoinRequest.AddCookie(hostCookies[0])
+	rejoinResponse := httptest.NewRecorder()
+	router.ServeHTTP(rejoinResponse, rejoinRequest)
+	require.Equal(t, http.StatusCreated, rejoinResponse.Code, rejoinResponse.Body.String())
+	var rejoined room.Session
+	decodeResponse(t, rejoinResponse, &rejoined)
+	assert.Equal(t, hostSession, rejoined)
+
 	hostState := getState(t, router, hostSession)
 	require.NotNil(t, hostState.Candidate)
 	require.Len(t, hostState.Participants, 2)

@@ -77,6 +77,24 @@ CREATE TABLE IF NOT EXISTS participants (
 CREATE INDEX IF NOT EXISTS participants_room_idx
   ON participants (room_code);
 
+CREATE TABLE IF NOT EXISTS browser_identities (
+  token_hash TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS room_memberships (
+  identity_hash TEXT NOT NULL REFERENCES browser_identities (token_hash) ON DELETE CASCADE,
+  room_code TEXT NOT NULL REFERENCES rooms (code) ON DELETE CASCADE,
+  participant_id TEXT NOT NULL UNIQUE REFERENCES participants (id) ON DELETE CASCADE,
+  session_token BLOB NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (identity_hash, room_code)
+);
+
+CREATE INDEX IF NOT EXISTS room_memberships_identity_idx
+  ON room_memberships (identity_hash, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS round_ready (
   room_code TEXT NOT NULL REFERENCES rooms (code) ON DELETE CASCADE,
   round INTEGER NOT NULL,

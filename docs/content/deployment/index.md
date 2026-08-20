@@ -47,7 +47,7 @@ Keep these two files together when backing up or restoring ScreenDeck:
 - `/data/screendeck.db`
 - `/data/auth.key`
 
-The database contains encrypted Plex credentials and the key file is required to decrypt them.
+The database contains encrypted Plex credentials and resumable room-session tokens. The key file is required to decrypt both.
 
 ## Remote access
 

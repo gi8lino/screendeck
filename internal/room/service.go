@@ -172,6 +172,19 @@ func (s *Service) Options(ctx context.Context, libraryKeys []string) (CatalogOpt
 
 // Create creates a room and joins its first participant.
 func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, genreMode GenreMode, sampling SamplingStrategy, roundSize int) (Session, error) {
+	return s.create(ctx, name, libraryKeys, filters, genres, genreMode, sampling, roundSize, "")
+}
+
+// CreateForIdentity creates a room and associates the host with a persistent browser identity.
+func (s *Service) CreateForIdentity(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, genreMode GenreMode, sampling SamplingStrategy, roundSize int, identityToken string) (Session, error) {
+	if strings.TrimSpace(identityToken) == "" {
+		return Session{}, errors.New("browser identity is required")
+	}
+	return s.create(ctx, name, libraryKeys, filters, genres, genreMode, sampling, roundSize, identityToken)
+}
+
+// create creates a room with an optional persistent browser identity association.
+func (s *Service) create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, genreMode GenreMode, sampling SamplingStrategy, roundSize int, identityToken string) (Session, error) {
 	name = cleanName(name)
 	if name == "" {
 		return Session{}, errors.New("name is required")
@@ -251,6 +264,7 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 		tokenHash,
 		itemIDs,
 		poolIDs,
+		membershipCredentials(identityToken, token)...,
 	)
 	if err != nil {
 		return Session{}, err
@@ -429,6 +443,27 @@ func (s *Service) Genres(ctx context.Context, code string) ([]string, error) {
 
 // Join adds a participant to an existing room.
 func (s *Service) Join(ctx context.Context, code, name string, genres []string, genreMode GenreMode) (Session, error) {
+	return s.join(ctx, code, name, genres, genreMode, "")
+}
+
+// JoinForIdentity joins or resumes a room for a persistent browser identity.
+func (s *Service) JoinForIdentity(ctx context.Context, code, name string, genres []string, genreMode GenreMode, identityToken string) (Session, error) {
+	if strings.TrimSpace(identityToken) == "" {
+		return Session{}, errors.New("browser identity is required")
+	}
+	normalizedCode := strings.ToUpper(strings.TrimSpace(code))
+	session, err := s.ResumeIdentity(ctx, identityToken, normalizedCode)
+	if err == nil {
+		return session, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return Session{}, err
+	}
+	return s.join(ctx, normalizedCode, name, genres, genreMode, identityToken)
+}
+
+// join adds a participant with an optional persistent browser identity association.
+func (s *Service) join(ctx context.Context, code, name string, genres []string, genreMode GenreMode, identityToken string) (Session, error) {
 	code, name = strings.ToUpper(strings.TrimSpace(code)), cleanName(name)
 	if len(code) != 6 || name == "" {
 		return Session{}, errors.New("a six-character room code and name are required")
@@ -449,7 +484,13 @@ func (s *Service) Join(ctx context.Context, code, name string, genres []string, 
 	if err != nil {
 		return Session{}, err
 	}
-	if err := s.store.JoinRoom(ctx, code, store.Participant{ID: participantID, Name: name, Genres: participantGenres, GenreMode: string(genreMode)}, tokenHash); err != nil {
+	if err := s.store.JoinRoom(
+		ctx,
+		code,
+		store.Participant{ID: participantID, Name: name, Genres: participantGenres, GenreMode: string(genreMode)},
+		tokenHash,
+		membershipCredentials(identityToken, token)...,
+	); err != nil {
 		return Session{}, err
 	}
 	s.Notify(code)
