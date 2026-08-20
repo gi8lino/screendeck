@@ -3,13 +3,16 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-DOCS_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
-ROOT_DIR=$(CDPATH= cd -- "$DOCS_DIR/.." && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
+DOCS_DIR="$ROOT_DIR/docs"
 
 RAW_DIR=${SCREENSHOT_RAW_DIR:-"$DOCS_DIR/screenshots/raw"}
 HOST=${SCREENSHOT_HOST:-127.0.0.1}
 PORT=${SCREENSHOT_PORT:-18080}
-PLAYWRIGHT=${PLAYWRIGHT:-"$ROOT_DIR/node_modules/.bin/playwright"}
+PLAYWRIGHT=${PLAYWRIGHT:-"$DOCS_DIR/node_modules/.bin/playwright"}
+PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-"$DOCS_DIR/.playwright"}
+
+export PLAYWRIGHT_BROWSERS_PATH
 
 BASE_URL="http://$HOST:$PORT"
 
@@ -25,7 +28,13 @@ fi
 
 if [ ! -x "$PLAYWRIGHT" ]; then
   echo "Playwright is not installed." >&2
-  echo "Run 'npm ci' first." >&2
+  echo "Run 'make node-dependencies' first." >&2
+  exit 1
+fi
+
+if [ ! -d "$PLAYWRIGHT_BROWSERS_PATH" ]; then
+  echo "The local Playwright browser cache does not exist." >&2
+  echo "Run 'make playwright-browser' first." >&2
   exit 1
 fi
 

@@ -1,17 +1,11 @@
 # Makefile
 
-## Location to install dependencies to
+## Location to install Go dependencies to
 LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
-NODE_BIN ?= ./node_modules/.bin
-NODE_DEPENDENCIES_STAMP := node_modules/.screendeck-dependencies-installed
-PRETTIER ?= $(NODE_BIN)/prettier
-PLAYWRIGHT ?= $(NODE_BIN)/playwright
-IMAGE_CONVERT ?= magick
-
-PYTHON ?= python3
+## Documentation Configuration
 DOCS_DIR := docs
 DOCS_CONFIG := $(DOCS_DIR)/mkdocs.yml
 DOCS_REQUIREMENTS := $(DOCS_DIR)/requirements.txt
@@ -20,12 +14,33 @@ DOCS_PYTHON := $(DOCS_VENV)/bin/python
 DOCS_DEPENDENCIES_STAMP := $(DOCS_VENV)/.requirements-installed
 DOCS_SITE := $(DOCS_DIR)/.site
 
+## Node.js Tooling
+NPM ?= npm
+NODE_MODULES := $(DOCS_DIR)/node_modules
+NODE_BIN := $(NODE_MODULES)/.bin
+NODE_DEPENDENCIES_STAMP := $(NODE_MODULES)/.screendeck-dependencies-installed
+
+PRETTIER ?= $(NODE_BIN)/prettier
+PLAYWRIGHT ?= $(NODE_BIN)/playwright
+
+## Playwright Browser Cache
+#
+# Keep Playwright's browser binaries inside the repository instead of using
+# the operating system's shared Playwright cache. The directory is ignored by
+# Git and survives npm ci because it is outside node_modules.
+PLAYWRIGHT_BROWSERS_PATH ?= $(DOCS_DIR)/.playwright
+PLAYWRIGHT_BROWSER_STAMP := $(PLAYWRIGHT_BROWSERS_PATH)/.chromium-installed
+
+IMAGE_CONVERT ?= magick
+
+## Documentation Screenshots
 SCREENSHOT_MANIFEST := $(DOCS_DIR)/screenshots/screenshots.manifest
 SCREENSHOT_RAW_DIR := $(DOCS_DIR)/screenshots/raw
 SCREENSHOT_OUTPUT_DIR := $(DOCS_DIR)/content/assets/screenshots
 SCREENSHOT_CAPTURE := scripts/screenshots/capture.sh
 SCREENSHOT_NORMALIZE := scripts/screenshots/normalize.sh
 
+## Formatting Sources
 PRETTIER_MD_SOURCES := README.md "docs/content/**/*.md"
 PRETTIER_YAML_SOURCES := \
 	".github/**/*.{yml,yaml}" \
@@ -170,13 +185,16 @@ lint-json: node-dependencies ## Check JSON formatting.
 docs: $(DOCS_DEPENDENCIES_STAMP) ## Serve the MkDocs site locally.
 	$(DOCS_PYTHON) -m mkdocs serve -f $(DOCS_CONFIG)
 
-PHONY: docs-build
+.PHONY: docs-build
 docs-build: $(DOCS_DEPENDENCIES_STAMP) ## Build the MkDocs site with strict validation.
 	$(DOCS_PYTHON) -m mkdocs build --strict -f $(DOCS_CONFIG)
 
 .PHONY: capture-screenshots
 capture-screenshots: playwright-browser ## Capture raw demo screenshots with Playwright.
-	@PLAYWRIGHT=$(PLAYWRIGHT) $(SCREENSHOT_CAPTURE)
+	@PLAYWRIGHT="$(abspath $(PLAYWRIGHT))" \
+	PLAYWRIGHT_BROWSERS_PATH="$(abspath $(PLAYWRIGHT_BROWSERS_PATH))" \
+	SCREENSHOT_RAW_DIR="$(abspath $(SCREENSHOT_RAW_DIR))" \
+	$(SCREENSHOT_CAPTURE)
 
 .PHONY: screenshots
 screenshots: capture-screenshots ## Capture and normalize documentation screenshots.
@@ -196,13 +214,18 @@ check-screenshots: ## Verify normalized screenshots match the committed raw capt
 .PHONY: node-dependencies
 node-dependencies: $(NODE_DEPENDENCIES_STAMP) ## Install locked Node.js development dependencies.
 
-$(NODE_DEPENDENCIES_STAMP): docs/package.json docs/package-lock.json
-	npm --prefix docs ci
-	@touch $(NODE_DEPENDENCIES_STAMP)
+$(NODE_DEPENDENCIES_STAMP): $(DOCS_DIR)/package.json $(DOCS_DIR)/package-lock.json
+	PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 $(NPM) --prefix $(DOCS_DIR) ci
+	@touch $@
 
 .PHONY: playwright-browser
-playwright-browser: node-dependencies ## Install Chromium used for documentation screenshots.
-	$(PLAYWRIGHT) install chromium
+playwright-browser: $(PLAYWRIGHT_BROWSER_STAMP) ## Install Chromium used for documentation screenshots.
+
+$(PLAYWRIGHT_BROWSER_STAMP): $(DOCS_DIR)/package-lock.json $(NODE_DEPENDENCIES_STAMP)
+	@mkdir -p "$(PLAYWRIGHT_BROWSERS_PATH)"
+	PLAYWRIGHT_BROWSERS_PATH="$(abspath $(PLAYWRIGHT_BROWSERS_PATH))" \
+		"$(abspath $(PLAYWRIGHT))" install chromium
+	@touch "$@"
 
 $(DOCS_PYTHON):
 	$(PYTHON) -m venv $(DOCS_VENV)

@@ -2,6 +2,7 @@
 /screendeck
 /node_modules/
 /docs/node_modules/
+/docs/.playwright/
 auth.key
 .env
 .DS_Store

@@ -45,7 +45,8 @@ internal/routes      route table and middleware wiring
 internal/store       SQLite schema and persistence
 web                  embedded browser application
 deploy               deployment examples
-docs                 documentation project, sources, assets, and screenshot tooling
+docs                 documentation project, sources, assets, and tooling dependencies
+scripts/screenshots  documentation screenshot capture and normalization helpers
 ```
 
 ## Formatting and checks
@@ -69,12 +70,15 @@ All MkDocs-specific files live under `docs/`:
 docs/
 ├── mkdocs.yml
 ├── requirements.txt
+├── package.json
+├── package-lock.json
 ├── content/
-├── screenshots/
-└── scripts/
+└── screenshots/
 ```
 
 The Makefile creates the documentation virtual environment at `docs/.venv/` and the generated site at `docs/.site/`.
+
+Node.js development dependencies are installed into `docs/node_modules/`.
 
 Start the local documentation server:
 
@@ -112,11 +116,21 @@ ImageMagick normalization
 docs/content/assets/screenshots/*.png
 ```
 
-Install Node.js dependencies and the Playwright Chromium build, then regenerate everything with:
+Regenerate the screenshots with:
 
 ```sh
 make screenshots
 ```
+
+The first invocation installs the Playwright Chromium build into:
+
+```text
+docs/.playwright/
+```
+
+This browser cache belongs only to ScreenDeck and is ignored by Git. It does not use Playwright's operating-system-wide browser cache, so other projects using different Playwright versions cannot replace ScreenDeck's Chromium installation.
+
+The Chromium installation is tied to `docs/package-lock.json`. Updating the locked Playwright version causes the browser target to run again. Normal `make screenshots` invocations reuse the already installed browser without running `playwright install chromium` again.
 
 The target starts a local demo server that uses the real ScreenDeck frontend with deterministic fixture data. Room `DECK42` contains **Host**, **Alice**, and **Bob**. The demo server never contacts Plex and does not touch the normal ScreenDeck database.
 
@@ -126,6 +140,13 @@ To capture only the browser images:
 
 ```sh
 make capture-screenshots
+```
+
+To explicitly install or repair the local Chromium installation:
+
+```sh
+rm -rf docs/.playwright
+make playwright-browser
 ```
 
 To verify that the normalized screenshots still match their raw captures:
@@ -156,3 +177,32 @@ The override is not persisted. Supply it again whenever ScreenDeck starts with t
 ## Release builds
 
 GoReleaser builds Linux `amd64` and `arm64` binaries and publishes the container image. The Makefile also provides `patch`, `minor`, `major`, and `push` targets for repository tag workflows.
+
+After replacing those files, I would do this once to get rid of the old root-level Node installation:
+
+```sh
+rm -rf node_modules
+make screenshots
+```
+
+The **first** run should produce something like:
+
+```text
+npm --prefix docs ci
+PLAYWRIGHT_BROWSERS_PATH=".../docs/.playwright" \
+  docs/node_modules/.bin/playwright install chromium
+
+Captured docs/screenshots/raw/home.png
+Captured docs/screenshots/raw/room.png
+Captured docs/screenshots/raw/winner.png
+```
+
+The **second** run should skip both dependency installation and Chromium installation and go directly to screenshot capture:
+
+```text
+make screenshots
+
+Captured docs/screenshots/raw/home.png
+Captured docs/screenshots/raw/room.png
+Captured docs/screenshots/raw/winner.png
+```
