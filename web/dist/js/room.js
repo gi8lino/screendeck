@@ -59,7 +59,11 @@ function drawRoom(state) {
   const head = el("section", "room-head");
   const intro = el("div");
   intro.append(
-    el("div", "eyebrow", `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`),
+    el(
+      "div",
+      "eyebrow",
+      `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`,
+    ),
     el("h2", "", `Good hunting, ${state.me.name}.`),
   );
   const people = el("div", "people");
@@ -134,7 +138,11 @@ function drawRoom(state) {
 
   const side = el("aside", "side");
   side.append(
-    el("h3", "", `Round ${state.room.round} matches · ${(state.matches || []).length}`),
+    el(
+      "h3",
+      "",
+      `Round ${state.room.round} matches · ${(state.matches || []).length}`,
+    ),
     matchSummary(state),
   );
   const moreTitles = moreTitlesPanel(state);
@@ -145,7 +153,6 @@ function drawRoom(state) {
   grid.append(left, side);
   root.append(grid);
 }
-
 
 // phaseLabel converts the persisted room state machine phase into UI copy.
 function phaseLabel(phase) {
@@ -217,7 +224,11 @@ function showMatches(matches, round) {
   const header = el("div", "matches-dialog-head");
   header.append(
     el("div", "eyebrow", `Round ${round}`),
-    el("h2", "", `${matches.length} ${matches.length === 1 ? "match" : "matches"}`),
+    el(
+      "h2",
+      "",
+      `${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
+    ),
     el("p", "muted", "These are the titles everyone has liked so far."),
   );
 
@@ -261,7 +272,11 @@ function moreTitlesPanel(state) {
   const panel = el("section", "more-titles-panel");
   panel.append(
     el("h3", "", "Need more options?"),
-    el("p", "muted", `${available} unused titles remain from the original filtered pool.`),
+    el(
+      "p",
+      "muted",
+      `${available} unused titles remain from the original filtered pool.`,
+    ),
   );
   if (!state.me.isHost) {
     panel.append(el("p", "muted", "The room host can add more titles."));
@@ -360,7 +375,9 @@ function nextRoundPanel(state) {
   if (matches.length >= 2 || state.me.readyForNextRound) {
     const button = el(
       "button",
-      state.me.readyForNextRound ? "btn ghost next-round-button" : "btn primary next-round-button",
+      state.me.readyForNextRound
+        ? "btn ghost next-round-button"
+        : "btn primary next-round-button",
       state.me.readyForNextRound
         ? "Withdraw readiness"
         : readiness.ready > 0
@@ -427,7 +444,9 @@ function winnerCard(state) {
   if (item.summary) {
     content.append(el("p", "winner-summary", item.summary));
   }
-  const supporters = (winner.likedBy || []).map((participant) => participant.name);
+  const supporters = (winner.likedBy || []).map(
+    (participant) => participant.name,
+  );
   content.append(
     el(
       "p",
@@ -631,7 +650,10 @@ function trackMatches(state) {
   const matches = state.matches || [];
   const matchIDs = new Set(matches.map((item) => item.id));
 
-  if (trackedRoomCode !== state.room.code || trackedRound !== state.room.round) {
+  if (
+    trackedRoomCode !== state.room.code ||
+    trackedRound !== state.room.round
+  ) {
     trackedRoomCode = state.room.code;
     trackedRound = state.room.round;
     knownMatchIDs = matchIDs;

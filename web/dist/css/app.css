@@ -753,14 +753,16 @@ select option {
 @keyframes match-heart-burst {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(0) scale(0.35);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(0)
+      scale(0.35);
   }
   18% {
     opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-220px) scale(1.25);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-220px)
+      scale(1.25);
   }
 }
 
