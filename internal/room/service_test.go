@@ -85,6 +85,8 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	hostState, err := service.State(context.Background(), host.Code, host.Token)
 	require.NoError(t, err)
 	assert.Equal(t, 1, hostState.Progress.Total)
+	assert.Equal(t, 2, hostState.Progress.RoundTotal)
+	assert.Equal(t, 1, hostState.Progress.FilteredOut)
 	require.NotNil(t, hostState.Candidate)
 	assert.Equal(t, "drama", hostState.Candidate.RatingKey)
 
@@ -94,6 +96,8 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	guestState, err := service.State(context.Background(), guest.Code, guest.Token)
 	require.NoError(t, err)
 	assert.Equal(t, 1, guestState.Progress.Total)
+	assert.Equal(t, 2, guestState.Progress.RoundTotal)
+	assert.Equal(t, 1, guestState.Progress.FilteredOut)
 	require.NotNil(t, guestState.Candidate)
 	assert.Equal(t, "action", guestState.Candidate.RatingKey)
 	assert.Equal(t, []string{"Action"}, guestState.Me.Genres)

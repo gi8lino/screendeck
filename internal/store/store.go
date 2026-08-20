@@ -71,8 +71,10 @@ type RoomState struct {
 }
 
 type Progress struct {
-	Voted int `json:"voted"`
-	Total int `json:"total"`
+	Voted       int `json:"voted"`
+	Total       int `json:"total"`
+	RoundTotal  int `json:"roundTotal"`
+	FilteredOut int `json:"filteredOut"`
 }
 
 type NextRoundState struct {
@@ -679,6 +681,10 @@ AND (json_array_length(p.genres)=0 OR (
 ))`, participantID, code).Scan(&state.Progress.Voted, &state.Progress.Total); err != nil {
 		return state, err
 	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_movies WHERE room_code=?`, code).Scan(&state.Progress.RoundTotal); err != nil {
+		return state, err
+	}
+	state.Progress.FilteredOut = state.Progress.RoundTotal - state.Progress.Total
 	remaining, err := s.roundRemaining(ctx, code)
 	if err != nil {
 		return state, err

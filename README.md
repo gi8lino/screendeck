@@ -16,6 +16,7 @@ It is designed for a home network: one Go process, one SQLite file, and no accou
 - Lets the host cap the shuffled first round at 50, 100, 250, or 500 titles, or use every matching title; the UI defaults to 250.
 - Lets each participant choose optional personal genres that only affect their own swipe deck.
 - Touch and mouse swipe interface, with accessible like/pass buttons.
+- Explains per-participant deck size when personal genre preferences exclude round titles.
 - Temporary rooms with anonymous display names and per-participant genre preferences (match any or all).
 - Unanimous matches for two or more participants, with an immediate animated match reveal for the deciding swipe.
 - Unanimous next-round requests that can narrow the current matches into a new deck at any time, without waiting for everyone to finish a large round.

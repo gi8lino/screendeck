@@ -118,13 +118,16 @@ function drawRoom(state) {
   } else {
     left.append(finishedCard(state));
   }
-  left.append(
-    el(
-      "div",
-      "progress",
-      `${state.progress.voted} of ${state.progress.total} considered · round ${state.room.round}`,
-    ),
-  );
+  const progressText = [
+    `${state.progress.voted} of ${state.progress.total} considered`,
+    `round ${state.room.round}`,
+  ];
+  if (state.progress.filteredOut > 0) {
+    progressText.push(
+      `${state.progress.filteredOut} of ${state.progress.roundTotal} excluded by your genre preferences`,
+    );
+  }
+  left.append(el("div", "progress", progressText.join(" · ")));
 
   const side = el("aside", "side");
   side.append(
@@ -400,6 +403,19 @@ async function toggleNextRoundReady(state, button) {
 function finishedCard(state) {
   const done = el("div", "finished");
   const matches = state.matches || [];
+
+  if (state.progress.total === 0 && state.progress.filteredOut > 0) {
+    done.append(
+      el("div", "eyebrow", "Personal deck"),
+      el("h2", "", "No titles match your genres."),
+      el(
+        "p",
+        "lede",
+        `${state.progress.filteredOut} round titles were excluded by your ${state.me.genreMode === "all" ? "match-all" : "match-any"} genre preference.`,
+      ),
+    );
+    return done;
+  }
 
   if (state.roundComplete && matches.length === 1) {
     done.classList.add("winner");
