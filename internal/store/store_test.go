@@ -47,6 +47,8 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	assert.Len(t, state.Winner.LikedBy, 2)
 	assert.Equal(t, "One", state.Winner.LikedBy[0].Name)
 	assert.Equal(t, "Two", state.Winner.LikedBy[1].Name)
+	assert.True(t, state.Participants[0].IsHost)
+	assert.False(t, state.Participants[1].IsHost)
 	assert.Equal(t, 1, state.Progress.Voted)
 }
 
@@ -345,4 +347,29 @@ func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	assert.Equal(t, 0, state.NextRound.Ready)
 	assert.Nil(t, state.NextRound.RequestedBy)
 	assert.Equal(t, RoomPhaseSwiping, state.Room.Phase)
+}
+
+// TestHostOwnershipTransfersOnLeave verifies the earliest remaining participant becomes host.
+func TestHostOwnershipTransfersOnLeave(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close()
+
+	movie := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{movie}))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "HOST01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
+	require.NoError(t, database.JoinRoom(ctx, "HOST01", Participant{ID: "p2", Name: "Next"}, "hash2"))
+
+	state, err := database.RoomState(ctx, "HOST01", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, "p1", state.Room.OwnerID)
+	assert.True(t, state.Me.IsHost)
+
+	require.NoError(t, database.LeaveRoom(ctx, "HOST01", "hash1"))
+	state, err = database.RoomState(ctx, "HOST01", "p2")
+	require.NoError(t, err)
+	assert.Equal(t, "p2", state.Room.OwnerID)
+	assert.True(t, state.Me.IsHost)
 }

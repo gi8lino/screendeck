@@ -41,6 +41,7 @@ type Room struct {
 	Code      string    `json:"code"`
 	Round     int       `json:"round"`
 	Phase     RoomPhase `json:"phase"`
+	OwnerID   string    `json:"ownerId"`
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
@@ -50,6 +51,7 @@ type Participant struct {
 	Name              string   `json:"name"`
 	Genres            []string `json:"genres"`
 	GenreMode         string   `json:"genreMode"`
+	IsHost            bool     `json:"isHost"`
 	ReadyForNextRound bool     `json:"readyForNextRound"`
 }
 
@@ -292,6 +294,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   round INTEGER NOT NULL DEFAULT 1,
   phase TEXT NOT NULL DEFAULT 'swiping',
   next_round_requester_id TEXT NOT NULL DEFAULT '',
+  owner_id TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
@@ -371,6 +374,12 @@ CREATE TABLE IF NOT EXISTS plex_auth (
 	}
 	if err := s.ensureColumn(ctx, "rooms", "next_round_requester_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
+	}
+	if err := s.ensureColumn(ctx, "rooms", "owner_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE rooms SET owner_id=COALESCE((SELECT id FROM participants WHERE room_code=rooms.code ORDER BY joined_at,id LIMIT 1),'') WHERE owner_id=''`); err != nil {
+		return fmt.Errorf("backfill room owners: %w", err)
 	}
 	if err := s.ensureColumn(ctx, "participants", "genres", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
 		return err
@@ -452,6 +461,9 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 	if room.Phase == "" {
 		room.Phase = RoomPhaseSwiping
 	}
+	if room.OwnerID == "" {
+		room.OwnerID = participant.ID
+	}
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
@@ -467,7 +479,7 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO rooms(code,round,phase,created_at,expires_at) VALUES(?,?,?,?,?)`, room.Code, room.Round, room.Phase, room.CreatedAt.Unix(), room.ExpiresAt.Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO rooms(code,round,phase,owner_id,created_at,expires_at) VALUES(?,?,?,?,?,?)`, room.Code, room.Round, room.Phase, room.OwnerID, room.CreatedAt.Unix(), room.ExpiresAt.Unix()); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,genre_mode,token_hash,joined_at) VALUES(?,?,?,?,?,?,?)`, participant.ID, room.Code, participant.Name, string(participantGenres), participant.GenreMode, tokenHash, time.Now().Unix()); err != nil {
@@ -603,7 +615,7 @@ ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE`, code, code)
 func (s *Store) RoomState(ctx context.Context, code, participantID string) (RoomState, error) {
 	var state RoomState
 	var created, expires int64
-	err := s.db.QueryRowContext(ctx, `SELECT code,round,phase,created_at,expires_at FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&state.Room.Code, &state.Room.Round, &state.Room.Phase, &created, &expires)
+	err := s.db.QueryRowContext(ctx, `SELECT code,round,phase,owner_id,created_at,expires_at FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&state.Room.Code, &state.Room.Round, &state.Room.Phase, &state.Room.OwnerID, &created, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return state, ErrNotFound
 	}
@@ -618,6 +630,7 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 		return state, ErrNotFound
 	}
 	decodeGenres(meGenres, &state.Me.Genres)
+	state.Me.IsHost = state.Me.ID == state.Room.OwnerID
 	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.name,p.genres,p.genre_mode,EXISTS(
   SELECT 1 FROM round_ready rr WHERE rr.room_code=p.room_code AND rr.round=? AND rr.participant_id=p.id
 ) FROM participants p WHERE p.room_code=? ORDER BY p.joined_at`, state.Room.Round, code)
@@ -632,6 +645,7 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 			return state, err
 		}
 		decodeGenres(genres, &p.Genres)
+		p.IsHost = p.ID == state.Room.OwnerID
 		state.Participants = append(state.Participants, p)
 	}
 	if err := rows.Close(); err != nil {
@@ -659,6 +673,7 @@ WHERE rr.room_code=? AND rr.round=?`, code, state.Room.Round).Scan(&state.NextRo
 	}
 	if requesterID != "" {
 		if err := s.db.QueryRowContext(ctx, `SELECT id,name,genre_mode FROM participants WHERE room_code=? AND id=?`, code, requesterID).Scan(&requester.ID, &requester.Name, &requester.GenreMode); err == nil {
+			requester.IsHost = requester.ID == state.Room.OwnerID
 			state.NextRound.RequestedBy = &requester
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return state, err
@@ -715,6 +730,7 @@ WHERE p.room_code=? AND v.movie_id=? AND v.liked=1 ORDER BY p.joined_at`, code, 
 				return state, err
 			}
 			decodeGenres(genres, &participant.Genres)
+			participant.IsHost = participant.ID == state.Room.OwnerID
 			winner.LikedBy = append(winner.LikedBy, participant)
 		}
 		if err := rows.Close(); err != nil {
@@ -867,11 +883,15 @@ func (s *Store) AddMoreTitles(ctx context.Context, code, participantID string, c
 	defer tx.Rollback()
 
 	var round int
-	if err := tx.QueryRowContext(ctx, `SELECT r.round FROM rooms r JOIN participants p ON p.room_code=r.code WHERE r.code=? AND p.id=? AND r.expires_at>?`, code, participantID, time.Now().Unix()).Scan(&round); err != nil {
+	var ownerID string
+	if err := tx.QueryRowContext(ctx, `SELECT r.round,r.owner_id FROM rooms r JOIN participants p ON p.room_code=r.code WHERE r.code=? AND p.id=? AND r.expires_at>?`, code, participantID, time.Now().Unix()).Scan(&round, &ownerID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, 0, ErrNotFound
 		}
 		return 0, 0, err
+	}
+	if ownerID != participantID {
+		return 0, 0, errors.New("only the room host can add more titles")
 	}
 	if round != 1 {
 		return 0, 0, errors.New("more titles can only be added during the first round")
@@ -1179,12 +1199,20 @@ func (s *Store) LeaveRoom(ctx context.Context, code, tokenHash string) error {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `DELETE FROM participants WHERE room_code=? AND token_hash=?`, code, tokenHash)
-	if err != nil {
+	var leavingID string
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM participants WHERE room_code=? AND token_hash=?`, code, tokenHash).Scan(&leavingID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		return err
 	}
-	if count, _ := result.RowsAffected(); count == 0 {
-		return ErrNotFound
+	if _, err := tx.ExecContext(ctx, `DELETE FROM participants WHERE room_code=? AND id=?`, code, leavingID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET owner_id=COALESCE((
+  SELECT id FROM participants WHERE room_code=? ORDER BY joined_at,id LIMIT 1
+),'') WHERE code=? AND owner_id=?`, code, code, leavingID); err != nil {
+		return err
 	}
 	// A departure can make previously cast likes unanimous. Completed matches
 	// are intentionally retained even if the room membership later changes.

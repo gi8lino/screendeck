@@ -66,6 +66,7 @@ function drawRoom(state) {
   state.participants.forEach((participant) => {
     const labels = [participant.name];
     if (participant.id === state.me.id) labels.push("you");
+    if (participant.isHost) labels.push("host");
     if (participant.readyForNextRound) labels.push("next round ✓");
     const person = el(
       "span",
@@ -262,6 +263,10 @@ function moreTitlesPanel(state) {
     el("h3", "", "Need more options?"),
     el("p", "muted", `${available} unused titles remain from the original filtered pool.`),
   );
+  if (!state.me.isHost) {
+    panel.append(el("p", "muted", "The room host can add more titles."));
+    return panel;
+  }
   const actions = el("div", "more-titles-actions");
   [50, 100, 250].forEach((count) => {
     const amount = Math.min(count, available);

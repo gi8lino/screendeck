@@ -18,6 +18,7 @@ It is designed for a home network: one Go process, one SQLite file, and no accou
 - Touch and mouse swipe interface, with accessible like/pass buttons.
 - Explains per-participant deck size when personal genre preferences exclude round titles.
 - Temporary rooms with anonymous display names and per-participant genre preferences (match any or all).
+- Persists an explicit room host and transfers ownership to the earliest remaining participant if the host leaves.
 - Unanimous matches for two or more participants, with an immediate animated match reveal for the deciding swipe.
 - Unanimous next-round requests that can narrow the current matches into a new deck at any time, without waiting for everyone to finish a large round.
 - Collapsed match piles that expand on demand instead of filling the room view with every poster.
