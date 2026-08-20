@@ -1,0 +1,18 @@
+name: screendeck
+
+services:
+  screendeck:
+    image: ghcr.io/gi8lino/screendeck:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - ../.env
+    environment:
+      SCREENDECK__DATABASE_PATH: /data/screendeck.db
+      SCREENDECK__AUTH_KEY_PATH: /data/auth.key
+    volumes:
+      - screendeck-data:/data
+
+volumes:
+  screendeck-data:

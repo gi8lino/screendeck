@@ -6,8 +6,8 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 PRETTIER ?= npx --yes prettier@3.9.6
-PRETTIER_MD_SOURCES := README.md
-PRETTIER_YAML_SOURCES := ".github/**/*.{yml,yaml}"
+PRETTIER_MD_SOURCES := README.md "docs/**/*.md"
+PRETTIER_YAML_SOURCES := ".github/**/*.{yml,yaml}" "deploy/**/*.{yml,yaml}"
 PRETTIER_JSON_SOURCES := ".github/**/*.json"
 PRETTIER_JS_SOURCES := "web/dist/**/*.js"
 PRETTIER_CSS_SOURCES := "web/dist/**/*.css"
@@ -19,6 +19,8 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 ## Tool Versions
 # renovate: datasource=github-releases depName=golangci/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.13.0
+# renovate: datasource=npm depName=playwright
+PLAYWRIGHT_VERSION ?= 1.57.0
 
 ## Build Configuration
 BINARY ?= screendeck
@@ -134,6 +136,15 @@ lint-yaml: ## Check YAML formatting with Prettier.
 lint-json: ## Check JSON formatting with Prettier.
 	@$(PRETTIER) --check $(PRETTIER_JSON_SOURCES)
 
+
+##@ Documentation
+
+.PHONY: screenshots
+screenshots: ## Create README screenshots with a demo room containing Alice and Bob.
+	@PLAYWRIGHT_VERSION=$(PLAYWRIGHT_VERSION) ./scripts/screenshots/screenshots.sh
+
+.PHONY: printscreens
+printscreens: screenshots ## Alias for screenshots.
 
 ##@ Dependencies
 

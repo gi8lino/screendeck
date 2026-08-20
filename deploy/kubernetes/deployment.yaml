@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: screendeck
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: screendeck
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: screendeck
+    spec:
+      securityContext:
+        fsGroup: 0
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: screendeck
+          image: ghcr.io/gi8lino/screendeck:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SCREENDECK__BASE_URL
+              value: http://screendeck.example.test
+            - name: SCREENDECK__DATABASE_PATH
+              value: /data/screendeck.db
+            - name: SCREENDECK__AUTH_KEY_PATH
+              value: /data/auth.key
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: screendeck-data
