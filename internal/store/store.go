@@ -28,9 +28,19 @@ type Store struct {
 	cipher cipher.AEAD
 }
 
+type RoomPhase string
+
+const (
+	RoomPhaseSwiping            RoomPhase = "swiping"
+	RoomPhaseNextRoundRequested RoomPhase = "next_round_requested"
+	RoomPhaseRoundComplete      RoomPhase = "round_complete"
+	RoomPhaseFinished           RoomPhase = "finished"
+)
+
 type Room struct {
 	Code      string    `json:"code"`
 	Round     int       `json:"round"`
+	Phase     RoomPhase `json:"phase"`
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
@@ -92,7 +102,7 @@ func Open(path string, configuredKeyPath ...string) (*Store, error) {
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		db.Close() // nolint:errcheck
+		db.Close()
 		return nil, err
 	}
 	store := &Store{db: db, cipher: aead}
@@ -263,6 +273,7 @@ CREATE INDEX IF NOT EXISTS movies_library_idx ON movies(library_key);
 CREATE TABLE IF NOT EXISTS rooms (
   code TEXT PRIMARY KEY,
   round INTEGER NOT NULL DEFAULT 1,
+  phase TEXT NOT NULL DEFAULT 'swiping',
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
@@ -323,6 +334,9 @@ CREATE TABLE IF NOT EXISTS plex_auth (
 		return err
 	}
 	if err := s.ensureColumn(ctx, "rooms", "round", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "rooms", "phase", "TEXT NOT NULL DEFAULT 'swiping'"); err != nil {
 		return err
 	}
 	if err := s.ensureColumn(ctx, "participants", "genres", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
@@ -399,6 +413,9 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 	if room.Round <= 0 {
 		room.Round = 1
 	}
+	if room.Phase == "" {
+		room.Phase = RoomPhaseSwiping
+	}
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
@@ -411,7 +428,7 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO rooms(code,round,created_at,expires_at) VALUES(?,?,?,?)`, room.Code, room.Round, room.CreatedAt.Unix(), room.ExpiresAt.Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO rooms(code,round,phase,created_at,expires_at) VALUES(?,?,?,?,?)`, room.Code, room.Round, room.Phase, room.CreatedAt.Unix(), room.ExpiresAt.Unix()); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,room_code,name,genres,token_hash,joined_at) VALUES(?,?,?,?,?,?)`, participant.ID, room.Code, participant.Name, string(participantGenres), tokenHash, time.Now().Unix()); err != nil {
@@ -426,6 +443,9 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 		if _, err := stmt.ExecContext(ctx, room.Code, movieID, position); err != nil {
 			return err
 		}
+	}
+	if err := reconcileRoomPhaseTx(ctx, tx, room.Code); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -462,6 +482,9 @@ SELECT ?,code,?,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.ID,
 	if _, err := tx.ExecContext(ctx, `DELETE FROM matches
 WHERE room_code=? AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=matches.movie_id AND liked=1)
   < (SELECT COUNT(*) FROM participants WHERE room_code=?)`, code, code, code); err != nil {
+		return err
+	}
+	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -516,7 +539,7 @@ ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE`, code)
 func (s *Store) RoomState(ctx context.Context, code, participantID string) (RoomState, error) {
 	var state RoomState
 	var created, expires int64
-	err := s.db.QueryRowContext(ctx, `SELECT code,round,created_at,expires_at FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&state.Room.Code, &state.Room.Round, &created, &expires)
+	err := s.db.QueryRowContext(ctx, `SELECT code,round,phase,created_at,expires_at FROM rooms WHERE code=? AND expires_at>?`, code, time.Now().Unix()).Scan(&state.Room.Code, &state.Room.Round, &state.Room.Phase, &created, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return state, ErrNotFound
 	}
@@ -582,7 +605,10 @@ AND (json_array_length(p.genres)=0 OR EXISTS (
 	if err != nil {
 		return state, err
 	}
-	state.RoundComplete = remaining == 0
+	state.RoundComplete = state.Room.Phase == RoomPhaseRoundComplete || state.Room.Phase == RoomPhaseFinished
+	if remaining == 0 && !state.RoundComplete {
+		state.RoundComplete = true
+	}
 	return state, nil
 }
 
@@ -681,6 +707,9 @@ ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.like
 	} else if _, err := tx.ExecContext(ctx, `DELETE FROM matches WHERE room_code=? AND movie_id=?`, code, movieID); err != nil {
 		return false, err
 	}
+	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
+		return false, err
+	}
 	return matched, tx.Commit()
 }
 
@@ -757,6 +786,9 @@ WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&readyCount); err != nil
 		return nextRound, nextTitles, required, required, true, nil
 	}
 
+	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
+		return 0, 0, 0, 0, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, 0, 0, false, err
 	}
@@ -814,7 +846,7 @@ func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (in
 	}
 
 	nextRound := round + 1
-	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET round=? WHERE code=? AND round=?`, nextRound, code, round); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET round=?,phase=? WHERE code=? AND round=?`, nextRound, RoomPhaseSwiping, code, round); err != nil {
 		return 0, 0, err
 	}
 	return nextRound, len(movieIDs), nil
@@ -850,9 +882,42 @@ WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&ready); err != nil {
 	return err
 }
 
+// reconcileRoomPhaseTx derives the persistent room phase from readiness and round progress.
+func reconcileRoomPhaseTx(ctx context.Context, tx *sql.Tx, code string) error {
+	var round, ready, remaining, matches int
+	if err := tx.QueryRowContext(ctx, `SELECT round FROM rooms WHERE code=?`, code).Scan(&round); err != nil {
+		return err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM round_ready rr
+JOIN participants p ON p.id=rr.participant_id AND p.room_code=rr.room_code
+WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&ready); err != nil {
+		return err
+	}
+	if err := roundRemainingQuery(ctx, tx, code, &remaining); err != nil {
+		return err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE room_code=?`, code).Scan(&matches); err != nil {
+		return err
+	}
+
+	phase := RoomPhaseSwiping
+	switch {
+	case ready > 0:
+		phase = RoomPhaseNextRoundRequested
+	case remaining == 0 && matches == 1:
+		phase = RoomPhaseFinished
+	case remaining == 0:
+		phase = RoomPhaseRoundComplete
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE rooms SET phase=? WHERE code=?`, phase, code)
+	return err
+}
+
 // roundRemaining returns the number of participant/title pairs still awaiting a vote.
 func (s *Store) roundRemaining(ctx context.Context, code string) (int, error) {
-	return roundRemainingQuery(ctx, s.db, code)
+	var remaining int
+	err := roundRemainingQuery(ctx, s.db, code, &remaining)
+	return remaining, err
 }
 
 type queryRower interface {
@@ -860,8 +925,7 @@ type queryRower interface {
 }
 
 // roundRemainingQuery counts outstanding votes while respecting personal genres.
-func roundRemainingQuery(ctx context.Context, db queryRower, code string) (int, error) {
-	var remaining int
+func roundRemainingQuery(ctx context.Context, db queryRower, code string, remaining *int) error {
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*)
 FROM participants p
 JOIN room_movies rm ON rm.room_code=p.room_code
@@ -871,8 +935,8 @@ WHERE p.room_code=? AND v.movie_id IS NULL
 AND (json_array_length(p.genres)=0 OR EXISTS (
   SELECT 1 FROM json_each(m.genres) mg JOIN json_each(p.genres) pg
     ON lower(trim(CAST(mg.value AS TEXT)))=lower(trim(CAST(pg.value AS TEXT)))
-))`, code).Scan(&remaining)
-	return remaining, err
+))`, code).Scan(remaining)
+	return err
 }
 
 // LeaveRoom deactivates an authenticated room participant.
@@ -901,6 +965,9 @@ AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=rm.movie_id AND l
 		return err
 	}
 	if err := maybeAdvanceReadyRoundTx(ctx, tx, code); err != nil {
+		return err
+	}
+	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
 		return err
 	}
 	return tx.Commit()

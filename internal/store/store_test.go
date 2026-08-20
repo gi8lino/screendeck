@@ -40,6 +40,7 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	state, err := database.RoomState(ctx, "ABC123", "p2")
 	require.NoError(t, err)
 	assert.Nil(t, state.Candidate)
+	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
 	assert.Len(t, state.Matches, 1)
 	assert.Equal(t, 1, state.Progress.Voted)
 }
@@ -166,6 +167,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	state, err := database.RoomState(ctx, "ROUND1", "p1")
 	require.NoError(t, err)
 	assert.False(t, state.RoundComplete)
+	assert.Equal(t, RoomPhaseSwiping, state.Room.Phase)
 	assert.Len(t, state.Matches, 2)
 	assert.True(t, state.NextRound.Available)
 	assert.Equal(t, 0, state.NextRound.Ready)
@@ -181,6 +183,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	state, err = database.RoomState(ctx, "ROUND1", "p1")
 	require.NoError(t, err)
 	assert.True(t, state.Me.ReadyForNextRound)
+	assert.Equal(t, RoomPhaseNextRoundRequested, state.Room.Phase)
 	assert.Equal(t, 1, state.NextRound.Ready)
 
 	_, _, ready, required, advanced, err = database.SetRoundReady(ctx, "ROUND1", "p1", 1, false)
@@ -206,6 +209,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	state, err = database.RoomState(ctx, "ROUND1", "p1")
 	require.NoError(t, err)
 	assert.Equal(t, 2, state.Room.Round)
+	assert.Equal(t, RoomPhaseSwiping, state.Room.Phase)
 	assert.Equal(t, 0, state.Progress.Voted)
 	assert.Equal(t, 2, state.Progress.Total)
 	assert.Empty(t, state.Matches)
@@ -224,6 +228,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	state, err = database.RoomState(ctx, "ROUND1", "p1")
 	require.NoError(t, err)
 	assert.True(t, state.RoundComplete)
+	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
 	require.Len(t, state.Matches, 1)
 	assert.Equal(t, "a", state.Matches[0].RatingKey)
 

@@ -59,7 +59,11 @@ function drawRoom(state) {
   const head = el("section", "room-head");
   const intro = el("div");
   intro.append(
-    el("div", "eyebrow", `Swipe room · Round ${state.room.round}`),
+    el(
+      "div",
+      "eyebrow",
+      `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`,
+    ),
     el("h2", "", `Good hunting, ${state.me.name}.`),
   );
   const people = el("div", "people");
@@ -140,6 +144,20 @@ function drawRoom(state) {
 
   grid.append(left, side);
   root.append(grid);
+}
+
+// phaseLabel converts the persisted room state machine phase into UI copy.
+function phaseLabel(phase) {
+  switch (phase) {
+    case "next_round_requested":
+      return "next round requested";
+    case "round_complete":
+      return "round complete";
+    case "finished":
+      return "winner found";
+    default:
+      return "swiping";
+  }
 }
 
 // matchSummary renders a compact stack instead of every matched poster.
