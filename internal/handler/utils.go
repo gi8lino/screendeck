@@ -36,20 +36,23 @@ func decode(r *http.Request, target any) error {
 // fail logs and writes an API error response.
 func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
-	if errors.Is(err, store.ErrNotFound) {
+
+	switch {
+	case errors.Is(err, store.ErrNotFound):
 		status = http.StatusNotFound
-	} else if errors.Is(err, plex.ErrNotConfigured) {
+	case errors.Is(err, plex.ErrNotConfigured):
 		status = http.StatusServiceUnavailable
-	} else if errors.Is(err, plex.ErrServerContact) ||
-		errors.Is(err, plex.ErrServerResponse) ||
-		errors.Is(err, plex.ErrServerDecode) ||
-		errors.Is(err, plex.ErrCloudUnavailable) ||
-		errors.Is(err, plex.ErrCloudResponse) ||
-		errors.Is(err, plex.ErrCloudDecode) ||
-		errors.Is(err, plex.ErrServerVerification) ||
-		errors.Is(err, plex.ErrAuthenticationRefresh) {
+	case errors.Is(err, plex.ErrServerContact),
+		errors.Is(err, plex.ErrServerResponse),
+		errors.Is(err, plex.ErrServerDecode),
+		errors.Is(err, plex.ErrCloudUnavailable),
+		errors.Is(err, plex.ErrCloudResponse),
+		errors.Is(err, plex.ErrCloudDecode),
+		errors.Is(err, plex.ErrServerVerification),
+		errors.Is(err, plex.ErrAuthenticationRefresh):
 		status = http.StatusBadGateway
 	}
+
 	logging.WithRequestIDLogger(a.Logger, r.Context()).Error("API request failed",
 		"event", "api_request_failed",
 		"method", r.Method,
