@@ -8,7 +8,7 @@ DOCS_DIR="$ROOT_DIR/docs"
 
 RAW_DIR=${SCREENSHOT_RAW_DIR:-"$DOCS_DIR/screenshots/raw"}
 HOST=${SCREENSHOT_HOST:-127.0.0.1}
-PORT=${SCREENSHOT_PORT:-8080}
+PORT=${SCREENSHOT_PORT:-18080}
 PLAYWRIGHT=${PLAYWRIGHT:-"$DOCS_DIR/node_modules/.bin/playwright"}
 PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-"$DOCS_DIR/.playwright"}
 
@@ -62,6 +62,12 @@ attempt=0
 until curl -fsS "$BASE_URL/healthz" >/dev/null 2>&1; do
   attempt=$((attempt + 1))
 
+  if ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+    cat "$SERVER_LOG" >&2
+    echo "Screenshot demo server exited unexpectedly." >&2
+    exit 1
+  fi
+
   if [ "$attempt" -ge 50 ]; then
     cat "$SERVER_LOG" >&2
     echo "Screenshot demo server did not become ready." >&2
@@ -71,16 +77,27 @@ until curl -fsS "$BASE_URL/healthz" >/dev/null 2>&1; do
   sleep 0.1
 done
 
+# Verify that the frontend itself is available, not only the health endpoint.
+if ! curl -fsS "$BASE_URL/" >/dev/null 2>&1; then
+  cat "$SERVER_LOG" >&2
+  echo "Screenshot demo frontend is not available." >&2
+  exit 1
+fi
+
 capture() {
   name=$1
   route=$2
 
-  "$PLAYWRIGHT" screenshot \
+  if ! "$PLAYWRIGHT" screenshot \
     --wait-for-timeout 1200 \
     --viewport-size "1440,1050" \
     "$BASE_URL$route" \
     "$RAW_DIR/$name.png" \
-    >/dev/null
+    >/dev/null; then
+    cat "$SERVER_LOG" >&2
+    echo "Failed to capture $name screenshot." >&2
+    exit 1
+  fi
 
   echo "Captured docs/screenshots/raw/$name.png"
 }

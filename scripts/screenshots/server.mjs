@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(scriptDir, "../../..");
+const root = path.resolve(scriptDir, "../..");
 const webRoot = path.join(root, "web", "dist");
 const roomCode = "DECK42";
 
@@ -12,8 +12,9 @@ const args = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   args.set(process.argv[i], process.argv[i + 1]);
 }
+
 const host = args.get("--host") || "127.0.0.1";
-const port = Number(args.get("--port") || 8080);
+const port = Number(args.get("--port") || 18080);
 
 const participants = [
   {
@@ -101,7 +102,10 @@ const summaries = {
   expanse:
     "A missing-person case pulls strangers into a conspiracy that stretches across a colonized solar system.",
 };
-for (const item of Object.values(items)) item.summary = summaries[item.id];
+
+for (const item of Object.values(items)) {
+  item.summary = summaries[item.id];
+}
 
 const posterColors = {
   arrival: ["#263f57", "#7899aa"],
@@ -148,7 +152,12 @@ function activeState(token) {
     participants,
     candidate: items.arrival,
     matches: [items.dune, items.knives, items.severance, items.expanse],
-    progress: { voted: 74, total: 250, roundTotal: 250, filteredOut: 0 },
+    progress: {
+      voted: 74,
+      total: 250,
+      roundTotal: 250,
+      filteredOut: 0,
+    },
     nextRound: {
       ready: 2,
       required: 3,
@@ -156,7 +165,10 @@ function activeState(token) {
       requestedBy: participants[0],
     },
     roundComplete: false,
-    moreTitles: { available: 432, canAdd: true },
+    moreTitles: {
+      available: 432,
+      canAdd: true,
+    },
   };
 }
 
@@ -165,6 +177,7 @@ function winnerState() {
     ...participant,
     readyForNextRound: false,
   }));
+
   return {
     room: {
       code: roomCode,
@@ -177,16 +190,32 @@ function winnerState() {
     me: roster[0],
     participants: roster,
     matches: [items.arrival],
-    winner: { item: items.arrival, likedBy: roster },
-    progress: { voted: 1, total: 1, roundTotal: 1, filteredOut: 0 },
-    nextRound: { ready: 0, required: 3, available: false },
+    winner: {
+      item: items.arrival,
+      likedBy: roster,
+    },
+    progress: {
+      voted: 1,
+      total: 1,
+      roundTotal: 1,
+      filteredOut: 0,
+    },
+    nextRound: {
+      ready: 0,
+      required: 3,
+      available: false,
+    },
     roundComplete: true,
-    moreTitles: { available: 0, canAdd: false },
+    moreTitles: {
+      available: 0,
+      canAdd: false,
+    },
   };
 }
 
 function sendJSON(response, status, value) {
   const body = JSON.stringify(value);
+
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
@@ -205,9 +234,15 @@ function escapeXML(value) {
 
 function posterSVG(item) {
   const [start, end] = posterColors[item.id] || ["#292731", "#5e596a"];
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${start}"/><stop offset="1" stop-color="${end}"/></linearGradient></defs>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${start}"/>
+      <stop offset="1" stop-color="${end}"/>
+    </linearGradient>
+  </defs>
   <rect width="600" height="900" fill="url(#g)"/>
   <circle cx="460" cy="165" r="185" fill="#fff" opacity=".08"/>
   <circle cx="120" cy="740" r="230" fill="#000" opacity=".14"/>
@@ -219,8 +254,15 @@ function posterSVG(item) {
 }
 
 function demoSession(response, token) {
-  const session = JSON.stringify({ code: roomCode, token });
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  const session = JSON.stringify({
+    code: roomCode,
+    token,
+  });
+
+  response.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+  });
+
   response.end(
     `<!doctype html><meta charset="utf-8"><script>localStorage.setItem("screendeck.session", ${JSON.stringify(session)});location.replace("/");</script>`,
   );
@@ -237,6 +279,7 @@ async function serveStatic(pathname, response) {
   const relative =
     pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const filePath = path.resolve(webRoot, relative);
+
   if (
     !filePath.startsWith(`${webRoot}${path.sep}`) &&
     filePath !== path.join(webRoot, "index.html")
@@ -245,6 +288,7 @@ async function serveStatic(pathname, response) {
     response.end("forbidden");
     return;
   }
+
   try {
     const body = await fs.readFile(filePath);
     response.writeHead(200, {
@@ -254,102 +298,143 @@ async function serveStatic(pathname, response) {
     response.end(body);
   } catch {
     const body = await fs.readFile(path.join(webRoot, "index.html"));
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+    });
     response.end(body);
   }
 }
 
 const server = http.createServer(async (request, response) => {
-  const url = new URL(
-    request.url,
-    `http://${request.headers.host || `${host}:${port}`}`,
-  );
-
-  if (request.method === "GET" && url.pathname === "/healthz") {
-    sendJSON(response, 200, { status: "ok" });
-    return;
-  }
-  if (request.method === "GET" && url.pathname === "/api/config") {
-    sendJSON(response, 200, {
-      version: "demo",
-      commit: "screenshots",
-      baseUrl: `http://${host}:${port}`,
-      experimental: false,
-      plexConfigured: true,
-      plexServerName: "ScreenDeck Demo Plex",
-    });
-    return;
-  }
-  if (
-    request.method === "GET" &&
-    url.pathname === `/api/rooms/${roomCode}/genres`
-  ) {
-    sendJSON(response, 200, {
-      genres: [
-        "Adventure",
-        "Comedy",
-        "Crime",
-        "Drama",
-        "Mystery",
-        "Science Fiction",
-        "Thriller",
-      ],
-    });
-    return;
-  }
-  if (request.method === "GET" && url.pathname === `/api/rooms/${roomCode}`) {
-    const token = String(request.headers["x-participant-token"] || "");
-    sendJSON(
-      response,
-      200,
-      token === "demo-winner" ? winnerState() : activeState(token),
+  try {
+    const url = new URL(
+      request.url,
+      `http://${request.headers.host || `${host}:${port}`}`,
     );
-    return;
-  }
-  if (
-    request.method === "GET" &&
-    url.pathname === `/api/rooms/${roomCode}/events`
-  ) {
-    response.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-    response.write("event: update\ndata: connected\n\n");
-    const timer = setInterval(() => response.write(": keepalive\n\n"), 15000);
-    request.on("close", () => clearInterval(timer));
-    return;
-  }
-  if (request.method === "GET" && url.pathname.startsWith("/api/posters/")) {
-    const id = decodeURIComponent(url.pathname.slice("/api/posters/".length));
-    const item = items[id];
-    if (!item) {
-      response.writeHead(404);
-      response.end("not found");
+
+    if (request.method === "GET" && url.pathname === "/healthz") {
+      sendJSON(response, 200, { status: "ok" });
       return;
     }
-    response.writeHead(200, { "Content-Type": "image/svg+xml" });
-    response.end(posterSVG(item));
-    return;
-  }
-  if (request.method === "GET" && url.pathname === "/demo/host") {
-    demoSession(response, "demo-host");
-    return;
-  }
-  if (request.method === "GET" && url.pathname === "/demo/alice") {
-    demoSession(response, "demo-alice");
-    return;
-  }
-  if (request.method === "GET" && url.pathname === "/demo/bob") {
-    demoSession(response, "demo-bob");
-    return;
-  }
-  if (request.method === "GET" && url.pathname === "/demo/winner") {
-    demoSession(response, "demo-winner");
-    return;
-  }
 
-  await serveStatic(url.pathname, response);
+    if (request.method === "GET" && url.pathname === "/api/config") {
+      sendJSON(response, 200, {
+        version: "demo",
+        commit: "screenshots",
+        baseUrl: `http://${host}:${port}`,
+        experimental: false,
+        plexConfigured: true,
+        plexServerName: "ScreenDeck Demo Plex",
+      });
+      return;
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname === `/api/rooms/${roomCode}/genres`
+    ) {
+      sendJSON(response, 200, {
+        genres: [
+          "Adventure",
+          "Comedy",
+          "Crime",
+          "Drama",
+          "Mystery",
+          "Science Fiction",
+          "Thriller",
+        ],
+      });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === `/api/rooms/${roomCode}`) {
+      const token = String(request.headers["x-participant-token"] || "");
+
+      sendJSON(
+        response,
+        200,
+        token === "demo-winner" ? winnerState() : activeState(token),
+      );
+      return;
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname === `/api/rooms/${roomCode}/events`
+    ) {
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      response.write("event: update\ndata: connected\n\n");
+
+      const timer = setInterval(() => response.write(": keepalive\n\n"), 15000);
+      request.on("close", () => clearInterval(timer));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/api/posters/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/posters/".length));
+      const item = items[id];
+
+      if (!item) {
+        response.writeHead(404);
+        response.end("not found");
+        return;
+      }
+
+      response.writeHead(200, {
+        "Content-Type": "image/svg+xml",
+      });
+      response.end(posterSVG(item));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/demo/host") {
+      demoSession(response, "demo-host");
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/demo/alice") {
+      demoSession(response, "demo-alice");
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/demo/bob") {
+      demoSession(response, "demo-bob");
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/demo/winner") {
+      demoSession(response, "demo-winner");
+      return;
+    }
+
+    await serveStatic(url.pathname, response);
+  } catch (error) {
+    console.error(error);
+
+    if (!response.headersSent) {
+      response.writeHead(500, {
+        "Content-Type": "text/plain; charset=utf-8",
+      });
+    }
+
+    response.end("internal server error");
+  }
+});
+
+try {
+  await fs.access(path.join(webRoot, "index.html"));
+} catch {
+  console.error(`ScreenDeck frontend not found: ${webRoot}`);
+  process.exit(1);
+}
+
+server.on("error", (error) => {
+  console.error(`Screenshot demo server failed: ${error.message}`);
+  process.exit(1);
 });
 
 server.listen(port, host, () => {
