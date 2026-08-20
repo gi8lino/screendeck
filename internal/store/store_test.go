@@ -26,7 +26,7 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{movie}))
 
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ABC123", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"42"}))
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ABC123", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"42"}, []string{"42"}))
 	require.NoError(t, database.JoinRoom(ctx, "ABC123", Participant{ID: "p2", Name: "Two"}, "hash2"))
 
 	matched, err := database.Vote(ctx, "ABC123", "p1", "42", true)
@@ -121,7 +121,7 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{movie}))
 
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "LEAVE1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"7"}))
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "LEAVE1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"7"}, []string{"7"}))
 	require.NoError(t, database.JoinRoom(ctx, "LEAVE1", Participant{ID: "p2", Name: "Two"}, "hash2"))
 	require.NoError(t, database.JoinRoom(ctx, "LEAVE1", Participant{ID: "p3", Name: "Three"}, "hash3"))
 
@@ -152,7 +152,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, movies))
 
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ROUND1", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b", "c"}))
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ROUND1", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b", "c"}, []string{"a", "b", "c"}))
 	require.NoError(t, database.JoinRoom(ctx, "ROUND1", Participant{ID: "p2", Name: "Two"}, "hash2"))
 
 	_, err = database.Vote(ctx, "ROUND1", "p1", "a", true)
@@ -234,4 +234,37 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 
 	_, _, _, _, _, err = database.SetRoundReady(ctx, "ROUND1", "p1", 2, true)
 	require.Error(t, err)
+}
+
+// TestAddMoreTitlesUsesUnusedPool verifies first-round expansion is duplicate-free and bounded by the original pool.
+func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close()
+
+	movies := []plex.Item{
+		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+		{RatingKey: "c", Library: "1", Type: "movie", Title: "Gamma"},
+	}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, movies))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "MORE01", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a", "b", "c"}))
+
+	state, err := database.RoomState(ctx, "MORE01", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 1, state.Progress.Total)
+	assert.Equal(t, 2, state.MoreTitles.Available)
+	assert.True(t, state.MoreTitles.CanAdd)
+
+	added, remaining, err := database.AddMoreTitles(ctx, "MORE01", "p1", 1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, added)
+	assert.Equal(t, 1, remaining)
+
+	state, err = database.RoomState(ctx, "MORE01", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 2, state.Progress.Total)
+	assert.Equal(t, 1, state.MoreTitles.Available)
 }

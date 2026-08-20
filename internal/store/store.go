@@ -52,15 +52,21 @@ type Participant struct {
 	ReadyForNextRound bool     `json:"readyForNextRound"`
 }
 
+type MoreTitlesState struct {
+	Available int  `json:"available"`
+	CanAdd    bool `json:"canAdd"`
+}
+
 type RoomState struct {
-	Room          Room           `json:"room"`
-	Me            Participant    `json:"me"`
-	Participants  []Participant  `json:"participants"`
-	Candidate     *plex.Item     `json:"candidate,omitempty"`
-	Matches       []plex.Item    `json:"matches"`
-	Progress      Progress       `json:"progress"`
-	NextRound     NextRoundState `json:"nextRound"`
-	RoundComplete bool           `json:"roundComplete"`
+	Room          Room            `json:"room"`
+	Me            Participant     `json:"me"`
+	Participants  []Participant   `json:"participants"`
+	Candidate     *plex.Item      `json:"candidate,omitempty"`
+	Matches       []plex.Item     `json:"matches"`
+	Progress      Progress        `json:"progress"`
+	NextRound     NextRoundState  `json:"nextRound"`
+	RoundComplete bool            `json:"roundComplete"`
+	MoreTitles    MoreTitlesState `json:"moreTitles"`
 }
 
 type Progress struct {
@@ -285,6 +291,14 @@ CREATE TABLE IF NOT EXISTS room_movies (
   PRIMARY KEY(room_code, movie_id)
 );
 CREATE INDEX IF NOT EXISTS room_movies_order_idx ON room_movies(room_code, position);
+CREATE TABLE IF NOT EXISTS room_pool (
+  room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+  movie_id TEXT NOT NULL REFERENCES movies(rating_key),
+  position INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(room_code, movie_id)
+);
+CREATE INDEX IF NOT EXISTS room_pool_order_idx ON room_pool(room_code, used, position);
 CREATE TABLE IF NOT EXISTS participants (
   id TEXT PRIMARY KEY,
   room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
@@ -413,7 +427,7 @@ genres=excluded.genres,viewed=excluded.viewed,added_at=excluded.added_at`)
 }
 
 // CreateRoom persists a room, its owner, and eligible media items.
-func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, movieIDs []string) error {
+func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, movieIDs, poolIDs []string) error {
 	if room.Round <= 0 {
 		room.Round = 1
 	}
@@ -447,6 +461,24 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 		if _, err := stmt.ExecContext(ctx, room.Code, movieID, position); err != nil {
 			return err
 		}
+	}
+	poolStmt, err := tx.PrepareContext(ctx, `INSERT INTO room_pool(room_code,movie_id,position,used) VALUES(?,?,?,?)`)
+	if err != nil {
+		return err
+	}
+	used := make(map[string]struct{}, len(movieIDs))
+	for _, movieID := range movieIDs {
+		used[movieID] = struct{}{}
+	}
+	for position, movieID := range poolIDs {
+		_, active := used[movieID]
+		if _, err := poolStmt.ExecContext(ctx, room.Code, movieID, position, active); err != nil {
+			poolStmt.Close()
+			return err
+		}
+	}
+	if err := poolStmt.Close(); err != nil {
+		return err
 	}
 	if err := reconcileRoomPhaseTx(ctx, tx, room.Code); err != nil {
 		return err
@@ -519,11 +551,15 @@ func (s *Store) RoomGenres(ctx context.Context, code string) ([]string, error) {
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT CAST(j.value AS TEXT)
-FROM room_movies rm
-JOIN movies m ON m.rating_key=rm.movie_id
+FROM (
+  SELECT room_code,movie_id FROM room_pool WHERE room_code=?
+  UNION
+  SELECT room_code,movie_id FROM room_movies WHERE room_code=?
+) rp
+JOIN movies m ON m.rating_key=rp.movie_id
 JOIN json_each(m.genres) j
-WHERE rm.room_code=? AND trim(CAST(j.value AS TEXT))<>''
-ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE`, code)
+WHERE trim(CAST(j.value AS TEXT))<>''
+ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE`, code, code)
 	if err != nil {
 		return nil, err
 	}
@@ -612,6 +648,12 @@ AND (json_array_length(p.genres)=0 OR EXISTS (
 	state.RoundComplete = state.Room.Phase == RoomPhaseRoundComplete || state.Room.Phase == RoomPhaseFinished
 	if remaining == 0 && !state.RoundComplete {
 		state.RoundComplete = true
+	}
+	if state.Room.Round == 1 {
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_pool WHERE room_code=? AND used=0`, code).Scan(&state.MoreTitles.Available); err != nil {
+			return state, err
+		}
+		state.MoreTitles.CanAdd = state.MoreTitles.Available > 0
 	}
 	return state, nil
 }
@@ -715,6 +757,85 @@ ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.like
 		return false, err
 	}
 	return matched, tx.Commit()
+}
+
+// AddMoreTitles activates unused titles from the original first-round pool.
+func (s *Store) AddMoreTitles(ctx context.Context, code, participantID string, count int) (added, remaining int, err error) {
+	if count <= 0 || count > 1000 {
+		return 0, 0, errors.New("add-more count must be between 1 and 1000")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+
+	var round int
+	if err := tx.QueryRowContext(ctx, `SELECT r.round FROM rooms r JOIN participants p ON p.room_code=r.code WHERE r.code=? AND p.id=? AND r.expires_at>?`, code, participantID, time.Now().Unix()).Scan(&round); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, ErrNotFound
+		}
+		return 0, 0, err
+	}
+	if round != 1 {
+		return 0, 0, errors.New("more titles can only be added during the first round")
+	}
+
+	rows, err := tx.QueryContext(ctx, `SELECT movie_id FROM room_pool WHERE room_code=? AND used=0 ORDER BY position LIMIT ?`, code, count)
+	if err != nil {
+		return 0, 0, err
+	}
+	var movieIDs []string
+	for rows.Next() {
+		var movieID string
+		if err := rows.Scan(&movieID); err != nil {
+			rows.Close()
+			return 0, 0, err
+		}
+		movieIDs = append(movieIDs, movieID)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, 0, err
+	}
+	if len(movieIDs) == 0 {
+		return 0, 0, errors.New("no more titles are available")
+	}
+
+	var nextPosition int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(position)+1,0) FROM room_movies WHERE room_code=?`, code).Scan(&nextPosition); err != nil {
+		return 0, 0, err
+	}
+	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO room_movies(room_code,movie_id,position) VALUES(?,?,?)`)
+	if err != nil {
+		return 0, 0, err
+	}
+	for offset, movieID := range movieIDs {
+		if _, err := stmt.ExecContext(ctx, code, movieID, nextPosition+offset); err != nil {
+			stmt.Close()
+			return 0, 0, err
+		}
+	}
+	if err := stmt.Close(); err != nil {
+		return 0, 0, err
+	}
+	for _, movieID := range movieIDs {
+		if _, err := tx.ExecContext(ctx, `UPDATE room_pool SET used=1 WHERE room_code=? AND movie_id=?`, code, movieID); err != nil {
+			return 0, 0, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM round_ready WHERE room_code=?`, code); err != nil {
+		return 0, 0, err
+	}
+	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
+		return 0, 0, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_pool WHERE room_code=? AND used=0`, code).Scan(&remaining); err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return len(movieIDs), remaining, nil
 }
 
 // SetRoundReady updates one participant's next-round readiness and advances once everyone agrees.

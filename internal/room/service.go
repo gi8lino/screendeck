@@ -58,6 +58,11 @@ type CatalogOptions struct {
 	MaxYear int      `json:"maxYear"`
 }
 
+type MoreTitlesResult struct {
+	Added     int `json:"added"`
+	Remaining int `json:"remaining"`
+}
+
 type RoundResult struct {
 	Round    int  `json:"round"`
 	Titles   int  `json:"titles"`
@@ -150,30 +155,34 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 		}
 	}
 	eligible := make([]plex.Item, 0, len(items))
-	availableGenreSet := make(map[string]string)
 	for _, item := range items {
 		if !matchesFilters(item, filters, genreSet) || seen[item.RatingKey] {
 			continue
 		}
 		seen[item.RatingKey] = true
 		eligible = append(eligible, item)
-		collectGenres(availableGenreSet, item.Genres)
 	}
 	if len(eligible) == 0 {
 		return Session{}, errors.New("the selected libraries contain no matching titles")
+	}
+	pool, err := orderInitialItems(eligible, sampling)
+	if err != nil {
+		return Session{}, err
+	}
+	availableGenreSet := make(map[string]string)
+	for _, item := range pool {
+		collectGenres(availableGenreSet, item.Genres)
 	}
 	participantGenres, err := canonicalGenres(genres, genreValues(availableGenreSet))
 	if err != nil {
 		return Session{}, err
 	}
-	selected, err := selectInitialItems(eligible, sampling, roundSize)
-	if err != nil {
-		return Session{}, err
+	selected := pool
+	if roundSize > 0 && len(selected) > roundSize {
+		selected = selected[:roundSize]
 	}
-	itemIDs := make([]string, 0, len(selected))
-	for _, item := range selected {
-		itemIDs = append(itemIDs, item.RatingKey)
-	}
+	itemIDs := itemRatingKeys(selected)
+	poolIDs := itemRatingKeys(pool)
 	code, err := roomCode()
 	if err != nil {
 		return Session{}, err
@@ -189,6 +198,7 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 		store.Participant{ID: participantID, Name: name, Genres: participantGenres},
 		tokenHash,
 		itemIDs,
+		poolIDs,
 	)
 	if err != nil {
 		return Session{}, err
@@ -206,8 +216,8 @@ func validSamplingStrategy(strategy SamplingStrategy) bool {
 	}
 }
 
-// selectInitialItems orders, filters, and caps eligible titles for the first round.
-func selectInitialItems(items []plex.Item, strategy SamplingStrategy, limit int) ([]plex.Item, error) {
+// orderInitialItems orders and filters the room's original eligible pool.
+func orderInitialItems(items []plex.Item, strategy SamplingStrategy) ([]plex.Item, error) {
 	selected := append([]plex.Item(nil), items...)
 	switch strategy {
 	case SamplingRandom:
@@ -241,10 +251,28 @@ func selectInitialItems(items []plex.Item, strategy SamplingStrategy, limit int)
 	default:
 		return nil, errors.New("invalid first-round selection strategy")
 	}
+	return selected, nil
+}
+
+// selectInitialItems returns the first limited portion of the ordered eligible pool.
+func selectInitialItems(items []plex.Item, strategy SamplingStrategy, limit int) ([]plex.Item, error) {
+	selected, err := orderInitialItems(items, strategy)
+	if err != nil {
+		return nil, err
+	}
 	if limit > 0 && len(selected) > limit {
 		selected = selected[:limit]
 	}
 	return selected, nil
+}
+
+// itemRatingKeys converts media items to their Plex rating keys in order.
+func itemRatingKeys(items []plex.Item) []string {
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, item.RatingKey)
+	}
+	return keys
 }
 
 // loadItems resolves selected libraries and loads their media items.
@@ -382,6 +410,21 @@ func (s *Service) Vote(ctx context.Context, code, token, movieID string, liked b
 		s.Notify(code)
 	}
 	return matched, err
+}
+
+// AddMoreTitles expands the first round from its unused original eligible pool.
+func (s *Service) AddMoreTitles(ctx context.Context, code, token string, count int) (MoreTitlesResult, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	participant, err := s.store.ParticipantByToken(ctx, code, hashToken(token))
+	if err != nil {
+		return MoreTitlesResult{}, err
+	}
+	added, remaining, err := s.store.AddMoreTitles(ctx, code, participant.ID, count)
+	if err != nil {
+		return MoreTitlesResult{}, err
+	}
+	s.Notify(code)
+	return MoreTitlesResult{Added: added, Remaining: remaining}, nil
 }
 
 // SetNextRoundReady records whether a participant agrees to narrow the deck to current matches.

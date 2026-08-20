@@ -139,6 +139,8 @@ function drawRoom(state) {
     ),
     matchSummary(state),
   );
+  const moreTitles = moreTitlesPanel(state);
+  if (moreTitles) side.append(moreTitles);
   const nextRound = nextRoundPanel(state);
   if (nextRound) side.append(nextRound);
 
@@ -254,6 +256,51 @@ function showMatches(matches, round) {
   );
   document.body.append(dialog);
   dialog.showModal();
+}
+
+// moreTitlesPanel lets the room expand the first round from its unused reserve.
+function moreTitlesPanel(state) {
+  const available = state.moreTitles?.available || 0;
+  if (state.room.round !== 1 || available <= 0) return null;
+
+  const panel = el("section", "more-titles-panel");
+  panel.append(
+    el("h3", "", "Need more options?"),
+    el(
+      "p",
+      "muted",
+      `${available} unused titles remain from the original filtered pool.`,
+    ),
+  );
+  const actions = el("div", "more-titles-actions");
+  [50, 100, 250].forEach((count) => {
+    const amount = Math.min(count, available);
+    if (amount <= 0) return;
+    const button = el("button", "btn ghost compact-button", `+${amount}`);
+    button.type = "button";
+    button.onclick = () => addMoreTitles(amount, button);
+    actions.append(button);
+  });
+  panel.append(actions);
+  return panel;
+}
+
+// addMoreTitles activates more unseen titles in the first round.
+async function addMoreTitles(count, button) {
+  if (button.disabled) return;
+  const session = getSession();
+  button.disabled = true;
+  try {
+    const result = await api(
+      `/api/rooms/${encodeURIComponent(session.code)}/more-titles`,
+      { method: "POST", body: JSON.stringify({ count }) },
+    );
+    showToast(`Added ${result.added} titles · ${result.remaining} remain`);
+    await renderRoom();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
 }
 
 // nextRoundPanel renders the unanimous agreement flow as soon as two matches exist.

@@ -106,6 +106,26 @@ func (a *API) Vote() http.HandlerFunc {
 	}
 }
 
+// AddMoreTitles returns the handler that expands the first round from its unused pool.
+func (a *API) AddMoreTitles() http.HandlerFunc {
+	type request struct {
+		Count int `json:"count"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var input request
+		if err := decode(r, &input); err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		result, err := a.Rooms.AddMoreTitles(r.Context(), r.PathValue("code"), participantToken(r), input.Count)
+		if err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		a.respond(w, http.StatusOK, result)
+	}
+}
+
 // NextRoundReady returns the handler that records agreement to narrow the deck to current matches.
 func (a *API) NextRoundReady() http.HandlerFunc {
 	type request struct {

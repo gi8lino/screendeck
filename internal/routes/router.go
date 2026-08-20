@@ -25,6 +25,7 @@ func NewRouter(appFS fs.FS, api *handler.API, logger *slog.Logger, debug bool) (
 	mux.HandleFunc("GET /api/rooms/{code}", api.RoomState())
 	mux.HandleFunc("DELETE /api/rooms/{code}", api.LeaveRoom())
 	mux.HandleFunc("POST /api/rooms/{code}/votes", api.Vote())
+	mux.HandleFunc("POST /api/rooms/{code}/more-titles", api.AddMoreTitles())
 	mux.HandleFunc("POST /api/rooms/{code}/round-ready", api.NextRoundReady())
 	mux.HandleFunc("GET /api/rooms/{code}/events", api.Events())
 	mux.HandleFunc("GET /api/posters/{movieID}", api.Poster())

@@ -1041,3 +1041,22 @@ select option {
     animation: none !important;
   }
 }
+
+.more-titles-panel,
+.next-round-panel {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #ffffff14;
+  border-radius: 16px;
+  background: #151419;
+}
+.more-titles-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.compact-button {
+  padding: 9px 14px;
+  font-size: 13px;
+}
