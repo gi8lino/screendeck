@@ -17,7 +17,7 @@ ScreenDeck is a self-hosted Plex picker that helps a group agree on a movie or T
 </p>
 
 !!! tip "New to ScreenDeck?"
-    Start with [Deployment](deployment/index.md) to run ScreenDeck, then check [Configuration](configuration/index.md) for the settings you can customize.
+Start with [Deployment](deployment/index.md) to run ScreenDeck, then check [Configuration](configuration/index.md) for the settings you can customize.
 
 ## Saved rooms
 

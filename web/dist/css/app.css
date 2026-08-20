@@ -396,21 +396,19 @@ select option {
   gap: 8px;
 }
 .home-hero {
-  min-height: 38vh;
+  min-height: 56vh;
 }
 .saved-rooms {
-  margin: 8px 0 30px;
-  padding: clamp(18px, 4vw, 26px);
-  border: 1px solid #ffffff14;
-  border-radius: 22px;
-  background: #17151ae8;
+  margin: clamp(36px, 7vw, 72px) 0 30px;
+  padding-top: clamp(28px, 5vw, 42px);
+  border-top: 1px solid #ffffff12;
 }
 .saved-rooms-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 .saved-rooms-head h2 {
   margin-top: 6px;
@@ -492,6 +490,24 @@ select option {
 .saved-rooms-empty,
 .saved-rooms-loading {
   margin: 0;
+}
+.saved-rooms-toggle {
+  display: block;
+  margin: 14px auto 0;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+.saved-rooms-toggle:hover {
+  color: var(--text);
+}
+.saved-rooms-toggle:focus-visible {
+  outline: 3px solid #ff5a5f55;
+  outline-offset: 2px;
+  border-radius: 9px;
 }
 .btn.danger {
   background: #d9484d;

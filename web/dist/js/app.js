@@ -13,19 +13,13 @@ const navigation = {
   renderRoom: () => renderRoom(navigation),
 };
 
+const savedRoomsPreviewLimit = 5;
+
 // renderHome displays the ScreenDeck landing page and persistent room memberships.
 function renderHome() {
   stopRoomEvents();
   root.replaceChildren();
   root.append(topbar());
-
-  const rooms = el("section", "saved-rooms");
-  rooms.append(
-    savedRoomsHeader(),
-    el("div", "empty saved-rooms-loading", "Loading your rooms…"),
-  );
-  root.append(rooms);
-  void loadSavedRooms(rooms);
 
   const config = getConfig();
   const hero = el("section", "hero home-hero");
@@ -61,6 +55,14 @@ function renderHome() {
   actions.append(create, join);
   hero.append(actions);
   root.append(hero);
+
+  const rooms = el("section", "saved-rooms");
+  rooms.append(
+    savedRoomsHeader(),
+    el("div", "empty saved-rooms-loading", "Loading your rooms…"),
+  );
+  root.append(rooms);
+  void loadSavedRooms(rooms);
 }
 
 // savedRoomsHeader creates the heading shown above persistent room memberships.
@@ -80,9 +82,9 @@ async function loadSavedRooms(section) {
   try {
     const result = await api("/api/me/rooms");
     const rooms = Array.isArray(result) ? result : [];
-    section.replaceChildren(savedRoomsHeader());
     if (rooms.length === 0) {
-      section.append(
+      section.replaceChildren(
+        savedRoomsHeader(),
         el(
           "div",
           "empty saved-rooms-empty",
@@ -92,15 +94,37 @@ async function loadSavedRooms(section) {
       return;
     }
 
-    const list = el("div", "saved-room-list");
-    rooms.forEach((room) => list.append(savedRoomCard(room)));
-    section.append(list);
+    renderSavedRooms(section, rooms);
   } catch (error) {
     section.replaceChildren(
       savedRoomsHeader(),
       el("div", "notice", `Could not load your rooms: ${error.message}`),
     );
   }
+}
+
+// renderSavedRooms renders a bounded room preview and an optional expansion control.
+function renderSavedRooms(section, rooms, expanded = false) {
+  section.replaceChildren(savedRoomsHeader());
+
+  const visibleRooms = expanded
+    ? rooms
+    : rooms.slice(0, savedRoomsPreviewLimit);
+  const list = el("div", "saved-room-list");
+  visibleRooms.forEach((room) => list.append(savedRoomCard(room)));
+  section.append(list);
+
+  if (rooms.length <= savedRoomsPreviewLimit) return;
+
+  const toggle = el(
+    "button",
+    "saved-rooms-toggle",
+    expanded ? "Show fewer rooms ↑" : `Show all rooms (${rooms.length}) ↓`,
+  );
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.onclick = () => renderSavedRooms(section, rooms, !expanded);
+  section.append(toggle);
 }
 
 // savedRoomCard creates one resumable room membership card.
