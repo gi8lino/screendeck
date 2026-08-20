@@ -94,7 +94,9 @@ function drawRoom(state) {
 
   const grid = el("section", "room-grid");
   const left = el("div");
-  if (state.candidate) {
+  if (state.room.phase === "finished" && state.winner) {
+    left.append(winnerCard(state));
+  } else if (state.candidate) {
     const showDetails = () => showMovieDetails(state.candidate);
     const deck = el("div", "deck");
     const card = movieCard(state.candidate, showDetails);
@@ -397,6 +399,70 @@ async function toggleNextRoundReady(state, button) {
         ? "Ready for next round"
         : "Ask for next round";
   }
+}
+
+// winnerCard renders the final shared choice as a dedicated result screen.
+function winnerCard(state) {
+  const winner = state.winner;
+  const movie = winner.item;
+  const card = el("section", "winner-card");
+  const poster = el("img", "winner-poster");
+  poster.src = `/api/posters/${encodeURIComponent(movie.id)}`;
+  poster.alt = `Poster for ${movie.title}`;
+
+  const content = el("div", "winner-content");
+  content.append(
+    el("div", "eyebrow", "Tonight, decided."),
+    el("h2", "", movie.title),
+    el("p", "winner-meta", movieMetadata(movie)),
+  );
+  if (movie.genres?.length) {
+    content.append(el("p", "dialog-genres", movie.genres.join(" · ")));
+  }
+  if (movie.summary) {
+    content.append(el("p", "winner-summary", movie.summary));
+  }
+  const supporters = (winner.likedBy || []).map((participant) => participant.name);
+  content.append(
+    el(
+      "p",
+      "winner-liked-by",
+      supporters.length
+        ? `Liked by ${supporters.join(", ")}`
+        : "The final shared match.",
+    ),
+  );
+
+  const actions = el("div", "winner-actions");
+  const details = el("button", "btn ghost", "View details");
+  details.type = "button";
+  details.onclick = () => showMovieDetails(movie);
+  const restart = el("button", "btn primary", "Start new room");
+  restart.type = "button";
+  restart.onclick = startNewRoom;
+  actions.append(details, restart);
+  content.append(actions);
+  card.append(poster, content);
+  return card;
+}
+
+// startNewRoom leaves the current room and opens a fresh host flow.
+async function startNewRoom() {
+  const session = getSession();
+  if (session) {
+    try {
+      await api(`/api/rooms/${encodeURIComponent(session.code)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      /* the room may already have expired */
+    }
+  }
+  stopRoomEvents();
+  resetMatchTracking();
+  saveSession(null);
+  if (navigation.renderCreateRoom) navigation.renderCreateRoom();
+  else navigation.renderHome();
 }
 
 // finishedCard renders the state shown after this participant exhausts their personal deck.

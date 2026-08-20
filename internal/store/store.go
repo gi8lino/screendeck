@@ -58,12 +58,18 @@ type MoreTitlesState struct {
 	CanAdd    bool `json:"canAdd"`
 }
 
+type WinnerState struct {
+	Item    plex.Item     `json:"item"`
+	LikedBy []Participant `json:"likedBy"`
+}
+
 type RoomState struct {
 	Room          Room            `json:"room"`
 	Me            Participant     `json:"me"`
 	Participants  []Participant   `json:"participants"`
 	Candidate     *plex.Item      `json:"candidate,omitempty"`
 	Matches       []plex.Item     `json:"matches"`
+	Winner        *WinnerState    `json:"winner,omitempty"`
 	Progress      Progress        `json:"progress"`
 	NextRound     NextRoundState  `json:"nextRound"`
 	RoundComplete bool            `json:"roundComplete"`
@@ -692,6 +698,29 @@ AND (json_array_length(p.genres)=0 OR (
 	state.RoundComplete = state.Room.Phase == RoomPhaseRoundComplete || state.Room.Phase == RoomPhaseFinished
 	if remaining == 0 && !state.RoundComplete {
 		state.RoundComplete = true
+	}
+	if state.Room.Phase == RoomPhaseFinished && len(state.Matches) == 1 {
+		winner := &WinnerState{Item: state.Matches[0]}
+		rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.name,p.genres,p.genre_mode
+FROM participants p JOIN votes v ON v.participant_id=p.id AND v.room_code=p.room_code
+WHERE p.room_code=? AND v.movie_id=? AND v.liked=1 ORDER BY p.joined_at`, code, state.Matches[0].RatingKey)
+		if err != nil {
+			return state, err
+		}
+		for rows.Next() {
+			var participant Participant
+			var genres string
+			if err := rows.Scan(&participant.ID, &participant.Name, &genres, &participant.GenreMode); err != nil {
+				rows.Close()
+				return state, err
+			}
+			decodeGenres(genres, &participant.Genres)
+			winner.LikedBy = append(winner.LikedBy, participant)
+		}
+		if err := rows.Close(); err != nil {
+			return state, err
+		}
+		state.Winner = winner
 	}
 	if state.Room.Round == 1 {
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_pool WHERE room_code=? AND used=0`, code).Scan(&state.MoreTitles.Available); err != nil {

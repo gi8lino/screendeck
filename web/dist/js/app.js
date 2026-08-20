@@ -8,6 +8,7 @@ import { el, root, topbar } from "./ui.js";
 
 const navigation = {
   renderHome,
+  renderCreateRoom: () => renderCreateRoom(navigation),
   renderJoinRoom: (roomCode = "") => renderJoinRoom(navigation, roomCode),
   renderRoom: () => renderRoom(navigation),
 };

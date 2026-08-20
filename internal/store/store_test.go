@@ -42,6 +42,11 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	assert.Nil(t, state.Candidate)
 	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
 	assert.Len(t, state.Matches, 1)
+	require.NotNil(t, state.Winner)
+	assert.Equal(t, "42", state.Winner.Item.RatingKey)
+	assert.Len(t, state.Winner.LikedBy, 2)
+	assert.Equal(t, "One", state.Winner.LikedBy[0].Name)
+	assert.Equal(t, "Two", state.Winner.LikedBy[1].Name)
 	assert.Equal(t, 1, state.Progress.Voted)
 }
 

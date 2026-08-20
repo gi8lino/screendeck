@@ -22,6 +22,7 @@ It is designed for a home network: one Go process, one SQLite file, and no accou
 - Unanimous next-round requests that can narrow the current matches into a new deck at any time, without waiting for everyone to finish a large round.
 - Collapsed match piles that expand on demand instead of filling the room view with every poster.
 - Live participant and match updates using Server-Sent Events.
+- Shows a dedicated winner screen with the final poster, details, supporters, and a fresh-room action.
 - Plex credentials remain on the server; posters are proxied and cached by the browser.
 - Embedded frontend, SQLite persistence, graceful shutdown, and a `/healthz` endpoint.
 
