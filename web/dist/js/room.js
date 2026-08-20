@@ -332,7 +332,7 @@ function nextRoundPanel(state) {
       el(
         "p",
         "muted",
-        "Ask everyone to narrow the deck to the matches you have right now. You can keep swiping while people decide.",
+        "Ask everyone to narrow the deck to the matches you have right now. Readiness resets if the group changes or fewer than two matches remain.",
       ),
     );
   }

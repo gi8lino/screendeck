@@ -515,10 +515,7 @@ SELECT ?,code,?,?,?,? FROM rooms WHERE code=? AND expires_at>?`, participant.ID,
 	}
 	// Membership changed, so any pending next-round agreement must be renewed
 	// by the new set of active participants.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM round_ready WHERE room_code=?`, code); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET next_round_requester_id='' WHERE code=?`, code); err != nil {
+	if err := cancelNextRoundRequestTx(ctx, tx, code); err != nil {
 		return err
 	}
 	// A newly joined participant has not voted yet, so prior matches are no
@@ -773,6 +770,9 @@ ON CONFLICT(room_code,participant_id,movie_id) DO UPDATE SET liked=excluded.like
 	} else if _, err := tx.ExecContext(ctx, `DELETE FROM matches WHERE room_code=? AND movie_id=?`, code, movieID); err != nil {
 		return false, err
 	}
+	if err := cancelNextRoundIfUnavailableTx(ctx, tx, code); err != nil {
+		return false, err
+	}
 	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
 		return false, err
 	}
@@ -1008,34 +1008,25 @@ func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (in
 	return nextRound, len(movieIDs), nil
 }
 
-// maybeAdvanceReadyRoundTx advances after membership changes leave every active participant ready.
-func maybeAdvanceReadyRoundTx(ctx context.Context, tx *sql.Tx, code string) error {
-	var round, participants, ready, matches int
-	if err := tx.QueryRowContext(ctx, `SELECT round FROM rooms WHERE code=?`, code).Scan(&round); err != nil {
+// cancelNextRoundRequestTx clears every participant's pending next-round agreement.
+func cancelNextRoundRequestTx(ctx context.Context, tx *sql.Tx, code string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM round_ready WHERE room_code=?`, code); err != nil {
 		return err
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM participants WHERE room_code=?`, code).Scan(&participants); err != nil {
-		return err
-	}
-	if participants < 2 {
-		return nil
-	}
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM round_ready rr
-JOIN participants p ON p.id=rr.participant_id AND p.room_code=rr.room_code
-WHERE rr.room_code=? AND rr.round=?`, code, round).Scan(&ready); err != nil {
-		return err
-	}
-	if ready != participants {
-		return nil
-	}
+	_, err := tx.ExecContext(ctx, `UPDATE rooms SET next_round_requester_id='' WHERE code=?`, code)
+	return err
+}
+
+// cancelNextRoundIfUnavailableTx clears a request once fewer than two matches remain.
+func cancelNextRoundIfUnavailableTx(ctx context.Context, tx *sql.Tx, code string) error {
+	var matches int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE room_code=?`, code).Scan(&matches); err != nil {
 		return err
 	}
-	if matches < 2 {
+	if matches >= 2 {
 		return nil
 	}
-	_, _, err := advanceRoundTx(ctx, tx, code, round)
-	return err
+	return cancelNextRoundRequestTx(ctx, tx, code)
 }
 
 // reconcileRoomPhaseTx derives the persistent room phase from readiness and round progress.
@@ -1109,15 +1100,6 @@ func (s *Store) LeaveRoom(ctx context.Context, code, tokenHash string) error {
 	if count, _ := result.RowsAffected(); count == 0 {
 		return ErrNotFound
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET next_round_requester_id=COALESCE((
-  SELECT rr.participant_id FROM round_ready rr
-  JOIN participants p ON p.id=rr.participant_id AND p.room_code=rr.room_code
-  WHERE rr.room_code=? AND rr.round=rooms.round ORDER BY rr.created_at,rr.participant_id LIMIT 1
-),'') WHERE code=? AND NOT EXISTS (
-  SELECT 1 FROM participants p WHERE p.room_code=rooms.code AND p.id=rooms.next_round_requester_id
-)`, code, code); err != nil {
-		return err
-	}
 	// A departure can make previously cast likes unanimous. Completed matches
 	// are intentionally retained even if the room membership later changes.
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO matches(room_code,movie_id,matched_at)
@@ -1129,7 +1111,7 @@ AND (SELECT COUNT(*) FROM votes WHERE room_code=? AND movie_id=rm.movie_id AND l
 	if err != nil {
 		return err
 	}
-	if err := maybeAdvanceReadyRoundTx(ctx, tx, code); err != nil {
+	if err := cancelNextRoundRequestTx(ctx, tx, code); err != nil {
 		return err
 	}
 	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {

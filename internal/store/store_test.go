@@ -272,3 +272,72 @@ func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
 	assert.Equal(t, 2, state.Progress.Total)
 	assert.Equal(t, 1, state.MoreTitles.Available)
 }
+
+// TestNextRoundRequestCancelsWhenMatchesDropBelowTwo verifies stale readiness cannot survive an invalid match set.
+func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close()
+
+	movies := []plex.Item{
+		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+	}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, movies))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "CANCEL", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+	require.NoError(t, database.JoinRoom(ctx, "CANCEL", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	_, err = database.Vote(ctx, "CANCEL", "p1", "a", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "CANCEL", "p2", "a", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "CANCEL", "p1", "b", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "CANCEL", "p2", "b", true)
+	require.NoError(t, err)
+	_, _, _, _, _, err = database.SetRoundReady(ctx, "CANCEL", "p1", 1, true)
+	require.NoError(t, err)
+
+	_, err = database.Vote(ctx, "CANCEL", "p1", "b", false)
+	require.NoError(t, err)
+	state, err := database.RoomState(ctx, "CANCEL", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, state.NextRound.Ready)
+	assert.Nil(t, state.NextRound.RequestedBy)
+	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
+}
+
+// TestMembershipChangeCancelsNextRoundRequest verifies the active group must consent again after a join.
+func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close()
+
+	movies := []plex.Item{
+		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+	}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, movies))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "MEMBER", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+	require.NoError(t, database.JoinRoom(ctx, "MEMBER", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	_, err = database.Vote(ctx, "MEMBER", "p1", "a", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "MEMBER", "p2", "a", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "MEMBER", "p1", "b", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "MEMBER", "p2", "b", true)
+	require.NoError(t, err)
+	_, _, _, _, _, err = database.SetRoundReady(ctx, "MEMBER", "p1", 1, true)
+	require.NoError(t, err)
+
+	require.NoError(t, database.JoinRoom(ctx, "MEMBER", Participant{ID: "p3", Name: "Three"}, "hash3"))
+	state, err := database.RoomState(ctx, "MEMBER", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, state.NextRound.Ready)
+	assert.Nil(t, state.NextRound.RequestedBy)
+	assert.Equal(t, RoomPhaseSwiping, state.Room.Phase)
+}
