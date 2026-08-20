@@ -10,18 +10,22 @@ let trackedRound = 0;
 let knownMatchIDs = new Set();
 let matchQueue = [];
 let matchDialogOpen = false;
+let roomViewGeneration = 0;
 
 // renderRoom loads and displays the current room.
 export async function renderRoom(nextNavigation) {
   if (nextNavigation) navigation = nextNavigation;
   const session = getSession();
   if (!session) return navigation.renderHome();
+  const generation = roomViewGeneration;
   try {
     const state = await api(`/api/rooms/${encodeURIComponent(session.code)}`);
+    if (generation !== roomViewGeneration) return;
     drawRoom(state);
     trackMatches(state);
     connectEvents();
   } catch (error) {
+    if (generation !== roomViewGeneration) return;
     resetMatchTracking();
     saveSession(null);
     navigation.renderHome();
@@ -31,6 +35,7 @@ export async function renderRoom(nextNavigation) {
 
 // stopRoomEvents closes the active room event stream.
 export function stopRoomEvents() {
+  roomViewGeneration += 1;
   eventSource?.close();
   eventSource = null;
 }
@@ -64,6 +69,7 @@ function drawRoom(state) {
       return;
     }
 
+    stopRoomEvents();
     try {
       await api(`/api/rooms/${encodeURIComponent(session.code)}`, {
         method: "DELETE",
@@ -71,7 +77,6 @@ function drawRoom(state) {
     } catch {
       /* session may already be gone */
     }
-    stopRoomEvents();
     resetMatchTracking();
     saveSession(null);
     navigation.renderHome();
@@ -923,15 +928,20 @@ async function vote(item, liked, card) {
 function connectEvents() {
   const session = getSession();
   if (!session || eventSource) return;
-  eventSource = new EventSource(
+
+  const generation = roomViewGeneration;
+  const source = new EventSource(
     `/api/rooms/${encodeURIComponent(session.code)}/events?token=${encodeURIComponent(session.token)}`,
   );
-  eventSource.addEventListener("update", (event) => {
+  eventSource = source;
+  source.addEventListener("update", (event) => {
+    if (generation !== roomViewGeneration || source !== eventSource) return;
     if ((event.data === "changed" || event.data === "connected") && !voting) {
       renderRoom();
     }
   });
-  eventSource.onerror = () => {
+  source.onerror = () => {
+    if (generation !== roomViewGeneration || source !== eventSource) return;
     stopRoomEvents();
     setTimeout(connectEvents, 3000);
   };
