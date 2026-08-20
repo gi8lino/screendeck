@@ -43,6 +43,15 @@ type Filters struct {
 	UnwatchedOnly      bool     `json:"unwatchedOnly"`
 }
 
+type SamplingStrategy string
+
+const (
+	SamplingRandom          SamplingStrategy = "random"
+	SamplingHighestRated    SamplingStrategy = "highest_rated"
+	SamplingRecentlyAdded   SamplingStrategy = "recently_added"
+	SamplingRandomUnwatched SamplingStrategy = "random_unwatched"
+)
+
 type CatalogOptions struct {
 	Genres  []string `json:"genres"`
 	MinYear int      `json:"minYear"`
@@ -109,7 +118,7 @@ func (s *Service) Options(ctx context.Context, libraryKeys []string) (CatalogOpt
 }
 
 // Create creates a room and joins its first participant.
-func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, roundSize int) (Session, error) {
+func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, sampling SamplingStrategy, roundSize int) (Session, error) {
 	name = cleanName(name)
 	if name == "" {
 		return Session{}, errors.New("name is required")
@@ -123,6 +132,12 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 	if roundSize < 0 || roundSize > 50000 {
 		return Session{}, errors.New("round size must be between 0 and 50000 titles")
 	}
+	if sampling == "" {
+		sampling = SamplingRandom
+	}
+	if !validSamplingStrategy(sampling) {
+		return Session{}, errors.New("invalid first-round selection strategy")
+	}
 	_, items, err := s.loadItems(ctx, libraryKeys)
 	if err != nil {
 		return Session{}, err
@@ -134,26 +149,30 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 			genreSet[normalized] = struct{}{}
 		}
 	}
-	var itemIDs []string
+	eligible := make([]plex.Item, 0, len(items))
 	availableGenreSet := make(map[string]string)
 	for _, item := range items {
 		if !matchesFilters(item, filters, genreSet) || seen[item.RatingKey] {
 			continue
 		}
 		seen[item.RatingKey] = true
-		itemIDs = append(itemIDs, item.RatingKey)
+		eligible = append(eligible, item)
 		collectGenres(availableGenreSet, item.Genres)
 	}
-	if len(itemIDs) == 0 {
+	if len(eligible) == 0 {
 		return Session{}, errors.New("the selected libraries contain no matching titles")
 	}
 	participantGenres, err := canonicalGenres(genres, genreValues(availableGenreSet))
 	if err != nil {
 		return Session{}, err
 	}
-	mathrand.Shuffle(len(itemIDs), func(i, j int) { itemIDs[i], itemIDs[j] = itemIDs[j], itemIDs[i] })
-	if roundSize > 0 && len(itemIDs) > roundSize {
-		itemIDs = itemIDs[:roundSize]
+	selected, err := selectInitialItems(eligible, sampling, roundSize)
+	if err != nil {
+		return Session{}, err
+	}
+	itemIDs := make([]string, 0, len(selected))
+	for _, item := range selected {
+		itemIDs = append(itemIDs, item.RatingKey)
 	}
 	code, err := roomCode()
 	if err != nil {
@@ -175,6 +194,57 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 		return Session{}, err
 	}
 	return Session{Code: code, Token: token}, nil
+}
+
+// validSamplingStrategy reports whether a first-round selection strategy is supported.
+func validSamplingStrategy(strategy SamplingStrategy) bool {
+	switch strategy {
+	case SamplingRandom, SamplingHighestRated, SamplingRecentlyAdded, SamplingRandomUnwatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// selectInitialItems orders, filters, and caps eligible titles for the first round.
+func selectInitialItems(items []plex.Item, strategy SamplingStrategy, limit int) ([]plex.Item, error) {
+	selected := append([]plex.Item(nil), items...)
+	switch strategy {
+	case SamplingRandom:
+		mathrand.Shuffle(len(selected), func(i, j int) { selected[i], selected[j] = selected[j], selected[i] })
+	case SamplingHighestRated:
+		sort.SliceStable(selected, func(i, j int) bool {
+			if selected[i].Rating != selected[j].Rating {
+				return selected[i].Rating > selected[j].Rating
+			}
+			return selected[i].Title < selected[j].Title
+		})
+	case SamplingRecentlyAdded:
+		sort.SliceStable(selected, func(i, j int) bool {
+			if selected[i].AddedAt != selected[j].AddedAt {
+				return selected[i].AddedAt > selected[j].AddedAt
+			}
+			return selected[i].Title < selected[j].Title
+		})
+	case SamplingRandomUnwatched:
+		unwatched := selected[:0]
+		for _, item := range selected {
+			if !item.Viewed {
+				unwatched = append(unwatched, item)
+			}
+		}
+		selected = unwatched
+		if len(selected) == 0 {
+			return nil, errors.New("no unwatched titles match the selected room filters")
+		}
+		mathrand.Shuffle(len(selected), func(i, j int) { selected[i], selected[j] = selected[j], selected[i] })
+	default:
+		return nil, errors.New("invalid first-round selection strategy")
+	}
+	if limit > 0 && len(selected) > limit {
+		selected = selected[:limit]
+	}
+	return selected, nil
 }
 
 // loadItems resolves selected libraries and loads their media items.

@@ -11,6 +11,7 @@ It is designed for a home network: one Go process, one SQLite file, and no accou
 - Discovers accessible Plex servers and prefers their local non-relay connection.
 - Loads movie and TV-show libraries and metadata from Plex.
 - Filters rooms by library, genre, release year, maximum movie runtime, and watched state.
+- Lets hosts cap the first round and sample randomly, by rating, by recently added titles, or from unwatched titles.
 - Lets the host cap the shuffled first round at 50, 100, 250, or 500 titles, or use every matching title; the UI defaults to 250.
 - Lets each participant choose optional personal genres that only affect their own swipe deck.
 - Touch and mouse swipe interface, with accessible like/pass buttons.

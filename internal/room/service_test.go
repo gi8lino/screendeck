@@ -52,7 +52,7 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 	assert.Equal(t, 2010, options.MinYear)
 	assert.Equal(t, 2023, options.MaxYear)
 
-	session, err := service.Create(context.Background(), "Host", []string{"1", "2"}, Filters{Genres: []string{"Drama"}, YearFrom: 2020, MaxDurationMinutes: 120}, nil, 0)
+	session, err := service.Create(context.Background(), "Host", []string{"1", "2"}, Filters{Genres: []string{"Drama"}, YearFrom: 2020, MaxDurationMinutes: 120}, nil, SamplingRandom, 0)
 	require.NoError(t, err)
 
 	state, err := service.State(context.Background(), session.Code, session.Token)
@@ -79,7 +79,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	}
 	service := NewService(database, catalog, time.Hour)
 
-	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Drama"}, 0)
+	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Drama"}, SamplingRandom, 0)
 	require.NoError(t, err)
 
 	hostState, err := service.State(context.Background(), host.Code, host.Token)
@@ -118,7 +118,7 @@ func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 	}
 	service := NewService(database, catalog, time.Hour)
 
-	session, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, 2)
+	session, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, SamplingRandom, 2)
 	require.NoError(t, err)
 
 	state, err := service.State(context.Background(), session.Code, session.Token)
@@ -126,6 +126,36 @@ func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 	assert.Equal(t, 2, state.Progress.Total)
 	require.NotNil(t, state.Candidate)
 
-	_, err = service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, -1)
+	_, err = service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, SamplingRandom, -1)
+	require.Error(t, err)
+}
+
+// TestInitialSamplingStrategies verifies deterministic ordering and unwatched selection.
+func TestInitialSamplingStrategies(t *testing.T) {
+	items := []plex.Item{
+		{RatingKey: "old", Title: "Old", Rating: 7.0, AddedAt: 100, Viewed: false},
+		{RatingKey: "top", Title: "Top", Rating: 9.5, AddedAt: 200, Viewed: true},
+		{RatingKey: "new", Title: "New", Rating: 8.0, AddedAt: 300, Viewed: false},
+	}
+
+	highest, err := selectInitialItems(items, SamplingHighestRated, 2)
+	require.NoError(t, err)
+	require.Len(t, highest, 2)
+	assert.Equal(t, "top", highest[0].RatingKey)
+	assert.Equal(t, "new", highest[1].RatingKey)
+
+	recent, err := selectInitialItems(items, SamplingRecentlyAdded, 2)
+	require.NoError(t, err)
+	require.Len(t, recent, 2)
+	assert.Equal(t, "new", recent[0].RatingKey)
+	assert.Equal(t, "top", recent[1].RatingKey)
+
+	unwatched, err := selectInitialItems(items, SamplingRandomUnwatched, 0)
+	require.NoError(t, err)
+	assert.Len(t, unwatched, 2)
+	assert.False(t, unwatched[0].Viewed)
+	assert.False(t, unwatched[1].Viewed)
+
+	_, err = selectInitialItems(items, SamplingStrategy("bogus"), 0)
 	require.Error(t, err)
 }

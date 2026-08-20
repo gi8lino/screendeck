@@ -68,6 +68,7 @@ export async function renderCreateRoom(navigation) {
           libraryKeys: selectedLibraries(),
           genres: selectedGenres(filters.personalGenres),
           roundSize: Number(filters.roundSize.value) || 0,
+          samplingStrategy: filters.samplingStrategy.value,
           filters: filterValues(filters),
         }),
       });
@@ -104,6 +105,28 @@ function createFilterFields() {
     "muted",
     "Choose at least one library to load its filters.",
   );
+  const samplingRow = el("div", "form-row compact");
+  samplingRow.append(el("label", "", "First-round selection"));
+  const samplingStrategy = el("select");
+  [
+    ["random", "Random"],
+    ["highest_rated", "Highest rated"],
+    ["recently_added", "Recently added"],
+    ["random_unwatched", "Random unwatched"],
+  ].forEach(([value, label]) => {
+    const option = el("option", "", label);
+    option.value = value;
+    samplingStrategy.append(option);
+  });
+  samplingRow.append(
+    samplingStrategy,
+    el(
+      "p",
+      "muted",
+      "Choose how ScreenDeck picks and orders titles before applying the first-round limit.",
+    ),
+  );
+
   const roundSizeRow = el("div", "form-row compact");
   roundSizeRow.append(el("label", "", "Maximum titles in the first round"));
   const roundSize = el("select");
@@ -146,13 +169,14 @@ function createFilterFields() {
     watchedBox,
     el("span", "", "Only include fully unwatched titles"),
   );
-  box.append(status, roundSizeRow, genreRow, range, watched);
+  box.append(status, samplingRow, roundSizeRow, genreRow, range, watched);
   return {
     personalBox,
     personalGenres,
     box,
     status,
     roundSize,
+    samplingStrategy,
     genres,
     yearFrom,
     yearTo,

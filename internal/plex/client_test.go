@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestClientLoadsLibrariesAndMovies verifies catalog loading from Plex.
@@ -20,39 +23,42 @@ func TestClientLoadsLibrariesAndMovies(t *testing.T) {
 		case "/library/sections":
 			fmt.Fprint(w, `{"MediaContainer":{"Directory":[{"key":"1","title":"Films","type":"movie"},{"key":"2","title":"TV","type":"show"}]}}`)
 		case "/library/sections/1/all":
-			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"42","guid":"plex://movie/42","title":"Arrival","year":2016,"summary":"First contact.","duration":6960000,"rating":7.9,"thumb":"/poster/42","viewCount":1,"Genre":[{"tag":"Science Fiction"}]}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"42","guid":"plex://movie/42","title":"Arrival","year":2016,"summary":"First contact.","duration":6960000,"rating":7.9,"thumb":"/poster/42","viewCount":1,"addedAt":1700000000,"Genre":[{"tag":"Science Fiction"}]}]}}`)
 		case "/library/sections/2/all":
-			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"84","type":"show","guid":"plex://show/84","title":"Severance","year":2022,"thumb":"/poster/84","leafCount":19,"viewedLeafCount":19,"Genre":[{"tag":"Drama"}]}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"ratingKey":"84","type":"show","guid":"plex://show/84","title":"Severance","year":2022,"thumb":"/poster/84","leafCount":19,"viewedLeafCount":19,"addedAt":1700000100,"Genre":[{"tag":"Drama"}]}]}}`)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
 	client, err := New(server.URL, "token")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	libraries, err := client.Libraries(context.Background())
-	if err != nil || len(libraries) != 2 || libraries[0].Title != "Films" || libraries[1].Type != "show" {
-		t.Fatalf("Libraries() = %#v, %v", libraries, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, libraries, 2)
+	assert.Equal(t, "Films", libraries[0].Title)
+	assert.Equal(t, "show", libraries[1].Type)
+
 	movies, err := client.Items(context.Background(), libraries[0])
-	if err != nil || len(movies) != 1 {
-		t.Fatalf("Movies() = %#v, %v", movies, err)
-	}
-	if movies[0].Title != "Arrival" || !movies[0].Viewed || len(movies[0].Genres) != 1 {
-		t.Fatalf("unexpected movie: %#v", movies[0])
-	}
+	require.NoError(t, err)
+	require.Len(t, movies, 1)
+	assert.Equal(t, "Arrival", movies[0].Title)
+	assert.True(t, movies[0].Viewed)
+	assert.Len(t, movies[0].Genres, 1)
+	assert.Equal(t, int64(1700000000), movies[0].AddedAt)
+
 	shows, err := client.Items(context.Background(), libraries[1])
-	if err != nil || len(shows) != 1 || shows[0].Type != "show" || !shows[0].Viewed {
-		t.Fatalf("unexpected shows: %#v, %v", shows, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, shows, 1)
+	assert.Equal(t, "show", shows[0].Type)
+	assert.True(t, shows[0].Viewed)
+	assert.Equal(t, int64(1700000100), shows[0].AddedAt)
 }
 
 // TestClientRejectsInvalidLibraryKey verifies unsafe library keys are rejected.
 func TestClientRejectsInvalidLibraryKey(t *testing.T) {
-	client, _ := New("http://plex.test", "token")
-	if _, err := client.Items(context.Background(), Library{Key: "../secret", Type: "movie"}); err == nil {
-		t.Fatal("expected invalid library key error")
-	}
+	client, err := New("http://plex.test", "token")
+	require.NoError(t, err)
+	_, err = client.Items(context.Background(), Library{Key: "../secret", Type: "movie"})
+	require.Error(t, err)
 }

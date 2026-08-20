@@ -267,7 +267,8 @@ CREATE TABLE IF NOT EXISTS movies (
   rating REAL NOT NULL DEFAULT 0,
   thumb TEXT NOT NULL DEFAULT '',
   genres TEXT NOT NULL DEFAULT '[]',
-  viewed INTEGER NOT NULL DEFAULT 0
+  viewed INTEGER NOT NULL DEFAULT 0,
+  added_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS movies_library_idx ON movies(library_key);
 CREATE TABLE IF NOT EXISTS rooms (
@@ -333,6 +334,9 @@ CREATE TABLE IF NOT EXISTS plex_auth (
 	if err := s.ensureColumn(ctx, "movies", "media_type", "TEXT NOT NULL DEFAULT 'movie'"); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "movies", "added_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	if err := s.ensureColumn(ctx, "rooms", "round", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
@@ -389,11 +393,11 @@ ON CONFLICT(key) DO UPDATE SET title=excluded.title,synced_at=excluded.synced_at
 		return fmt.Errorf("save library: %w", err)
 	}
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO movies
-(rating_key,library_key,media_type,guid,title,year,summary,duration,rating,thumb,genres,viewed)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(rating_key) DO UPDATE SET
+(rating_key,library_key,media_type,guid,title,year,summary,duration,rating,thumb,genres,viewed,added_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(rating_key) DO UPDATE SET
 library_key=excluded.library_key,media_type=excluded.media_type,guid=excluded.guid,title=excluded.title,year=excluded.year,
 summary=excluded.summary,duration=excluded.duration,rating=excluded.rating,thumb=excluded.thumb,
-genres=excluded.genres,viewed=excluded.viewed`)
+genres=excluded.genres,viewed=excluded.viewed,added_at=excluded.added_at`)
 	if err != nil {
 		return err
 	}
@@ -401,7 +405,7 @@ genres=excluded.genres,viewed=excluded.viewed`)
 	for _, item := range items {
 		genres, _ := json.Marshal(item.Genres)
 		if _, err := stmt.ExecContext(ctx, item.RatingKey, item.Library, item.Type, item.GUID, item.Title, item.Year,
-			item.Summary, item.Duration, item.Rating, item.Thumb, string(genres), item.Viewed); err != nil {
+			item.Summary, item.Duration, item.Rating, item.Thumb, string(genres), item.Viewed, item.AddedAt); err != nil {
 			return fmt.Errorf("save item %q: %w", item.Title, err)
 		}
 	}
@@ -614,7 +618,7 @@ AND (json_array_length(p.genres)=0 OR EXISTS (
 
 // nextMovie returns the next unvoted media item for a participant.
 func (s *Store) nextMovie(ctx context.Context, code, participantID string) (*plex.Item, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed
+	row := s.db.QueryRowContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed,m.added_at
 FROM participants p
 JOIN room_movies rm ON rm.room_code=p.room_code
 JOIN movies m ON m.rating_key=rm.movie_id
@@ -634,7 +638,7 @@ ORDER BY rm.position LIMIT 1`, participantID, code)
 
 // matchMovies returns media liked by every active participant.
 func (s *Store) matchMovies(ctx context.Context, code string) ([]plex.Item, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed
+	rows, err := s.db.QueryContext(ctx, `SELECT m.rating_key,m.library_key,m.media_type,m.guid,m.title,m.year,m.summary,m.duration,m.rating,m.genres,m.viewed,m.added_at
 FROM matches x JOIN movies m ON m.rating_key=x.movie_id WHERE x.room_code=? ORDER BY x.matched_at DESC,m.title`, code)
 	if err != nil {
 		return nil, err
@@ -657,7 +661,7 @@ type scanner interface{ Scan(...any) error }
 func scanMovie(row scanner) (*plex.Item, error) {
 	var movie plex.Item
 	var genres string
-	if err := row.Scan(&movie.RatingKey, &movie.Library, &movie.Type, &movie.GUID, &movie.Title, &movie.Year, &movie.Summary, &movie.Duration, &movie.Rating, &genres, &movie.Viewed); err != nil {
+	if err := row.Scan(&movie.RatingKey, &movie.Library, &movie.Type, &movie.GUID, &movie.Title, &movie.Year, &movie.Summary, &movie.Duration, &movie.Rating, &genres, &movie.Viewed, &movie.AddedAt); err != nil {
 		return nil, err
 	}
 	decodeGenres(genres, &movie.Genres)

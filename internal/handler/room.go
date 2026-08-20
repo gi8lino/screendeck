@@ -13,11 +13,12 @@ import (
 // CreateRoom returns the room creation handler.
 func (a *API) CreateRoom() http.HandlerFunc {
 	type request struct {
-		Name        string       `json:"name"`
-		LibraryKeys []string     `json:"libraryKeys"`
-		Filters     room.Filters `json:"filters"`
-		Genres      []string     `json:"genres"`
-		RoundSize   int          `json:"roundSize"`
+		Name             string                `json:"name"`
+		LibraryKeys      []string              `json:"libraryKeys"`
+		Filters          room.Filters          `json:"filters"`
+		Genres           []string              `json:"genres"`
+		RoundSize        int                   `json:"roundSize"`
+		SamplingStrategy room.SamplingStrategy `json:"samplingStrategy"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -25,7 +26,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.RoundSize)
+		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.SamplingStrategy, input.RoundSize)
 		if err != nil {
 			a.fail(r, w, err)
 			return

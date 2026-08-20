@@ -31,6 +31,7 @@ type Item struct {
 	Thumb     string   `json:"-"`
 	Genres    []string `json:"genres"`
 	Viewed    bool     `json:"viewed"`
+	AddedAt   int64    `json:"addedAt"`
 }
 
 type Client struct {
@@ -69,6 +70,7 @@ type metadataItem struct {
 	LeafCount       int             `json:"leafCount"`
 	ViewedLeafCount int             `json:"viewedLeafCount"`
 	Type            string          `json:"type"`
+	AddedAt         int64           `json:"addedAt"`
 	Genres          []metadataGenre `json:"Genre"`
 }
 
@@ -142,7 +144,7 @@ func (c *Client) Items(ctx context.Context, library Library) ([]Item, error) {
 		items = append(items, Item{
 			RatingKey: item.RatingKey, Library: library.Key, Type: itemType, GUID: item.GUID, Title: item.Title,
 			Year: item.Year, Summary: item.Summary, Duration: item.Duration, Rating: item.Rating,
-			Thumb: item.Thumb, Genres: genres, Viewed: viewed,
+			Thumb: item.Thumb, Genres: genres, Viewed: viewed, AddedAt: item.AddedAt,
 		})
 	}
 	return items, nil
