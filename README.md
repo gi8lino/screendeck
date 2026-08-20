@@ -25,7 +25,7 @@ ScreenDeck turns a Plex library into a shared swipe deck. Create a room, invite 
 
 ## Highlights
 
-- Movies and TV shows from your own Plex libraries.
+- Movies and TV shows from your own Plex libraries, with optional server-wide library exclusions.
 - Room filters for genres, years, movie length, and watched state.
 - Optional personal genre preferences for every participant.
 - First-round limits for large libraries, with several sampling strategies.
@@ -63,14 +63,15 @@ For Kubernetes and other deployment details, see the [deployment guide](https://
 
 Environment variables use the `SCREENDECK__` prefix.
 
-| Setting                      | Default                 | What it changes                                              |
-| ---------------------------- | ----------------------- | ------------------------------------------------------------ |
-| `SCREENDECK__BASE_URL`       | `http://localhost:8080` | Public URL used for room invitation links.                   |
-| `SCREENDECK__LISTEN_ADDRESS` | `:8080`                 | Address and port ScreenDeck listens on.                      |
-| `SCREENDECK__ROOM_TTL`       | `24h`                   | How long rooms and saved memberships remain available.       |
-| `SCREENDECK__LOG_FORMAT`     | `json`                  | Log output: `json` or `text`.                                |
-| `SCREENDECK__DEBUG`          | `false`                 | Enables verbose request and diagnostic logs.                 |
-| `SCREENDECK__EXPERIMENTAL`   | `false`                 | Shows experimental features such as Plex JWT authentication. |
+| Setting                         | Default                 | What it changes                                              |
+| ------------------------------- | ----------------------- | ------------------------------------------------------------ |
+| `SCREENDECK__BASE_URL`          | `http://localhost:8080` | Public URL used for room invitation links.                   |
+| `SCREENDECK__LISTEN_ADDRESS`    | `:8080`                 | Address and port ScreenDeck listens on.                      |
+| `SCREENDECK__EXCLUDE_LIBRARIES` | empty                   | Plex library titles or keys hidden from room creation.       |
+| `SCREENDECK__ROOM_TTL`          | `24h`                   | How long rooms and saved memberships remain available.       |
+| `SCREENDECK__LOG_FORMAT`        | `json`                  | Log output: `json` or `text`.                                |
+| `SCREENDECK__DEBUG`             | `false`                 | Enables verbose request and diagnostic logs.                 |
+| `SCREENDECK__EXPERIMENTAL`      | `false`                 | Shows experimental features such as Plex JWT authentication. |
 
 See the [configuration guide](https://gi8lino.github.io/screendeck/configuration/) for every setting and command-line flag.
 

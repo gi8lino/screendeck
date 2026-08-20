@@ -44,7 +44,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 
 	plexClient, err := plex.New(plexServer.URL, "token")
 	require.NoError(t, err)
-	rooms := room.NewService(database, plexClient, time.Hour)
+	rooms := room.NewService(database, plexClient, time.Hour, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestHealthAndFrontend(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authManager, err := plex.NewAuthManager(context.Background(), database, logger, "http://plex.test", "", false)
 	require.NoError(t, err)
-	api := handler.New("test", "commit", "http://movies.test", false, room.NewService(database, authManager, time.Hour), authManager, logger)
+	api := handler.New("test", "commit", "http://movies.test", false, room.NewService(database, authManager, time.Hour, nil), authManager, logger)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
 	router, err := NewRouter(appFS, api, logger, false)
 	require.NoError(t, err)

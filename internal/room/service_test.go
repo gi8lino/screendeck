@@ -31,6 +31,53 @@ func (f fakeCatalog) Items(_ context.Context, library plex.Library) ([]plex.Item
 // Poster returns no poster from the fake catalog.
 func (f fakeCatalog) Poster(context.Context, string) (*http.Response, error) { return nil, nil }
 
+// TestLibraries verifies configured Plex libraries are hidden and cannot be selected.
+func TestLibraries(t *testing.T) {
+	database, err := store.Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	catalog := fakeCatalog{
+		libraries: []plex.Library{
+			{Key: "1", Title: "Films", Type: "movie"},
+			{Key: "2", Title: "Kids", Type: "movie"},
+			{Key: "3", Title: "Archive", Type: "movie"},
+			{Key: "4", Title: "Series", Type: "show"},
+		},
+		items: map[string][]plex.Item{
+			"1": {{RatingKey: "film", Library: "1", Type: "movie", Title: "Film"}},
+			"2": {{RatingKey: "kids", Library: "2", Type: "movie", Title: "Kids Film"}},
+			"3": {{RatingKey: "archive", Library: "3", Type: "movie", Title: "Archived Film"}},
+			"4": {{RatingKey: "series", Library: "4", Type: "show", Title: "Series"}},
+		},
+	}
+	service := NewService(database, catalog, time.Hour, []string{" kids ", "3"})
+
+	libraries, err := service.Libraries(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []plex.Library{
+		{Key: "1", Title: "Films", Type: "movie"},
+		{Key: "4", Title: "Series", Type: "show"},
+	}, libraries)
+
+	_, err = service.Options(context.Background(), []string{"2"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `media library "2" not found`)
+
+	_, err = service.Create(
+		context.Background(),
+		"Host",
+		[]string{"3"},
+		Filters{},
+		nil,
+		GenreModeAny,
+		SamplingRandom,
+		0,
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `media library "3" not found`)
+}
+
 // TestCatalogOptionsAndFilters verifies catalog option discovery and item filtering.
 func TestCatalogOptionsAndFilters(t *testing.T) {
 	database, err := store.Open(":memory:")
@@ -47,7 +94,7 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 			"2": {{RatingKey: "s1", Library: "2", Type: "show", Title: "TV Drama", Year: 2022, Genres: []string{"Drama"}}},
 		},
 	}
-	service := NewService(database, catalog, time.Hour)
+	service := NewService(database, catalog, time.Hour, nil)
 
 	options, err := service.Options(context.Background(), []string{"1", "2"})
 	require.NoError(t, err)
@@ -80,7 +127,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 			},
 		},
 	}
-	service := NewService(database, catalog, time.Hour)
+	service := NewService(database, catalog, time.Hour, nil)
 
 	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Drama"}, GenreModeAny, SamplingRandom, 0)
 	require.NoError(t, err)
@@ -123,7 +170,7 @@ func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 			},
 		},
 	}
-	service := NewService(database, catalog, time.Hour)
+	service := NewService(database, catalog, time.Hour, nil)
 
 	session, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, nil, GenreModeAny, SamplingRandom, 2)
 	require.NoError(t, err)
@@ -182,7 +229,7 @@ func TestParticipantGenreModeAllRequiresEveryGenre(t *testing.T) {
 			},
 		},
 	}
-	service := NewService(database, catalog, time.Hour)
+	service := NewService(database, catalog, time.Hour, nil)
 
 	host, err := service.Create(context.Background(), "Host", []string{"1"}, Filters{}, []string{"Action", "Drama"}, GenreModeAll, SamplingHighestRated, 0)
 	require.NoError(t, err)

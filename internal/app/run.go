@@ -72,7 +72,7 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 		return fmt.Errorf("configure Plex: %w", err)
 	}
 
-	roomService := room.NewService(database, authManager, cfg.RoomTTL)
+	roomService := room.NewService(database, authManager, cfg.RoomTTL, cfg.ExcludeLibraries)
 
 	serverLogger := logger.With("component", "server")
 	api := handler.New(version, commit, cfg.BaseURL, cfg.Experimental, roomService, authManager, serverLogger)

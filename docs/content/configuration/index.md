@@ -13,6 +13,7 @@ ScreenDeck accepts command-line flags and environment variables. Environment var
 | `--database-path`         | `SCREENDECK__DATABASE_PATH`         | `./data/screendeck.db`  | SQLite database path.                                          |
 | `--auth-key-path`         | `SCREENDECK__AUTH_KEY_PATH`         | `./data/auth.key`       | Local encryption-key path.                                     |
 | `--base-url`              | `SCREENDECK__BASE_URL`              | `http://localhost:8080` | Public URL used for room invitation links.                     |
+| `--exclude-libraries`     | `SCREENDECK__EXCLUDE_LIBRARIES`     | empty                   | Plex library titles or keys excluded from room creation.       |
 | `--plex-url-override`     | `SCREENDECK__PLEX_URL_OVERRIDE`     | empty                   | Runtime override for the discovered Plex server URL.           |
 | `--room-ttl`              | `SCREENDECK__ROOM_TTL`              | `24h`                   | How long rooms and their saved memberships remain available.   |
 | `--room-cleanup-interval` | `SCREENDECK__ROOM_CLEANUP_INTERVAL` | `1h`                    | How often expired rooms are deleted.                           |
@@ -46,6 +47,26 @@ Opening a saved room restores the same participant session. This preserves parti
 `room-ttl` controls the lifetime of the room itself. Saved membership is useful only while that room remains active. Once a room expires and cleanup removes it, it can no longer be resumed and disappears from **Your rooms**.
 
 Saved room discovery is browser-profile-specific. ScreenDeck does not provide user accounts or automatically synchronize memberships between browsers or devices.
+
+## Excluded Plex libraries
+
+`exclude-libraries` hides selected Plex libraries from ScreenDeck room creation. Each configured value matches either a Plex library title or its section key. Matching is case-insensitive and surrounding whitespace is ignored.
+
+Excluded libraries are omitted from the library list shown when creating a room. The backend also rejects an excluded library key if a client submits it directly, so the setting is enforced server-side rather than only hidden in the browser.
+
+Changing the exclusion list does not rewrite existing rooms. Active rooms continue using the deck that was persisted when they were created.
+
+Values can be supplied as a comma-separated list or by repeating the flag. For example:
+
+```sh
+go run ./cmd --exclude-libraries "Kids,Archive"
+```
+
+The equivalent environment variable is:
+
+```sh
+SCREENDECK__EXCLUDE_LIBRARIES=Kids,Archive
+```
 
 ## Plex URL override
 

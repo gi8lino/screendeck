@@ -28,6 +28,8 @@ type Service struct {
 	catalog Catalog
 	// roomTTL controls expiration for newly created rooms.
 	roomTTL time.Duration
+	// excludedLibraries contains normalized Plex library titles or keys hidden from room creation.
+	excludedLibraries map[string]struct{}
 	// mu protects mutable in-memory state.
 	mu sync.Mutex
 	// events contains live room subscriber channels keyed by room code.
@@ -130,16 +132,59 @@ type Session struct {
 }
 
 // NewService creates a room service backed by the supplied catalog and store.
-func NewService(database *store.Store, catalog Catalog, roomTTL time.Duration) *Service {
-	return &Service{store: database, catalog: catalog, roomTTL: roomTTL, events: make(map[string]map[chan struct{}]struct{}), cache: make(map[string]cacheEntry)}
+func NewService(database *store.Store, catalog Catalog, roomTTL time.Duration, excludedLibraries []string) *Service {
+	return &Service{
+		store:             database,
+		catalog:           catalog,
+		roomTTL:           roomTTL,
+		excludedLibraries: normalizeLibraryExclusions(excludedLibraries),
+		events:            make(map[string]map[chan struct{}]struct{}),
+		cache:             make(map[string]cacheEntry),
+	}
 }
 
-// Libraries returns the catalog libraries sorted for display.
+// Libraries returns the Plex libraries that are available for room creation.
 func (s *Service) Libraries(ctx context.Context) ([]plex.Library, error) {
 	if s.catalog == nil {
 		return nil, errors.New("Plex is not configured")
 	}
-	return s.catalog.Libraries(ctx)
+	libraries, err := s.catalog.Libraries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]plex.Library, 0, len(libraries))
+	for _, library := range libraries {
+		if s.libraryExcluded(library) {
+			continue
+		}
+		visible = append(visible, library)
+	}
+	return visible, nil
+}
+
+// normalizeLibraryExclusions returns trimmed case-insensitive library exclusion values.
+func normalizeLibraryExclusions(values []string) map[string]struct{} {
+	excluded := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		excluded[normalized] = struct{}{}
+	}
+	return excluded
+}
+
+// libraryExcluded reports whether a Plex library is excluded by title or key.
+func (s *Service) libraryExcluded(library plex.Library) bool {
+	if len(s.excludedLibraries) == 0 {
+		return false
+	}
+	key := strings.ToLower(strings.TrimSpace(library.Key))
+	title := strings.ToLower(strings.TrimSpace(library.Title))
+	_, keyExcluded := s.excludedLibraries[key]
+	_, titleExcluded := s.excludedLibraries[title]
+	return keyExcluded || titleExcluded
 }
 
 // Options returns filter options found in the selected libraries.
