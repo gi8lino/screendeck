@@ -59,14 +59,14 @@ For Kubernetes and other deployment details, see the [deployment guide](https://
 
 Environment variables use the `SCREENDECK__` prefix.
 
-| Setting | Default | What it changes |
-| --- | --- | --- |
-| `SCREENDECK__BASE_URL` | `http://localhost:8080` | Public URL used for room invitation links. |
-| `SCREENDECK__LISTEN_ADDRESS` | `:8080` | Address and port ScreenDeck listens on. |
-| `SCREENDECK__ROOM_TTL` | `24h` | How long rooms remain available. |
-| `SCREENDECK__LOG_FORMAT` | `json` | Log output: `json` or `text`. |
-| `SCREENDECK__DEBUG` | `false` | Enables verbose request and diagnostic logs. |
-| `SCREENDECK__EXPERIMENTAL` | `false` | Shows experimental features such as Plex JWT authentication. |
+| Setting                      | Default                 | What it changes                                              |
+| ---------------------------- | ----------------------- | ------------------------------------------------------------ |
+| `SCREENDECK__BASE_URL`       | `http://localhost:8080` | Public URL used for room invitation links.                   |
+| `SCREENDECK__LISTEN_ADDRESS` | `:8080`                 | Address and port ScreenDeck listens on.                      |
+| `SCREENDECK__ROOM_TTL`       | `24h`                   | How long rooms remain available.                             |
+| `SCREENDECK__LOG_FORMAT`     | `json`                  | Log output: `json` or `text`.                                |
+| `SCREENDECK__DEBUG`          | `false`                 | Enables verbose request and diagnostic logs.                 |
+| `SCREENDECK__EXPERIMENTAL`   | `false`                 | Shows experimental features such as Plex JWT authentication. |
 
 See the [configuration guide](https://gi8lino.github.io/screendeck/configuration/) for every setting and command-line flag.
 
@@ -79,3 +79,7 @@ The full documentation is published with MkDocs Material at:
 ## Current scope
 
 ScreenDeck supports movies and top-level TV shows. Individual seasons and episodes, configurable majority thresholds, permanent user profiles, and direct Plex playback are intentionally outside the current scope.
+
+## License
+
+ScreenDeck is licensed under the [Apache License, Version 2.0](LICENSE).
