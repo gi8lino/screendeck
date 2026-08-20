@@ -291,14 +291,13 @@ func NewAuthManager(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	base, err := url.Parse(strings.TrimRight(cloudURL, "/"))
-	if err != nil || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
+	base, err := parseHTTPURL(strings.TrimRight(cloudURL, "/"))
+	if err != nil {
 		return nil, ErrInvalidCloudURL
 	}
 	serverURLOverride = strings.TrimRight(serverURLOverride, "/")
 	if serverURLOverride != "" {
-		override, parseErr := url.Parse(serverURLOverride)
-		if parseErr != nil || override.Host == "" || (override.Scheme != "http" && override.Scheme != "https") {
+		if _, err := parseHTTPURL(serverURLOverride); err != nil {
 			return nil, ErrInvalidServerURLOverride
 		}
 	}
@@ -313,14 +312,15 @@ func NewAuthManager(
 		now:               time.Now,
 	}
 	state, err := store.LoadPlexAuth(ctx)
+	if err != nil && !errors.Is(err, ErrAuthNotFound) {
+		return nil, fmt.Errorf("load Plex authentication: %w", err)
+	}
 	if err == nil {
 		manager.state = state
-	} else if !errors.Is(err, ErrAuthNotFound) {
-		return nil, fmt.Errorf("load Plex authentication: %w", err)
 	}
 	manager.requestLogger(ctx).Info("Plex authentication manager ready",
 		"event", "plex_auth_ready",
-		"configured", state.ServerURL != "" && state.ServerToken != "",
+		"configured", authStateConfigured(state),
 		"server_name", state.ServerName,
 		"discovered_url", safeURL(state.ServerURL),
 		"effective_url", safeURL(manager.serverURL(state.ServerURL)),
@@ -336,7 +336,7 @@ func NewAuthManager(
 func (m *AuthManager) Configured() (bool, string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.state.ServerURL != "" && m.state.ServerToken != "", m.state.ServerName
+	return authStateConfigured(m.state), m.state.ServerName
 }
 
 // Start begins a Plex device authorization flow.
@@ -347,7 +347,7 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 	if method == "" {
 		method = AuthMethodLegacy
 	}
-	if method != AuthMethodLegacy && method != AuthMethodJWT {
+	if !validAuthMethod(method) {
 		return AuthStart{}, ErrInvalidAuthMethod
 	}
 	if method == AuthMethodJWT && !m.experimental {
@@ -433,70 +433,75 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 // Status polls and reports a Plex device authorization flow.
 func (m *AuthManager) Status(ctx context.Context, setupToken string) (AuthStatus, error) {
 	logger := m.requestLogger(ctx)
-	m.mu.Lock()
-	pending := m.pending[setupToken]
-	m.mu.Unlock()
-	if pending == nil || m.now().After(pending.expiresAt) {
+	pending := m.pendingAuthSnapshot(setupToken)
+	if authorizationExpired(pending, m.now()) {
 		logger.Warn("Plex authorization session expired",
 			"event", "plex_auth_expired",
 		)
 		return AuthStatus{}, ErrAuthorizationExpired
 	}
-	if pending.userToken == "" {
-		logger.Debug("polling Plex authorization",
-			"event", "plex_auth_polling",
+	if pending.userToken != "" {
+		return AuthStatus{Status: "authorized", Servers: serverInfos(pending.resources)}, nil
+	}
+
+	logger.Debug("polling Plex authorization",
+		"event", "plex_auth_polling",
+		"pin_id", pending.pinID,
+	)
+	query := url.Values{}
+	if pending.method == AuthMethodJWT {
+		deviceJWT, err := signDeviceJWT(pending.privateKey, pending.keyID, map[string]any{
+			"aud": "plex.tv", "iss": pending.clientID,
+			"iat": m.now().Unix(), "exp": m.now().Add(5 * time.Minute).Unix(),
+		})
+		if err != nil {
+			return AuthStatus{}, fmt.Errorf("sign Plex device JWT: %w", err)
+		}
+		query.Set("deviceJWT", deviceJWT)
+	}
+	var pin authorizationStatusResponse
+	if err := m.cloudJSON(ctx, http.MethodGet, fmt.Sprintf("/api/v2/pins/%d", pending.pinID), pending.clientID, "", query, nil, &pin); err != nil {
+		return AuthStatus{}, err
+	}
+	if pin.AuthToken == "" {
+		logger.Debug("Plex authorization is waiting for the user",
+			"event", "plex_auth_waiting",
 			"pin_id", pending.pinID,
 		)
-		query := url.Values{}
-		if pending.method == AuthMethodJWT {
-			deviceJWT, err := signDeviceJWT(pending.privateKey, pending.keyID, map[string]any{
-				"aud": "plex.tv", "iss": pending.clientID,
-				"iat": m.now().Unix(), "exp": m.now().Add(5 * time.Minute).Unix(),
-			})
-			if err != nil {
-				return AuthStatus{}, fmt.Errorf("sign Plex device JWT: %w", err)
-			}
-			query.Set("deviceJWT", deviceJWT)
-		}
-		var pin authorizationStatusResponse
-		if err := m.cloudJSON(ctx, http.MethodGet, fmt.Sprintf("/api/v2/pins/%d", pending.pinID), pending.clientID, "", query, nil, &pin); err != nil {
-			return AuthStatus{}, err
-		}
-		if pin.AuthToken == "" {
-			logger.Debug("Plex authorization is waiting for the user",
-				"event", "plex_auth_waiting",
-				"pin_id", pending.pinID,
-			)
-			return AuthStatus{Status: "waiting"}, nil
-		}
-		resources, err := m.resources(ctx, pending.method, pending.clientID, pin.AuthToken)
-		if err != nil {
-			return AuthStatus{}, err
-		}
-		m.mu.Lock()
-		pending.userToken = pin.AuthToken
-		if pending.method == AuthMethodJWT {
-			pending.tokenExp = tokenExpiry(pin.AuthToken, m.now().Add(7*24*time.Hour))
-		}
-		pending.resources = resources
-		m.mu.Unlock()
-		logger.Info("Plex authorization completed",
-			"event", "plex_auth_authorized",
-			"server_count", len(resources),
-			"auth_method", pending.method,
-			"token_expires_at", pending.tokenExp,
-		)
+		return AuthStatus{Status: "waiting"}, nil
 	}
-	return AuthStatus{Status: "authorized", Servers: serverInfos(pending.resources)}, nil
+	resources, err := m.resources(ctx, pending.method, pending.clientID, pin.AuthToken)
+	if err != nil {
+		return AuthStatus{}, err
+	}
+	tokenExpiresAt := time.Time{}
+	if pending.method == AuthMethodJWT {
+		tokenExpiresAt = tokenExpiry(pin.AuthToken, m.now().Add(7*24*time.Hour))
+	}
+	m.mu.Lock()
+	current := m.pending[setupToken]
+	if authorizationExpired(current, m.now()) {
+		m.mu.Unlock()
+		return AuthStatus{}, ErrAuthorizationExpired
+	}
+	current.userToken = pin.AuthToken
+	current.tokenExp = tokenExpiresAt
+	current.resources = resources
+	m.mu.Unlock()
+	logger.Info("Plex authorization completed",
+		"event", "plex_auth_authorized",
+		"server_count", len(resources),
+		"auth_method", pending.method,
+		"token_expires_at", tokenExpiresAt,
+	)
+	return AuthStatus{Status: "authorized", Servers: serverInfos(resources)}, nil
 }
 
 // SelectServer persists the selected Plex server connection.
 func (m *AuthManager) SelectServer(ctx context.Context, setupToken, serverID string) error {
 	logger := m.requestLogger(ctx)
-	m.mu.Lock()
-	pending := m.pending[setupToken]
-	m.mu.Unlock()
-	if pending == nil || pending.userToken == "" || m.now().After(pending.expiresAt) {
+	pending := m.pendingAuthSnapshot(setupToken)
+	if authorizationIncomplete(pending, m.now()) {
 		return ErrAuthorizationIncomplete
 	}
 	server, ok := pending.resources[serverID]
@@ -540,12 +545,7 @@ func (m *AuthManager) SelectServer(ctx context.Context, setupToken, serverID str
 	)
 	// Plex deployments differ in which account or resource token they accept,
 	// so verification tries candidates in the safest method-specific order.
-	candidates := []tokenCandidate{{kind: "resource_token", value: server.AccessToken}}
-	if pending.method == AuthMethodJWT {
-		candidates = append([]tokenCandidate{{kind: "account_jwt", value: pending.userToken}}, candidates...)
-	} else {
-		candidates = append(candidates, tokenCandidate{kind: "account_token", value: pending.userToken})
-	}
+	candidates := serverVerificationCandidates(pending.method, pending.userToken, server.AccessToken)
 	serverToken, err := m.verifyServer(ctx, effectiveURL, pending.clientID, candidates...)
 	if err != nil {
 		logger.Error("Plex server verification failed",
@@ -628,7 +628,7 @@ func (m *AuthManager) refresh(ctx context.Context, force bool) error {
 		)
 		return nil
 	}
-	if !force && !state.TokenExpiresAt.IsZero() && state.TokenExpiresAt.Sub(m.now()) >= 12*time.Hour {
+	if !force && !tokenNeedsRefresh(state.TokenExpiresAt, m.now()) {
 		logger.Debug("Plex token refresh not required",
 			"event", "plex_token_refresh_skipped",
 			"token_expires_at", state.TokenExpiresAt,
@@ -708,10 +708,10 @@ func (m *AuthManager) client(ctx context.Context) (*Client, error) {
 	m.mu.Lock()
 	state := m.state
 	m.mu.Unlock()
-	if state.ServerURL == "" || state.ServerToken == "" {
+	if !authStateConfigured(state) {
 		return nil, ErrNotConfigured
 	}
-	if state.Method == AuthMethodJWT && (state.TokenExpiresAt.IsZero() || state.TokenExpiresAt.Sub(m.now()) < 12*time.Hour) {
+	if authenticationRefreshNeeded(state, m.now()) {
 		if err := m.refresh(ctx, false); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrAuthenticationRefresh, err)
 		}
@@ -728,6 +728,79 @@ func (m *AuthManager) serverURL(discovered string) string {
 		return m.serverURLOverride
 	}
 	return discovered
+}
+
+// pendingAuthSnapshot returns an immutable snapshot of a pending setup session.
+func (m *AuthManager) pendingAuthSnapshot(setupToken string) *pendingAuth {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pending := m.pending[setupToken]
+	if pending == nil {
+		return nil
+	}
+	snapshot := *pending
+	return &snapshot
+}
+
+// authStateConfigured reports whether saved Plex state can create an authenticated client.
+func authStateConfigured(state AuthState) bool {
+	return state.ServerURL != "" && state.ServerToken != ""
+}
+
+// serverVerificationCandidates returns Plex tokens in method-specific verification order.
+func serverVerificationCandidates(method AuthMethod, accountToken, resourceToken string) []tokenCandidate {
+	if method == AuthMethodJWT {
+		return []tokenCandidate{
+			{kind: "account_jwt", value: accountToken},
+			{kind: "resource_token", value: resourceToken},
+		}
+	}
+	return []tokenCandidate{
+		{kind: "resource_token", value: resourceToken},
+		{kind: "account_token", value: accountToken},
+	}
+}
+
+// validAuthMethod reports whether method is a supported Plex authorization flow.
+func validAuthMethod(method AuthMethod) bool {
+	return method == AuthMethodLegacy || method == AuthMethodJWT
+}
+
+// authorizationExpired reports whether a setup session is missing or past its expiry.
+func authorizationExpired(pending *pendingAuth, now time.Time) bool {
+	return pending == nil || now.After(pending.expiresAt)
+}
+
+// authorizationIncomplete reports whether a setup session cannot select a server yet.
+func authorizationIncomplete(pending *pendingAuth, now time.Time) bool {
+	return authorizationExpired(pending, now) || pending.userToken == ""
+}
+
+// tokenNeedsRefresh reports whether a JWT should be refreshed before normal use.
+func tokenNeedsRefresh(expiresAt, now time.Time) bool {
+	return expiresAt.IsZero() || expiresAt.Sub(now) < 12*time.Hour
+}
+
+// authenticationRefreshNeeded reports whether the active authentication state needs JWT refresh.
+func authenticationRefreshNeeded(state AuthState, now time.Time) bool {
+	return state.Method == AuthMethodJWT && tokenNeedsRefresh(state.TokenExpiresAt, now)
+}
+
+// parseHTTPURL parses and validates an absolute HTTP or HTTPS URL.
+func parseHTTPURL(rawURL string) (*url.URL, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, errors.New("URL must be absolute HTTP or HTTPS")
+	}
+	return parsed, nil
+}
+
+// usableServerResource reports whether a Plex resource can represent a selectable server.
+func usableServerResource(item resource) bool {
+	return item.ClientIdentifier != "" && containsProvide(item.Provides, "server") && len(item.Connections) > 0
 }
 
 // safeURL removes credentials, query parameters, and fragments from a URL used in logs.
@@ -812,18 +885,19 @@ func (m *AuthManager) resources(ctx context.Context, method AuthMethod, clientID
 	}
 	resources := make(map[string]resource)
 	for _, item := range response {
-		if item.ClientIdentifier != "" && containsProvide(item.Provides, "server") && len(item.Connections) > 0 {
-			resources[item.ClientIdentifier] = item
-			logger.Debug("discovered Plex server",
-				"event", "plex_server_discovered",
-				"server_id", item.ClientIdentifier,
-				"server_name", item.Name,
-				"owned", item.Owned,
-				"platform", item.Platform,
-				"connection_count", len(item.Connections),
-				"has_resource_token", item.AccessToken != "",
-			)
+		if !usableServerResource(item) {
+			continue
 		}
+		resources[item.ClientIdentifier] = item
+		logger.Debug("discovered Plex server",
+			"event", "plex_server_discovered",
+			"server_id", item.ClientIdentifier,
+			"server_name", item.Name,
+			"owned", item.Owned,
+			"platform", item.Platform,
+			"connection_count", len(item.Connections),
+			"has_resource_token", item.AccessToken != "",
+		)
 	}
 	if len(resources) == 0 {
 		return nil, ErrNoServers
@@ -853,19 +927,20 @@ func (m *AuthManager) legacyResources(ctx context.Context, clientID, token strin
 			Name: item.Name, ClientIdentifier: item.ClientIdentifier, Provides: item.Provides,
 			Owned: item.Owned == 1, AccessToken: item.AccessToken, Platform: item.Platform, Connections: connections,
 		}
-		if converted.ClientIdentifier != "" && containsProvide(converted.Provides, "server") && len(converted.Connections) > 0 {
-			resources[converted.ClientIdentifier] = converted
-			logger.Debug("discovered Plex server",
-				"event", "plex_server_discovered",
-				"server_id", converted.ClientIdentifier,
-				"server_name", converted.Name,
-				"owned", converted.Owned,
-				"platform", converted.Platform,
-				"connection_count", len(converted.Connections),
-				"has_resource_token", converted.AccessToken != "",
-				"auth_method", AuthMethodLegacy,
-			)
+		if !usableServerResource(converted) {
+			continue
 		}
+		resources[converted.ClientIdentifier] = converted
+		logger.Debug("discovered Plex server",
+			"event", "plex_server_discovered",
+			"server_id", converted.ClientIdentifier,
+			"server_name", converted.Name,
+			"owned", converted.Owned,
+			"platform", converted.Platform,
+			"connection_count", len(converted.Connections),
+			"has_resource_token", converted.AccessToken != "",
+			"auth_method", AuthMethodLegacy,
+		)
 	}
 	if len(resources) == 0 {
 		return nil, ErrNoServers
@@ -1073,9 +1148,10 @@ func preferredConnection(connections []connection) (connection, bool) {
 		return score(copyOf[i]) < score(copyOf[j])
 	})
 	for _, candidate := range copyOf {
-		if parsed, err := url.Parse(candidate.URI); err == nil && parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https") {
-			return candidate, true
+		if _, err := parseHTTPURL(candidate.URI); err != nil {
+			continue
 		}
+		return candidate, true
 	}
 	return connection{}, false
 }

@@ -33,26 +33,35 @@ func decode(r *http.Request, target any) error {
 	return nil
 }
 
-// fail logs and writes an API error response.
-func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
-	status := http.StatusBadRequest
-
+// statusForError maps application errors to their public HTTP status.
+func statusForError(err error) int {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		status = http.StatusNotFound
+		return http.StatusNotFound
 	case errors.Is(err, plex.ErrNotConfigured):
-		status = http.StatusServiceUnavailable
-	case errors.Is(err, plex.ErrServerContact),
-		errors.Is(err, plex.ErrServerResponse),
-		errors.Is(err, plex.ErrServerDecode),
-		errors.Is(err, plex.ErrCloudUnavailable),
-		errors.Is(err, plex.ErrCloudResponse),
-		errors.Is(err, plex.ErrCloudDecode),
-		errors.Is(err, plex.ErrServerVerification),
-		errors.Is(err, plex.ErrAuthenticationRefresh):
-		status = http.StatusBadGateway
+		return http.StatusServiceUnavailable
+	case isPlexUpstreamError(err):
+		return http.StatusBadGateway
+	default:
+		return http.StatusBadRequest
 	}
+}
 
+// isPlexUpstreamError reports whether an error represents a Plex upstream failure.
+func isPlexUpstreamError(err error) bool {
+	return errors.Is(err, plex.ErrServerContact) ||
+		errors.Is(err, plex.ErrServerResponse) ||
+		errors.Is(err, plex.ErrServerDecode) ||
+		errors.Is(err, plex.ErrCloudUnavailable) ||
+		errors.Is(err, plex.ErrCloudResponse) ||
+		errors.Is(err, plex.ErrCloudDecode) ||
+		errors.Is(err, plex.ErrServerVerification) ||
+		errors.Is(err, plex.ErrAuthenticationRefresh)
+}
+
+// fail logs and writes an API error response.
+func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
+	status := statusForError(err)
 	logging.WithRequestIDLogger(a.Logger, r.Context()).Error("API request failed",
 		"event", "api_request_failed",
 		"method", r.Method,

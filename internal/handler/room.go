@@ -35,7 +35,16 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.GenreMode, input.SamplingStrategy, input.RoundSize)
+		session, err := a.Rooms.Create(
+			r.Context(),
+			input.Name,
+			input.LibraryKeys,
+			input.Filters,
+			input.Genres,
+			input.GenreMode,
+			input.SamplingStrategy,
+			input.RoundSize,
+		)
 		if err != nil {
 			a.fail(r, w, err)
 			return

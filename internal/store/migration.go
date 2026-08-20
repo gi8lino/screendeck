@@ -163,8 +163,11 @@ WHERE owner_id = ''
 // migrateLegacyMediaSchema copies data from the original movie-named tables without keeping them active.
 func (s *Store) migrateLegacyMediaSchema(ctx context.Context) error {
 	exists, err := s.tableExists(ctx, "movies")
-	if err != nil || !exists {
+	if err != nil {
 		return err
+	}
+	if !exists {
+		return nil
 	}
 	if err := s.ensureColumn(ctx, "movies", "media_type", "TEXT NOT NULL DEFAULT 'movie'"); err != nil {
 		return err
@@ -302,8 +305,11 @@ FROM matches
 // copyLegacyTable runs a copy statement only when its source table exists.
 func (s *Store) copyLegacyTable(ctx context.Context, table, statement string) error {
 	exists, err := s.tableExists(ctx, table)
-	if err != nil || !exists {
+	if err != nil {
 		return err
+	}
+	if !exists {
+		return nil
 	}
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("migrate legacy %s: %w", table, err)
@@ -314,8 +320,11 @@ func (s *Store) copyLegacyTable(ctx context.Context, table, statement string) er
 // dropLegacyTable removes a migrated legacy table when it exists.
 func (s *Store) dropLegacyTable(ctx context.Context, table string) error {
 	exists, err := s.tableExists(ctx, table)
-	if err != nil || !exists {
+	if err != nil {
 		return err
+	}
+	if !exists {
+		return nil
 	}
 	query := `DROP TABLE ` + table
 	if _, err := s.db.ExecContext(ctx, query); err != nil {

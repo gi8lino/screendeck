@@ -139,8 +139,8 @@ func NewWithClientID(rawURL, token, clientID string) (*Client, error) {
 	if clientID == "" {
 		return nil, ErrInvalidClientID
 	}
-	u, err := url.Parse(strings.TrimRight(rawURL, "/"))
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+	u, err := parseHTTPURL(strings.TrimRight(rawURL, "/"))
+	if err != nil {
 		return nil, ErrInvalidServerURL
 	}
 	return &Client{baseURL: u, token: token, clientID: clientID, httpClient: &http.Client{Timeout: 20 * time.Second}}, nil
@@ -154,16 +154,17 @@ func (c *Client) Libraries(ctx context.Context) ([]Library, error) {
 	}
 	libraries := make([]Library, 0, len(response.MediaContainer.Directories))
 	for _, library := range response.MediaContainer.Directories {
-		if library.Type == "movie" || library.Type == "show" {
-			libraries = append(libraries, library)
+		if !supportedLibraryType(library.Type) {
+			continue
 		}
+		libraries = append(libraries, library)
 	}
 	return libraries, nil
 }
 
 // Items returns the media items in a Plex library.
 func (c *Client) Items(ctx context.Context, library Library) ([]Item, error) {
-	if library.Key == "" || strings.ContainsAny(library.Key, "/?") || (library.Type != "movie" && library.Type != "show") {
+	if !validLibrary(library) {
 		return nil, ErrInvalidLibrary
 	}
 	mediaType := "1"
@@ -198,9 +199,24 @@ func (c *Client) Items(ctx context.Context, library Library) ([]Item, error) {
 	return items, nil
 }
 
+// supportedLibraryType reports whether ScreenDeck supports a Plex library type.
+func supportedLibraryType(libraryType string) bool {
+	return libraryType == "movie" || libraryType == "show"
+}
+
+// validLibrary reports whether a Plex library can be requested safely.
+func validLibrary(library Library) bool {
+	return library.Key != "" && !strings.ContainsAny(library.Key, "/?") && supportedLibraryType(library.Type)
+}
+
+// validPosterPath reports whether a Plex poster path is safe to append to the server URL.
+func validPosterPath(path string) bool {
+	return strings.HasPrefix(path, "/") && !strings.Contains(path, "//")
+}
+
 // Poster retrieves a poster image from Plex.
 func (c *Client) Poster(ctx context.Context, path string) (*http.Response, error) {
-	if !strings.HasPrefix(path, "/") || strings.Contains(path, "//") {
+	if !validPosterPath(path) {
 		return nil, ErrInvalidPosterPath
 	}
 	// Fetch the artwork directly with the token in a header. Plex's transcode

@@ -156,6 +156,100 @@ WHERE room_code = ?
 	return len(itemIDs), remaining, nil
 }
 
+// staleRoundReadinessRequest reports whether the client refers to a round that already advanced.
+func staleRoundReadinessRequest(currentRound, expectedRound int) bool {
+	return expectedRound > 0 && currentRound > expectedRound
+}
+
+// futureRoundReadinessRequest reports whether the client refers to a round ahead of the room.
+func futureRoundReadinessRequest(currentRound, expectedRound int) bool {
+	return expectedRound > 0 && currentRound < expectedRound
+}
+
+// roomParticipantCountTx returns the number of active participants in a room.
+func roomParticipantCountTx(ctx context.Context, tx *sql.Tx, code string) (int, error) {
+	const query = `
+SELECT COUNT(*)
+FROM participants
+WHERE room_code = ?
+`
+	var count int
+	if err := tx.QueryRowContext(ctx, query, code).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// roomRoundSummaryTx returns the current deck size and active participant count.
+func roomRoundSummaryTx(ctx context.Context, tx *sql.Tx, code string) (titles, participants int, err error) {
+	const titlesQuery = `
+SELECT COUNT(*)
+FROM room_items
+WHERE room_code = ?
+`
+	if err := tx.QueryRowContext(ctx, titlesQuery, code).Scan(&titles); err != nil {
+		return 0, 0, err
+	}
+	participants, err = roomParticipantCountTx(ctx, tx, code)
+	if err != nil {
+		return 0, 0, err
+	}
+	return titles, participants, nil
+}
+
+// setRoundReadinessTx records or withdraws one participant's next-round readiness.
+func setRoundReadinessTx(ctx context.Context, tx *sql.Tx, code string, round int, participantID string, ready bool) error {
+	if !ready {
+		const clearReadyQuery = `
+DELETE FROM round_ready
+WHERE room_code = ?
+  AND round = ?
+  AND participant_id = ?
+`
+		_, err := tx.ExecContext(ctx, clearReadyQuery, code, round, participantID)
+		return err
+	}
+
+	const matchesQuery = `
+SELECT COUNT(*)
+FROM item_matches
+WHERE room_code = ?
+`
+	var matches int
+	if err := tx.QueryRowContext(ctx, matchesQuery, code).Scan(&matches); err != nil {
+		return err
+	}
+	if matches < 2 {
+		return errors.New("another round requires at least two matches")
+	}
+
+	const readyQuery = `
+INSERT INTO round_ready (
+  room_code,
+  round,
+  participant_id,
+  created_at
+) VALUES (
+  ?, ?, ?, ?
+)
+ON CONFLICT (room_code, round, participant_id) DO NOTHING
+`
+	if _, err := tx.ExecContext(ctx, readyQuery, code, round, participantID, time.Now().Unix()); err != nil {
+		return err
+	}
+
+	const requesterQuery = `
+UPDATE rooms
+SET next_round_requester_id = CASE
+  WHEN next_round_requester_id = '' THEN ?
+  ELSE next_round_requester_id
+END
+WHERE code = ?
+`
+	_, err := tx.ExecContext(ctx, requesterQuery, participantID, code)
+	return err
+}
+
 // SetRoundReady updates one participant's next-round readiness and advances once everyone agrees.
 func (s *Store) SetRoundReady(ctx context.Context, code, participantID string, expectedRound int, ready bool) (round, titles, readyCount, required int, advanced bool, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -176,27 +270,14 @@ WHERE code = ?
 		}
 		return 0, 0, 0, 0, false, err
 	}
-	if expectedRound > 0 && round != expectedRound {
-		if round > expectedRound {
-			const titlesQuery = `
-SELECT COUNT(*)
-FROM room_items
-WHERE room_code = ?
-`
-			if err := tx.QueryRowContext(ctx, titlesQuery, code).Scan(&titles); err != nil {
-				return 0, 0, 0, 0, false, err
-			}
-
-			const participantsQuery = `
-SELECT COUNT(*)
-FROM participants
-WHERE room_code = ?
-`
-			if err := tx.QueryRowContext(ctx, participantsQuery, code).Scan(&required); err != nil {
-				return 0, 0, 0, 0, false, err
-			}
-			return round, titles, 0, required, true, nil
+	if staleRoundReadinessRequest(round, expectedRound) {
+		titles, required, err = roomRoundSummaryTx(ctx, tx, code)
+		if err != nil {
+			return 0, 0, 0, 0, false, err
 		}
+		return round, titles, 0, required, true, nil
+	}
+	if futureRoundReadinessRequest(round, expectedRound) {
 		return 0, 0, 0, 0, false, errors.New("room round changed")
 	}
 
@@ -214,68 +295,16 @@ WHERE room_code = ?
 		return 0, 0, 0, 0, false, ErrNotFound
 	}
 
-	const participantsQuery = `
-SELECT COUNT(*)
-FROM participants
-WHERE room_code = ?
-`
-	if err := tx.QueryRowContext(ctx, participantsQuery, code).Scan(&required); err != nil {
+	required, err = roomParticipantCountTx(ctx, tx, code)
+	if err != nil {
 		return 0, 0, 0, 0, false, err
 	}
 	if required < 2 {
 		return 0, 0, 0, 0, false, errors.New("another round needs at least two participants")
 	}
 
-	if ready {
-		const matchesQuery = `
-SELECT COUNT(*)
-FROM item_matches
-WHERE room_code = ?
-`
-		var matches int
-		if err := tx.QueryRowContext(ctx, matchesQuery, code).Scan(&matches); err != nil {
-			return 0, 0, 0, 0, false, err
-		}
-		if matches < 2 {
-			return 0, 0, 0, 0, false, errors.New("another round requires at least two matches")
-		}
-
-		const readyQuery = `
-INSERT INTO round_ready (
-  room_code,
-  round,
-  participant_id,
-  created_at
-) VALUES (
-  ?, ?, ?, ?
-)
-ON CONFLICT (room_code, round, participant_id) DO NOTHING
-`
-		if _, err := tx.ExecContext(ctx, readyQuery, code, round, participantID, time.Now().Unix()); err != nil {
-			return 0, 0, 0, 0, false, err
-		}
-
-		const requesterQuery = `
-UPDATE rooms
-SET next_round_requester_id = CASE
-  WHEN next_round_requester_id = '' THEN ?
-  ELSE next_round_requester_id
-END
-WHERE code = ?
-`
-		if _, err := tx.ExecContext(ctx, requesterQuery, participantID, code); err != nil {
-			return 0, 0, 0, 0, false, err
-		}
-	} else {
-		const clearReadyQuery = `
-DELETE FROM round_ready
-WHERE room_code = ?
-  AND round = ?
-  AND participant_id = ?
-`
-		if _, err := tx.ExecContext(ctx, clearReadyQuery, code, round, participantID); err != nil {
-			return 0, 0, 0, 0, false, err
-		}
+	if err := setRoundReadinessTx(ctx, tx, code, round, participantID, ready); err != nil {
+		return 0, 0, 0, 0, false, err
 	}
 
 	const readyCountQuery = `

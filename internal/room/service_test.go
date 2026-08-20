@@ -193,3 +193,26 @@ func TestParticipantGenreModeAllRequiresEveryGenre(t *testing.T) {
 	assert.Equal(t, "combo", state.Candidate.RatingKey)
 	assert.Equal(t, "all", state.Me.GenreMode)
 }
+
+// TestValidateFilters verifies room filter bounds reject invalid ranges and negative values.
+func TestValidateFilters(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		require.NoError(t, validateFilters(Filters{YearFrom: 1990, YearTo: 2026, MaxDurationMinutes: 180}))
+	})
+
+	t.Run("negative year from", func(t *testing.T) {
+		require.Error(t, validateFilters(Filters{YearFrom: -1}))
+	})
+
+	t.Run("negative year to", func(t *testing.T) {
+		require.Error(t, validateFilters(Filters{YearTo: -1}))
+	})
+
+	t.Run("negative duration", func(t *testing.T) {
+		require.Error(t, validateFilters(Filters{MaxDurationMinutes: -1}))
+	})
+
+	t.Run("reversed years", func(t *testing.T) {
+		require.Error(t, validateFilters(Filters{YearFrom: 2025, YearTo: 2020}))
+	})
+}

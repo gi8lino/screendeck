@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,4 +50,37 @@ func TestVerifyServerReturnsSentinelError(t *testing.T) {
 	manager := &AuthManager{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	_, err := manager.verifyServer(context.Background(), "http://127.0.0.1:1", "client", tokenCandidate{kind: "account_jwt", value: "token"})
 	require.ErrorIs(t, err, ErrServerContact)
+}
+
+// TestStatusReturnsAuthorizedPendingSessionWithoutPolling verifies completed setup sessions return immediately.
+func TestStatusReturnsAuthorizedPendingSessionWithoutPolling(t *testing.T) {
+	now := time.Now().UTC()
+	manager := &AuthManager{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		pending: map[string]*pendingAuth{
+			"setup": {
+				method:    AuthMethodLegacy,
+				expiresAt: now.Add(time.Minute),
+				userToken: "account-token",
+				resources: map[string]resource{
+					"server": {
+						Name:             "Home Plex",
+						ClientIdentifier: "server",
+						Provides:         "server",
+						Connections: []connection{
+							{URI: "http://plex.test:32400", Local: true},
+						},
+					},
+				},
+			},
+		},
+		now: func() time.Time { return now },
+	}
+
+	status, err := manager.Status(context.Background(), "setup")
+	require.NoError(t, err)
+	assert.Equal(t, "authorized", status.Status)
+	require.Len(t, status.Servers, 1)
+	assert.Equal(t, "server", status.Servers[0].ID)
+	assert.True(t, status.Servers[0].Local)
 }

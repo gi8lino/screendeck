@@ -55,10 +55,14 @@ func TestClientLoadsLibrariesAndMovies(t *testing.T) {
 	assert.Equal(t, int64(1700000100), shows[0].AddedAt)
 }
 
-// TestClientRejectsInvalidLibraryKey verifies unsafe library keys are rejected.
-func TestClientRejectsInvalidLibraryKey(t *testing.T) {
+// TestClientRejectsInvalidLibrary verifies unsafe library definitions are rejected.
+func TestClientRejectsInvalidLibrary(t *testing.T) {
 	client, err := New("http://plex.test", "token")
 	require.NoError(t, err)
+
 	_, err = client.Items(context.Background(), Library{Key: "../secret", Type: "movie"})
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidLibrary)
+
+	_, err = client.Items(context.Background(), Library{Key: "1", Type: "artist"})
+	require.ErrorIs(t, err, ErrInvalidLibrary)
 }

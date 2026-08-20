@@ -864,9 +864,43 @@ func scanItem(row scanner) (*plex.Item, error) {
 
 // decodeGenres decodes a stored JSON genre list and falls back to an empty list.
 func decodeGenres(raw string, target *[]string) {
-	if json.Unmarshal([]byte(raw), target) != nil || *target == nil {
+	if err := json.Unmarshal([]byte(raw), target); err != nil {
+		*target = []string{}
+		return
+	}
+	if *target == nil {
 		*target = []string{}
 	}
+}
+
+// unanimousMatch reports whether every active participant liked an item.
+func unanimousMatch(participants, likes int) bool {
+	return participants > 1 && likes == participants
+}
+
+// setMatchStateTx persists whether an item is currently a unanimous room match.
+func setMatchStateTx(ctx context.Context, tx *sql.Tx, code, itemID string, matched bool) error {
+	if !matched {
+		const deleteMatchQuery = `
+DELETE FROM item_matches
+WHERE room_code = ?
+  AND item_id = ?
+`
+		_, err := tx.ExecContext(ctx, deleteMatchQuery, code, itemID)
+		return err
+	}
+
+	const insertMatchQuery = `
+INSERT OR IGNORE INTO item_matches (
+  room_code,
+  item_id,
+  matched_at
+) VALUES (
+  ?, ?, ?
+)
+`
+	_, err := tx.ExecContext(ctx, insertMatchQuery, code, itemID, time.Now().Unix())
+	return err
 }
 
 // Vote persists a participant vote and reports whether it produces a unanimous match.
@@ -973,30 +1007,9 @@ SELECT
 	if err := tx.QueryRowContext(ctx, matchCountsQuery, code, code, itemID).Scan(&participants, &likes); err != nil {
 		return false, err
 	}
-	matched := participants > 1 && likes == participants
-
-	if matched {
-		const insertMatchQuery = `
-INSERT OR IGNORE INTO item_matches (
-  room_code,
-  item_id,
-  matched_at
-) VALUES (
-  ?, ?, ?
-)
-`
-		if _, err := tx.ExecContext(ctx, insertMatchQuery, code, itemID, time.Now().Unix()); err != nil {
-			return false, err
-		}
-	} else {
-		const deleteMatchQuery = `
-DELETE FROM item_matches
-WHERE room_code = ?
-  AND item_id = ?
-`
-		if _, err := tx.ExecContext(ctx, deleteMatchQuery, code, itemID); err != nil {
-			return false, err
-		}
+	matched := unanimousMatch(participants, likes)
+	if err := setMatchStateTx(ctx, tx, code, itemID, matched); err != nil {
+		return false, err
 	}
 
 	if err := cancelNextRoundIfUnavailableTx(ctx, tx, code); err != nil {

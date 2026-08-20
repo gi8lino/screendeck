@@ -179,8 +179,8 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 	if len(libraryKeys) == 0 {
 		return Session{}, errors.New("select at least one library")
 	}
-	if filters.YearFrom < 0 || filters.YearTo < 0 || filters.MaxDurationMinutes < 0 || (filters.YearFrom > 0 && filters.YearTo > 0 && filters.YearFrom > filters.YearTo) {
-		return Session{}, errors.New("invalid catalog filters")
+	if err := validateFilters(filters); err != nil {
+		return Session{}, err
 	}
 	if roundSize < 0 || roundSize > 50000 {
 		return Session{}, errors.New("round size must be between 0 and 50000 titles")
@@ -256,6 +256,17 @@ func (s *Service) Create(ctx context.Context, name string, libraryKeys []string,
 		return Session{}, err
 	}
 	return Session{Code: code, Token: token}, nil
+}
+
+// validateFilters verifies room-wide catalog filter bounds.
+func validateFilters(filters Filters) error {
+	if filters.YearFrom < 0 || filters.YearTo < 0 || filters.MaxDurationMinutes < 0 {
+		return errors.New("invalid catalog filters")
+	}
+	if filters.YearFrom > 0 && filters.YearTo > 0 && filters.YearFrom > filters.YearTo {
+		return errors.New("invalid catalog filters")
+	}
+	return nil
 }
 
 // validSamplingStrategy reports whether a first-round selection strategy is supported.

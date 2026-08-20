@@ -84,10 +84,13 @@ func Parse(args []string, version string) (Config, error) {
 				return nil
 			}
 			parsed, err := url.ParseRequestURI(rawURL)
-			if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-				return fmt.Errorf("must be an absolute HTTP or HTTPS URL")
+			if err != nil {
+				return err
 			}
-			return nil
+			if parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https") {
+				return nil
+			}
+			return fmt.Errorf("plex-url-override must be a valid URL")
 		}).
 		Finalize(func(rawURL string) string {
 			return strings.TrimRight(rawURL, "/")
@@ -112,7 +115,9 @@ func Parse(args []string, version string) (Config, error) {
 
 	logFormat := tf.String("log-format", "json", "Log output format").
 		Choices(string(logging.LogFormatText), string(logging.LogFormatJSON)).
-		Short("l").Placeholder("FORMAT").Value()
+		Short("l").
+		Placeholder("FORMAT").
+		Value()
 
 	if err := tf.Parse(args); err != nil {
 		return Config{}, err
