@@ -83,14 +83,10 @@ func Parse(args []string, version string) (Config, error) {
 			if rawURL == "" {
 				return nil
 			}
-			parsed, err := url.ParseRequestURI(rawURL)
-			if err != nil {
-				return err
+			if !validAbsoluteHTTPURL(rawURL) {
+				return fmt.Errorf("must be an absolute HTTP or HTTPS URL")
 			}
-			if parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https") {
-				return nil
-			}
-			return fmt.Errorf("plex-url-override must be a valid URL")
+			return nil
 		}).
 		Finalize(func(rawURL string) string {
 			return strings.TrimRight(rawURL, "/")
