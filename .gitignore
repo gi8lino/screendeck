@@ -1,6 +1,7 @@
 /data/
 /screendeck
 /node_modules/
+/docs/node_modules/
 auth.key
 .env
 .DS_Store

@@ -197,7 +197,7 @@ check-screenshots: ## Verify normalized screenshots match the committed raw capt
 node-dependencies: $(NODE_DEPENDENCIES_STAMP) ## Install locked Node.js development dependencies.
 
 $(NODE_DEPENDENCIES_STAMP): docs/package.json docs/package-lock.json
-	npm ci
+	npm --prefix docs ci
 	@touch $(NODE_DEPENDENCIES_STAMP)
 
 .PHONY: playwright-browser
