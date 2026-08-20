@@ -373,3 +373,211 @@ func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	assert.Equal(t, "p2", state.Room.OwnerID)
 	assert.True(t, state.Me.IsHost)
 }
+
+// TestConcurrentFinalVotesCreateOneMatch verifies simultaneous likes cannot create duplicate match state.
+func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close()
+
+	movie := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{movie}))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "RACE01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a"}))
+	require.NoError(t, database.JoinRoom(ctx, "RACE01", Participant{ID: "p2", Name: "Two"}, "hash2"))
+
+	type voteResult struct {
+		matched bool
+		err     error
+	}
+	start := make(chan struct{})
+	results := make(chan voteResult, 2)
+	go func() {
+		<-start
+		matched, voteErr := database.Vote(ctx, "RACE01", "p1", "a", true)
+		results <- voteResult{matched: matched, err: voteErr}
+	}()
+	go func() {
+		<-start
+		matched, voteErr := database.Vote(ctx, "RACE01", "p2", "a", true)
+		results <- voteResult{matched: matched, err: voteErr}
+	}()
+	close(start)
+	first := <-results
+	second := <-results
+
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	assert.NotEqual(t, first.matched, second.matched)
+	state, err := database.RoomState(ctx, "RACE01", "p1")
+	require.NoError(t, err)
+	assert.Len(t, state.Matches, 1)
+	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
+}
+
+// TestConcurrentReadinessAdvancesExactlyOneRound verifies simultaneous consent cannot skip or duplicate a round.
+func TestConcurrentReadinessAdvancesExactlyOneRound(t *testing.T) {
+	ctx := context.Background()
+	database := seedReadyConcurrencyRoom(t, ctx, "RACE02")
+	defer database.Close()
+
+	type readyResult struct {
+		round    int
+		advanced bool
+		err      error
+	}
+	start := make(chan struct{})
+	results := make(chan readyResult, 2)
+	go func() {
+		<-start
+		round, _, _, _, advanced, readyErr := database.SetRoundReady(ctx, "RACE02", "p1", 1, true)
+		results <- readyResult{round: round, advanced: advanced, err: readyErr}
+	}()
+	go func() {
+		<-start
+		round, _, _, _, advanced, readyErr := database.SetRoundReady(ctx, "RACE02", "p2", 1, true)
+		results <- readyResult{round: round, advanced: advanced, err: readyErr}
+	}()
+	close(start)
+	first := <-results
+	second := <-results
+
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	assert.True(t, first.advanced != second.advanced)
+	state, err := database.RoomState(ctx, "RACE02", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 2, state.Room.Round)
+	assert.Equal(t, 2, state.Progress.RoundTotal)
+	assert.Equal(t, 0, state.NextRound.Ready)
+}
+
+// TestConcurrentDuplicateReadinessIsIdempotent verifies duplicate ready submissions count a participant once.
+func TestConcurrentDuplicateReadinessIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	database := seedReadyConcurrencyRoom(t, ctx, "RACE03")
+	defer database.Close()
+
+	type readyResult struct {
+		ready int
+		err   error
+	}
+	start := make(chan struct{})
+	results := make(chan readyResult, 2)
+	go func() {
+		<-start
+		_, _, ready, _, _, readyErr := database.SetRoundReady(ctx, "RACE03", "p1", 1, true)
+		results <- readyResult{ready: ready, err: readyErr}
+	}()
+	go func() {
+		<-start
+		_, _, ready, _, _, readyErr := database.SetRoundReady(ctx, "RACE03", "p1", 1, true)
+		results <- readyResult{ready: ready, err: readyErr}
+	}()
+	close(start)
+	first := <-results
+	second := <-results
+
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	assert.Equal(t, 1, first.ready)
+	assert.Equal(t, 1, second.ready)
+	state, err := database.RoomState(ctx, "RACE03", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 1, state.NextRound.Ready)
+	assert.Equal(t, RoomPhaseNextRoundRequested, state.Room.Phase)
+}
+
+// TestConcurrentFinalReadyRequestIsIdempotent verifies two final submissions cannot advance twice.
+func TestConcurrentFinalReadyRequestIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	database := seedReadyConcurrencyRoom(t, ctx, "RACE04")
+	defer database.Close()
+	_, _, _, _, advanced, err := database.SetRoundReady(ctx, "RACE04", "p1", 1, true)
+	require.NoError(t, err)
+	assert.False(t, advanced)
+
+	type readyResult struct {
+		round    int
+		advanced bool
+		err      error
+	}
+	start := make(chan struct{})
+	results := make(chan readyResult, 2)
+	go func() {
+		<-start
+		round, _, _, _, didAdvance, readyErr := database.SetRoundReady(ctx, "RACE04", "p2", 1, true)
+		results <- readyResult{round: round, advanced: didAdvance, err: readyErr}
+	}()
+	go func() {
+		<-start
+		round, _, _, _, didAdvance, readyErr := database.SetRoundReady(ctx, "RACE04", "p2", 1, true)
+		results <- readyResult{round: round, advanced: didAdvance, err: readyErr}
+	}()
+	close(start)
+	first := <-results
+	second := <-results
+
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	assert.True(t, first.advanced)
+	assert.True(t, second.advanced)
+	assert.Equal(t, 2, first.round)
+	assert.Equal(t, 2, second.round)
+	state, err := database.RoomState(ctx, "RACE04", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 2, state.Room.Round)
+	assert.Equal(t, 2, state.Progress.RoundTotal)
+}
+
+// TestReadyParticipantDepartureCancelsConsensus verifies membership changes cannot inherit stale readiness.
+func TestReadyParticipantDepartureCancelsConsensus(t *testing.T) {
+	ctx := context.Background()
+	database := seedReadyConcurrencyRoom(t, ctx, "RACE05")
+	defer database.Close()
+	require.NoError(t, database.JoinRoom(ctx, "RACE05", Participant{ID: "p3", Name: "Three"}, "hash3"))
+
+	_, _, _, _, _, err := database.SetRoundReady(ctx, "RACE05", "p1", 1, true)
+	require.Error(t, err)
+	// The new participant invalidated existing matches, so recreate two unanimous matches.
+	_, err = database.Vote(ctx, "RACE05", "p3", "a", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "RACE05", "p3", "b", true)
+	require.NoError(t, err)
+	_, _, _, _, _, err = database.SetRoundReady(ctx, "RACE05", "p1", 1, true)
+	require.NoError(t, err)
+	_, _, _, _, _, err = database.SetRoundReady(ctx, "RACE05", "p2", 1, true)
+	require.NoError(t, err)
+
+	require.NoError(t, database.LeaveRoom(ctx, "RACE05", "hash3"))
+	state, err := database.RoomState(ctx, "RACE05", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, state.NextRound.Ready)
+	assert.Nil(t, state.NextRound.RequestedBy)
+	assert.Equal(t, 1, state.Room.Round)
+}
+
+// seedReadyConcurrencyRoom creates a two-person room with two unanimous matches.
+func seedReadyConcurrencyRoom(t *testing.T, ctx context.Context, code string) *Store {
+	t.Helper()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	movies := []plex.Item{
+		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+	}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, movies))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: code, Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+	require.NoError(t, database.JoinRoom(ctx, code, Participant{ID: "p2", Name: "Two"}, "hash2"))
+	_, err = database.Vote(ctx, code, "p1", "a", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, code, "p2", "a", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, code, "p1", "b", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, code, "p2", "b", true)
+	require.NoError(t, err)
+	return database
+}
