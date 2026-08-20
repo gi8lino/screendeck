@@ -20,7 +20,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 # renovate: datasource=github-releases depName=golangci/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.13.0
 # renovate: datasource=npm depName=playwright
-PLAYWRIGHT_VERSION ?= 1.57.0
+PLAYWRIGHT_VERSION ?= 1.62.1
 
 ## Build Configuration
 BINARY ?= screendeck
