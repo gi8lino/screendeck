@@ -1,0 +1,7 @@
+nav:
+  - Home:
+      - index.md
+  - Configuration: configuration
+  - Deployment: deployment
+  - Security: security
+  - Development: development

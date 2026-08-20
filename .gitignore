@@ -4,5 +4,8 @@
 auth.key
 .env
 .DS_Store
+.site/
 coverage.out
 .envrc
+/docs/.site/
+/docs/.venv/

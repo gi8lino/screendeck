@@ -1,0 +1,47 @@
+:root {
+  --screendeck-surface: #111014;
+  --screendeck-surface-soft: #1b191e;
+  --screendeck-coral: #ff5a5f;
+  --screendeck-coral-dark: #e34d52;
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--screendeck-surface);
+  --md-primary-fg-color--light: var(--screendeck-surface-soft);
+  --md-primary-fg-color--dark: #080709;
+  --md-accent-fg-color: var(--screendeck-coral);
+  --md-typeset-a-color: var(--screendeck-coral-dark);
+}
+
+.md-header,
+.md-tabs {
+  background-color: var(--screendeck-surface);
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  border-radius: 0.45rem;
+}
+
+.md-typeset .md-button--primary {
+  background-color: var(--screendeck-coral);
+  border-color: var(--screendeck-coral);
+  color: #fff;
+}
+
+.md-typeset .md-button--primary:hover,
+.md-typeset .md-button--primary:focus {
+  background-color: var(--screendeck-coral-dark);
+  border-color: var(--screendeck-coral-dark);
+  color: #fff;
+}
+
+.md-typeset img {
+  border-radius: 0.75rem;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-weight: 700;
+}

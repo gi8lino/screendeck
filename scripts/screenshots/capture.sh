@@ -1,10 +1,12 @@
 #!/bin/sh
+# Capture deterministic raw documentation screenshots from the ScreenDeck demo server.
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
+DOCS_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$DOCS_DIR/.." && pwd)
 
-OUTPUT_DIR=${SCREENSHOT_DIR:-"$ROOT_DIR/docs/screenshots"}
+RAW_DIR=${SCREENSHOT_RAW_DIR:-"$DOCS_DIR/screenshots/raw"}
 HOST=${SCREENSHOT_HOST:-127.0.0.1}
 PORT=${SCREENSHOT_PORT:-18080}
 PLAYWRIGHT=${PLAYWRIGHT:-"$ROOT_DIR/node_modules/.bin/playwright"}
@@ -12,12 +14,12 @@ PLAYWRIGHT=${PLAYWRIGHT:-"$ROOT_DIR/node_modules/.bin/playwright"}
 BASE_URL="http://$HOST:$PORT"
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js is required to create screenshots." >&2
+  echo "Node.js is required to capture screenshots." >&2
   exit 1
 fi
 
 if ! command -v curl >/dev/null 2>&1; then
-  echo "curl is required to create screenshots." >&2
+  echo "curl is required to capture screenshots." >&2
   exit 1
 fi
 
@@ -27,7 +29,7 @@ if [ ! -x "$PLAYWRIGHT" ]; then
   exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$RAW_DIR"
 
 TMP_DIR=$(mktemp -d)
 SERVER_LOG="$TMP_DIR/server.log"
@@ -68,10 +70,10 @@ capture() {
     --wait-for-timeout 1200 \
     --viewport-size "1440,1050" \
     "$BASE_URL$route" \
-    "$OUTPUT_DIR/$name.png" \
+    "$RAW_DIR/$name.png" \
     >/dev/null
 
-  echo "Created docs/screenshots/$name.png"
+  echo "Captured docs/screenshots/raw/$name.png"
 }
 
 capture home "/"

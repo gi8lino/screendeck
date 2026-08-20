@@ -4,7 +4,7 @@ ScreenDeck is designed to run as a single application instance with persistent s
 
 ## Docker Compose
 
-The Compose example lives at [`deploy/compose.yaml`](../deploy/compose.yaml).
+The repository includes a [`deploy/compose.yaml`](https://github.com/gi8lino/screendeck/blob/main/deploy/compose.yaml) example.
 
 From the repository root:
 
@@ -22,7 +22,7 @@ The Compose deployment stores the database and authentication key in the `screen
 
 ## Kubernetes
 
-Example manifests live in [`deploy/kubernetes`](../deploy/kubernetes). They include:
+Example manifests live in [`deploy/kubernetes`](https://github.com/gi8lino/screendeck/tree/main/deploy/kubernetes). They include:
 
 - a namespace,
 - a persistent volume claim,
