@@ -67,19 +67,35 @@ function drawRoom(state) {
     el("h2", "", `Good hunting, ${state.me.name}.`),
   );
   const people = el("div", "people");
+  const canRemoveParticipants =
+    state.me.isHost && state.participants.length > 1;
   state.participants.forEach((participant) => {
     const labels = [participant.name];
     if (participant.id === state.me.id) labels.push("you");
     if (participant.isHost) labels.push("host");
     if (participant.readyForNextRound) labels.push("next round ✓");
     const person = el(
-      "span",
+      "div",
       `person${participant.id === state.me.id ? " me" : ""}${participant.readyForNextRound ? " ready" : ""}`,
-      labels.join(" · "),
     );
     person.title = participant.genres?.length
       ? `Genres (${participant.genreMode === "all" ? "all" : "any"}): ${participant.genres.join(", ")}`
       : "Genres: everything";
+    person.append(el("span", "person-label", labels.join(" · ")));
+    if (canRemoveParticipants && participant.id !== state.me.id) {
+      const remove = el("button", "person-remove", "×");
+      remove.type = "button";
+      remove.title = `Remove ${participant.name}`;
+      remove.setAttribute(
+        "aria-label",
+        `Remove ${participant.name} from the room`,
+      );
+      remove.onclick = (event) => {
+        event.stopPropagation();
+        removeParticipant(participant, remove);
+      };
+      person.append(remove);
+    }
     people.append(person);
   });
   intro.append(people);
@@ -555,6 +571,25 @@ function finishedCard(state) {
     ),
   );
   return done;
+}
+
+// removeParticipant lets the room host kick another participant out of the room.
+async function removeParticipant(participant, button) {
+  if (button.disabled) return;
+  if (!window.confirm(`Remove ${participant.name} from this room?`)) return;
+  const session = getSession();
+  button.disabled = true;
+  try {
+    await api(
+      `/api/rooms/${encodeURIComponent(session.code)}/participants/${encodeURIComponent(participant.id)}`,
+      { method: "DELETE" },
+    );
+    showToast(`${participant.name} was removed`);
+    await renderRoom();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
 }
 
 // roomURL builds a direct join URL for a room code.

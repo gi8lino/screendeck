@@ -1,6 +1,7 @@
 export const root = document.querySelector("#app");
 
 const toast = document.querySelector("#toast");
+const footer = document.querySelector("#page-footer");
 let toastTimer;
 
 // el creates a DOM element with optional class and text content.
@@ -20,6 +21,18 @@ export function topbar(action) {
   bar.append(brand);
   if (action) bar.append(action);
   return bar;
+}
+
+// updateFooter refreshes the fixed footer content with runtime version information.
+export function updateFooter(config = {}) {
+  if (!footer) return;
+  const year = new Date().getFullYear();
+  const rawVersion = String(config.version || "dev").trim() || "dev";
+  const version =
+    rawVersion === "dev" || rawVersion.startsWith("v")
+      ? rawVersion
+      : `v${rawVersion}`;
+  footer.textContent = `© ${year} ScreenDeck · Version ${version}`;
 }
 
 // backButton creates a button that returns to the home screen.

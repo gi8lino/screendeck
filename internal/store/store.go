@@ -17,6 +17,9 @@ import (
 // ErrNotFound indicates that a requested persisted entity does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrForbidden indicates that the authenticated caller is not allowed to perform an operation.
+var ErrForbidden = errors.New("forbidden")
+
 // Store owns the SQLite database and the cipher used for stored secrets.
 type Store struct {
 	// db is the underlying SQLite connection pool.

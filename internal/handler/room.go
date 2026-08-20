@@ -35,16 +35,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			a.fail(r, w, err)
 			return
 		}
-		session, err := a.Rooms.Create(
-			r.Context(),
-			input.Name,
-			input.LibraryKeys,
-			input.Filters,
-			input.Genres,
-			input.GenreMode,
-			input.SamplingStrategy,
-			input.RoundSize,
-		)
+		session, err := a.Rooms.Create(r.Context(), input.Name, input.LibraryKeys, input.Filters, input.Genres, input.GenreMode, input.SamplingStrategy, input.RoundSize)
 		if err != nil {
 			a.fail(r, w, err)
 			return
@@ -192,6 +183,17 @@ func (a *API) LeaveRoom() http.HandlerFunc {
 			return
 		}
 		a.respond(w, http.StatusOK, map[string]string{"status": "left"})
+	}
+}
+
+// RemoveParticipant returns the handler that lets a room host remove another participant.
+func (a *API) RemoveParticipant() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := a.Rooms.RemoveParticipant(r.Context(), r.PathValue("code"), participantToken(r), r.PathValue("participantID")); err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		a.respond(w, http.StatusOK, map[string]string{"status": "removed"})
 	}
 }
 

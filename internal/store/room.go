@@ -1021,6 +1021,52 @@ SELECT
 	return matched, tx.Commit()
 }
 
+// RemoveParticipant removes a non-host participant when requested by the current room host.
+func (s *Store) RemoveParticipant(ctx context.Context, code, requesterTokenHash, participantID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // nolint:errcheck
+
+	const requesterQuery = `
+SELECT id
+FROM participants p
+JOIN rooms r
+  ON r.code = p.room_code
+WHERE p.room_code = ?
+  AND p.token_hash = ?
+  AND r.owner_id = p.id
+`
+	var requesterID string
+	if err := tx.QueryRowContext(ctx, requesterQuery, code, requesterTokenHash).Scan(&requesterID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			const participantQuery = `
+SELECT COUNT(*)
+FROM participants
+WHERE room_code = ?
+  AND token_hash = ?
+`
+			var authenticated int
+			if queryErr := tx.QueryRowContext(ctx, participantQuery, code, requesterTokenHash).Scan(&authenticated); queryErr != nil {
+				return queryErr
+			}
+			if authenticated == 0 {
+				return ErrNotFound
+			}
+			return ErrForbidden
+		}
+		return err
+	}
+	if requesterID == participantID {
+		return errors.New("the room host cannot remove themselves")
+	}
+	if err := removeParticipantTx(ctx, tx, code, participantID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // LeaveRoom removes an authenticated participant and transfers room ownership when necessary.
 func (s *Store) LeaveRoom(ctx context.Context, code, tokenHash string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -1042,13 +1088,34 @@ WHERE room_code = ?
 		}
 		return err
 	}
+	if err := removeParticipantTx(ctx, tx, code, leavingID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// removeParticipantTx deletes one participant and reconciles ownership, matches, and room phase.
+func removeParticipantTx(ctx context.Context, tx *sql.Tx, code, participantID string) error {
+	const targetQuery = `
+SELECT COUNT(*)
+FROM participants
+WHERE room_code = ?
+  AND id = ?
+`
+	var participants int
+	if err := tx.QueryRowContext(ctx, targetQuery, code, participantID).Scan(&participants); err != nil {
+		return err
+	}
+	if participants == 0 {
+		return ErrNotFound
+	}
 
 	const deleteParticipantQuery = `
 DELETE FROM participants
 WHERE room_code = ?
   AND id = ?
 `
-	if _, err := tx.ExecContext(ctx, deleteParticipantQuery, code, leavingID); err != nil {
+	if _, err := tx.ExecContext(ctx, deleteParticipantQuery, code, participantID); err != nil {
 		return err
 	}
 
@@ -1067,7 +1134,7 @@ SET owner_id = COALESCE(
 WHERE code = ?
   AND owner_id = ?
 `
-	if _, err := tx.ExecContext(ctx, transferOwnershipQuery, code, code, leavingID); err != nil {
+	if _, err := tx.ExecContext(ctx, transferOwnershipQuery, code, code, participantID); err != nil {
 		return err
 	}
 
@@ -1111,7 +1178,7 @@ WHERE rm.room_code = ?
 	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 // DeleteExpired removes rooms whose expiration time has passed.

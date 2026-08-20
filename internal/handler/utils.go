@@ -36,6 +36,8 @@ func decode(r *http.Request, target any) error {
 // statusForError maps application errors to their public HTTP status.
 func statusForError(err error) int {
 	switch {
+	case errors.Is(err, store.ErrForbidden):
+		return http.StatusForbidden
 	case errors.Is(err, store.ErrNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, plex.ErrNotConfigured):

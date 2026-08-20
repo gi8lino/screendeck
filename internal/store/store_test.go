@@ -744,3 +744,71 @@ func seedReadyConcurrencyRoom(t *testing.T, ctx context.Context, code string) *S
 	require.NoError(t, err)
 	return database
 }
+
+// TestRemoveParticipant verifies host-only participant removal and room-state reconciliation.
+func TestRemoveParticipant(t *testing.T) {
+	t.Run("host can remove another participant and readiness resets", func(t *testing.T) {
+		ctx := context.Background()
+		database, err := Open(":memory:")
+		require.NoError(t, err)
+		defer database.Close() // nolint:errcheck
+
+		items := []plex.Item{
+			{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+			{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+		}
+		require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+		now := time.Now().UTC()
+		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMHOST", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+		require.NoError(t, database.JoinRoom(ctx, "RMHOST", Participant{ID: "p2", Name: "Guest"}, "hash2"))
+		require.NoError(t, database.JoinRoom(ctx, "RMHOST", Participant{ID: "p3", Name: "Third"}, "hash3"))
+		_, err = database.Vote(ctx, "RMHOST", "p1", "a", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p2", "a", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p3", "a", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p1", "b", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p2", "b", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p3", "b", true)
+		require.NoError(t, err)
+		_, _, _, _, _, err = database.SetRoundReady(ctx, "RMHOST", "p1", 1, true)
+		require.NoError(t, err)
+
+		require.NoError(t, database.RemoveParticipant(ctx, "RMHOST", "hash1", "p2"))
+
+		_, err = database.RoomState(ctx, "RMHOST", "p2")
+		require.ErrorIs(t, err, ErrNotFound)
+
+		state, err := database.RoomState(ctx, "RMHOST", "p1")
+		require.NoError(t, err)
+		assert.Len(t, state.Participants, 2)
+		assert.Equal(t, "p1", state.Room.OwnerID)
+		assert.Equal(t, 0, state.NextRound.Ready)
+		assert.Nil(t, state.NextRound.RequestedBy)
+		assert.False(t, state.Participants[0].ReadyForNextRound)
+		assert.False(t, state.Participants[1].ReadyForNextRound)
+	})
+
+	t.Run("non host cannot remove participants", func(t *testing.T) {
+		ctx := context.Background()
+		database, err := Open(":memory:")
+		require.NoError(t, err)
+		defer database.Close() // nolint:errcheck
+
+		item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
+		require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+		now := time.Now().UTC()
+		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMNOPE", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
+		require.NoError(t, database.JoinRoom(ctx, "RMNOPE", Participant{ID: "p2", Name: "Guest"}, "hash2"))
+
+		err = database.RemoveParticipant(ctx, "RMNOPE", "hash2", "p1")
+		require.ErrorIs(t, err, ErrForbidden)
+
+		state, err := database.RoomState(ctx, "RMNOPE", "p1")
+		require.NoError(t, err)
+		assert.Len(t, state.Participants, 2)
+	})
+}

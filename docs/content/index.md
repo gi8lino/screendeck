@@ -11,42 +11,42 @@ ScreenDeck is a self-hosted Plex picker that helps a group agree on a movie or T
 </p>
 
 !!! tip "New to ScreenDeck?"
-    Start with [Deployment](deployment/index.md) to run ScreenDeck, then check [Configuration](configuration/index.md) for the settings you can customize.
+Start with [Deployment](deployment/index.md) to run ScreenDeck, then check [Configuration](configuration/index.md) for the settings you can customize.
 
 ## Documentation
 
 <div class="grid cards" markdown>
 
--   :material-cog-outline:{ .lg .middle } **Configuration**
+- :material-cog-outline:{ .lg .middle } **Configuration**
 
-    ---
+  ***
 
-    Environment variables, command-line flags, room lifetime, logging, and Plex overrides.
+  Environment variables, command-line flags, room lifetime, logging, and Plex overrides.
 
-    [:octicons-arrow-right-24: Configure ScreenDeck](configuration/index.md)
+  [:octicons-arrow-right-24: Configure ScreenDeck](configuration/index.md)
 
--   :material-server-outline:{ .lg .middle } **Deployment**
+- :material-server-outline:{ .lg .middle } **Deployment**
 
-    ---
+  ***
 
-    Run ScreenDeck with Docker Compose or Kubernetes and keep its SQLite data persistent.
+  Run ScreenDeck with Docker Compose or Kubernetes and keep its SQLite data persistent.
 
-    [:octicons-arrow-right-24: Deployment guide](deployment/index.md)
+  [:octicons-arrow-right-24: Deployment guide](deployment/index.md)
 
--   :material-shield-lock-outline:{ .lg .middle } **Security**
+- :material-shield-lock-outline:{ .lg .middle } **Security**
 
-    ---
+  ***
 
-    Understand Plex credential storage, room sessions, backups, logs, and network exposure.
+  Understand Plex credential storage, room sessions, backups, logs, and network exposure.
 
-    [:octicons-arrow-right-24: Security notes](security/index.md)
+  [:octicons-arrow-right-24: Security notes](security/index.md)
 
--   :material-code-braces:{ .lg .middle } **Development**
+- :material-code-braces:{ .lg .middle } **Development**
 
-    ---
+  ***
 
-    Build, test, format, generate screenshots, and work on the documentation site locally.
+  Build, test, format, generate screenshots, and work on the documentation site locally.
 
-    [:octicons-arrow-right-24: Development guide](development/index.md)
+  [:octicons-arrow-right-24: Development guide](development/index.md)
 
 </div>

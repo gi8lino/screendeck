@@ -4,7 +4,7 @@ import { renderJoinRoom } from "./join-room.js";
 import { renderPlexSetup } from "./plex.js";
 import { renderRoom, stopRoomEvents } from "./room.js";
 import { getConfig, getSession, setConfig } from "./state.js";
-import { el, root, topbar } from "./ui.js";
+import { el, root, topbar, updateFooter } from "./ui.js";
 
 const navigation = {
   renderHome,
@@ -67,6 +67,7 @@ function invitedRoomCode() {
 async function boot() {
   try {
     setConfig(await api("/api/config"));
+    updateFooter(getConfig());
     const roomCode = invitedRoomCode();
     const session = getSession();
     if (roomCode && session?.code !== roomCode) {
@@ -79,6 +80,7 @@ async function boot() {
       renderHome();
     }
   } catch (error) {
+    updateFooter();
     root.replaceChildren(
       el("div", "notice", `ScreenDeck could not start: ${error.message}`),
     );

@@ -519,6 +519,20 @@ func (s *Service) Leave(ctx context.Context, code, token string) error {
 	return nil
 }
 
+// RemoveParticipant lets the current room host remove another participant from the room.
+func (s *Service) RemoveParticipant(ctx context.Context, code, token, participantID string) error {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	participantID = strings.TrimSpace(participantID)
+	if participantID == "" {
+		return errors.New("participant id is required")
+	}
+	if err := s.store.RemoveParticipant(ctx, code, hashToken(token), participantID); err != nil {
+		return err
+	}
+	s.Notify(code)
+	return nil
+}
+
 // Poster retrieves the poster associated with a stored media item.
 func (s *Service) Poster(ctx context.Context, itemID string) (*plexResponse, error) {
 	if s.catalog == nil {

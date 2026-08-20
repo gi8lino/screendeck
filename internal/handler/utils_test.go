@@ -16,6 +16,10 @@ func TestStatusForError(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, statusForError(errors.New("invalid input")))
 	})
 
+	t.Run("forbidden", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, statusForError(store.ErrForbidden))
+	})
+
 	t.Run("not found", func(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, statusForError(store.ErrNotFound))
 	})
