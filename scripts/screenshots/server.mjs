@@ -253,18 +253,22 @@ function posterSVG(item) {
 </svg>`;
 }
 
-function demoSession(response, token) {
+function demoPage(response, token = "") {
+  const destination = token ? `/?room=${roomCode}` : "/";
   const session = JSON.stringify({
     code: roomCode,
     token,
   });
+  const sessionScript = token
+    ? `localStorage.setItem("screendeck.session", ${JSON.stringify(session)});`
+    : `localStorage.removeItem("screendeck.session");`;
 
   response.writeHead(200, {
     "Content-Type": "text/html; charset=utf-8",
   });
 
   response.end(
-    `<!doctype html><meta charset="utf-8"><script>localStorage.setItem("screendeck.session", ${JSON.stringify(session)});location.replace("/");</script>`,
+    `<!doctype html><meta charset="utf-8"><script>${sessionScript}location.replace(${JSON.stringify(destination)});</script>`,
   );
 }
 
@@ -326,6 +330,42 @@ const server = http.createServer(async (request, response) => {
         plexConfigured: true,
         plexServerName: "ScreenDeck Demo Plex",
       });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/me/rooms") {
+      sendJSON(response, 200, [
+        {
+          code: roomCode,
+          round: 1,
+          phase: "next_round_requested",
+          participantId: "host",
+          name: "Host",
+          isHost: true,
+          participantCount: participants.length,
+          createdAt: "2026-08-20T07:30:00Z",
+          expiresAt: "2026-08-21T07:30:00Z",
+        },
+      ]);
+      return;
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === `/api/me/rooms/${roomCode}/session`
+    ) {
+      sendJSON(response, 200, {
+        code: roomCode,
+        token: "demo-host",
+      });
+      return;
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === `/api/me/rooms/${roomCode}/claim`
+    ) {
+      sendJSON(response, 200, { status: "claimed" });
       return;
     }
 
@@ -391,23 +431,28 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/demo/home") {
+      demoPage(response);
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/demo/host") {
-      demoSession(response, "demo-host");
+      demoPage(response, "demo-host");
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/demo/alice") {
-      demoSession(response, "demo-alice");
+      demoPage(response, "demo-alice");
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/demo/bob") {
-      demoSession(response, "demo-bob");
+      demoPage(response, "demo-bob");
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/demo/winner") {
-      demoSession(response, "demo-winner");
+      demoPage(response, "demo-winner");
       return;
     }
 
@@ -442,3 +487,4 @@ server.listen(port, host, () => {
     `ScreenDeck screenshot demo listening on http://${host}:${port}\n`,
   );
 });
+
