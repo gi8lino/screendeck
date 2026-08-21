@@ -29,38 +29,40 @@ Saved rooms are tied to the current browser profile, not to a ScreenDeck account
 
 ## Documentation
 
+<!-- prettier-ignore-start -->
 <div class="grid cards" markdown>
 
-- :material-cog-outline:{ .lg .middle } **Configuration**
+-   :material-cog-outline:{ .lg .middle } **Configuration**
 
-  ***
+    ---
 
-  Environment variables, command-line flags, room lifetime, saved-room behavior, logging, and Plex overrides.
+    Environment variables, command-line flags, room lifetime, saved-room behavior, logging, and Plex overrides.
 
-  [:octicons-arrow-right-24: Configure ScreenDeck](configuration/index.md)
+    [:octicons-arrow-right-24: Configure ScreenDeck](configuration/index.md)
 
-- :material-server-outline:{ .lg .middle } **Deployment**
+-   :material-server-outline:{ .lg .middle } **Deployment**
 
-  ***
+    ---
 
-  Run ScreenDeck with Docker Compose or Kubernetes and keep its SQLite data, browser memberships, and encryption key persistent.
+    Run ScreenDeck with Docker Compose or Kubernetes and keep its SQLite data, browser memberships, and encryption key persistent.
 
-  [:octicons-arrow-right-24: Deployment guide](deployment/index.md)
+    [:octicons-arrow-right-24: Deployment guide](deployment/index.md)
 
-- :material-shield-lock-outline:{ .lg .middle } **Security**
+-   :material-shield-lock-outline:{ .lg .middle } **Security**
 
-  ***
+    ---
 
-  Understand Plex credential storage, browser identities, resumable room sessions, backups, logs, and network exposure.
+    Understand Plex credential storage, browser identities, resumable room sessions, backups, logs, and network exposure.
 
-  [:octicons-arrow-right-24: Security notes](security/index.md)
+    [:octicons-arrow-right-24: Security notes](security/index.md)
 
-- :material-code-braces:{ .lg .middle } **Development**
+-   :material-code-braces:{ .lg .middle } **Development**
 
-  ***
+    ---
 
-  Build, test, format, generate screenshots, and work on the documentation site locally.
+    Build, test, format, generate screenshots, and work on the documentation site locally.
 
-  [:octicons-arrow-right-24: Development guide](development/index.md)
+    [:octicons-arrow-right-24: Development guide](development/index.md)
 
 </div>
+<!-- prettier-ignore-end -->

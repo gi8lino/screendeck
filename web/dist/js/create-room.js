@@ -350,4 +350,3 @@ function filterValues(filters) {
     unwatchedOnly: filters.watchedBox.checked,
   };
 }
-

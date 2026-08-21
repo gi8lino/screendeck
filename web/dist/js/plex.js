@@ -165,4 +165,3 @@ async function selectServer(server, setupToken, servers, status, navigation) {
       .forEach((button) => (button.disabled = false));
   }
 }
-

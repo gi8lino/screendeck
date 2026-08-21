@@ -988,4 +988,3 @@ function connectEvents() {
     setTimeout(connectEvents, 3000);
   };
 }
-
