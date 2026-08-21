@@ -54,7 +54,16 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 
 	authManager, err := plex.NewAuthManager(t.Context(), database, logger, plexServer.URL, "", false)
 	require.NoError(t, err)
-	api := handler.New("test", "commit", "http://movies.test", false, rooms, authManager, logger)
+	api := handler.New(
+		"test",
+		"commit",
+		"http://movies.test",
+		false,
+		rooms,
+		authManager,
+		database,
+		logger,
+	)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ScreenDeck</title>")}}
 	router, err := NewRouter(appFS, api, logger, false)
 	require.NoError(t, err)
@@ -163,7 +172,16 @@ func TestHealthAndFrontend(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authManager, err := plex.NewAuthManager(t.Context(), database, logger, "http://plex.test", "", false)
 	require.NoError(t, err)
-	api := handler.New("test", "commit", "http://movies.test", false, room.NewService(database, authManager, time.Hour, nil), authManager, logger)
+	api := handler.New(
+		"test",
+		"commit",
+		"http://movies.test",
+		false,
+		room.NewService(database, authManager, time.Hour, nil),
+		authManager,
+		database,
+		logger,
+	)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
 	router, err := NewRouter(appFS, api, logger, false)
 	require.NoError(t, err)

@@ -23,6 +23,8 @@ type API struct {
 	Rooms *room.Service
 	// Auth manages Plex authentication and server access.
 	Auth *plex.AuthManager
+	// healthProber provides the dependency check used by the health endpoint.
+	healthProber healthProber
 }
 
 // New creates an API with the supplied application services.
@@ -31,6 +33,7 @@ func New(
 	experimental bool,
 	rooms *room.Service,
 	auth *plex.AuthManager,
+	healthProber healthProber,
 	logger *slog.Logger,
 ) *API {
 	return &API{
@@ -40,6 +43,7 @@ func New(
 		Experimental: experimental,
 		Rooms:        rooms,
 		Auth:         auth,
+		healthProber: healthProber,
 		Logger:       logger,
 	}
 }

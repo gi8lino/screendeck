@@ -33,6 +33,11 @@ type Store struct {
 	cipher cipher.AEAD
 }
 
+// Ping verifies the database connection.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
+}
+
 // Open opens the SQLite database, prepares encryption, and applies schema migrations.
 func Open(path string, configuredKeyPath ...string) (*Store, error) {
 	db, err := openSQLite(path)

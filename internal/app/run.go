@@ -75,7 +75,16 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 	roomService := room.NewService(database, authManager, cfg.RoomTTL, cfg.ExcludeLibraries)
 
 	serverLogger := logger.With("component", "server")
-	api := handler.New(version, commit, cfg.BaseURL, cfg.Experimental, roomService, authManager, serverLogger)
+	api := handler.New(
+		version,
+		commit,
+		cfg.BaseURL,
+		cfg.Experimental,
+		roomService,
+		authManager,
+		database,
+		serverLogger,
+	)
 
 	router, err := routes.NewRouter(appFS, api, serverLogger, cfg.Debug)
 	if err != nil {
