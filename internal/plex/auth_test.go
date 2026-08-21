@@ -61,10 +61,10 @@ func (s *memoryAuthStore) SavePlexAuth(_ context.Context, state plex.AuthState) 
 	return nil
 }
 
-// TestLegacyAuthorizationServerSelection verifies the Tautulli-compatible Plex authentication flow.
-func TestLegacyAuthorizationServerSelection(t *testing.T) {
+// TestStandardAuthorizationServerSelection verifies the standard Plex PIN authentication flow.
+func TestStandardAuthorizationServerSelection(t *testing.T) {
 	pms := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Plex-Token") != "legacy-server-token" {
+		if r.Header.Get("X-Plex-Token") != "standard-server-token" {
 			http.Error(w, "bad server token", http.StatusUnauthorized)
 			return
 		}
@@ -79,7 +79,7 @@ func TestLegacyAuthorizationServerSelection(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v2/pins":
 			clientID = r.Header.Get("X-Plex-Client-Identifier")
 			if r.URL.Query().Get("strong") != "true" {
-				http.Error(w, "legacy pin must be strong", http.StatusBadRequest)
+				http.Error(w, "standard PIN must be strong", http.StatusBadRequest)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -90,14 +90,14 @@ func TestLegacyAuthorizationServerSelection(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"authToken":"legacy-account-token"}`) // nolint:errcheck
+			fmt.Fprint(w, `{"authToken":"standard-account-token"}`) // nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/api/resources":
-			if r.Header.Get("X-Plex-Token") != "legacy-account-token" || r.Header.Get("Accept") != "application/xml" {
-				http.Error(w, "bad legacy resource request", http.StatusUnauthorized)
+			if r.Header.Get("X-Plex-Token") != "standard-account-token" || r.Header.Get("Accept") != "application/xml" {
+				http.Error(w, "bad XML resource request", http.StatusUnauthorized)
 				return
 			}
 			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprintf(w, `<MediaContainer size="1"><Device name="Home Plex" clientIdentifier="server-1" provides="server" owned="1" platform="Linux" accessToken="legacy-server-token"><Connection uri=%q local="1" relay="0"/></Device></MediaContainer>`, pms.URL) // nolint:errcheck
+			fmt.Fprintf(w, `<MediaContainer size="1"><Device name="Home Plex" clientIdentifier="server-1" provides="server" owned="1" platform="Linux" accessToken="standard-server-token"><Connection uri=%q local="1" relay="0"/></Device></MediaContainer>`, pms.URL) // nolint:errcheck
 		default:
 			http.NotFound(w, r)
 		}
@@ -107,7 +107,7 @@ func TestLegacyAuthorizationServerSelection(t *testing.T) {
 	store := &memoryAuthStore{}
 	manager, err := plex.NewAuthManager(context.Background(), store, nil, cloud.URL, pms.URL, false)
 	require.NoError(t, err)
-	started, err := manager.Start(context.Background(), plex.AuthMethodLegacy)
+	started, err := manager.Start(context.Background(), plex.AuthMethodStandard)
 	require.NoError(t, err)
 	status, err := manager.Status(context.Background(), started.SetupToken)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestLegacyAuthorizationServerSelection(t *testing.T) {
 	require.NoError(t, manager.SelectServer(context.Background(), started.SetupToken, "server-1"))
 	require.NotNil(t, store.state)
 	assert.NotEmpty(t, clientID)
-	assert.Equal(t, plex.AuthMethodLegacy, store.state.Method)
+	assert.Equal(t, plex.AuthMethodStandard, store.state.Method)
 	assert.Empty(t, store.state.PrivateKey)
 	assert.True(t, store.state.TokenExpiresAt.IsZero())
 	libraries, err := manager.Libraries(context.Background())

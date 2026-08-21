@@ -21,7 +21,6 @@ func NewRouter(appFS fs.FS, api *handler.API, logger *slog.Logger, debug bool) (
 	mux.HandleFunc("POST /api/catalog/options", api.CatalogOptions())
 	mux.HandleFunc("GET /api/me/rooms", api.MyRooms())
 	mux.HandleFunc("POST /api/me/rooms/{code}/session", api.ResumeRoom())
-	mux.HandleFunc("POST /api/me/rooms/{code}/claim", api.ClaimRoom())
 	mux.HandleFunc("POST /api/rooms", api.CreateRoom())
 	mux.HandleFunc("POST /api/rooms/join", api.JoinRoom())
 	mux.HandleFunc("GET /api/rooms/{code}/genres", api.RoomGenres())

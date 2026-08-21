@@ -27,8 +27,8 @@ import (
 type AuthMethod string
 
 const (
-	// AuthMethodLegacy uses Plex's server-compatible PIN authorization flow.
-	AuthMethodLegacy AuthMethod = "legacy"
+	// AuthMethodStandard uses Plex's standard PIN authorization flow.
+	AuthMethodStandard AuthMethod = "standard"
 	// AuthMethodJWT uses the experimental Ed25519 device-JWT authorization flow.
 	AuthMethodJWT AuthMethod = "jwt"
 )
@@ -177,14 +177,14 @@ type authorizationPINRequest struct {
 	Strong bool `json:"strong"`
 }
 
-// legacyResourcesResponse decodes the legacy XML resource listing.
-type legacyResourcesResponse struct {
-	// Devices contains resources returned by the legacy Plex endpoint.
-	Devices []legacyResource `xml:"Device"`
+// xmlResourcesResponse decodes the XML resource listing.
+type xmlResourcesResponse struct {
+	// Devices contains resources returned by the Plex XML endpoint.
+	Devices []xmlResource `xml:"Device"`
 }
 
-// legacyResource models a Plex resource from the legacy XML API.
-type legacyResource struct {
+// xmlResource models a Plex resource from the Plex XML API.
+type xmlResource struct {
 	// Name is the display name.
 	Name string `xml:"name,attr"`
 	// ClientIdentifier is Plex's stable identifier for the resource.
@@ -198,11 +198,11 @@ type legacyResource struct {
 	// Platform is the server platform reported by Plex.
 	Platform string `xml:"platform,attr"`
 	// Connections lists advertised endpoints for the resource.
-	Connections []legacyConnection `xml:"Connection"`
+	Connections []xmlConnection `xml:"Connection"`
 }
 
-// legacyConnection models a Plex connection from the legacy XML API.
-type legacyConnection struct {
+// xmlConnection models a Plex connection from the Plex XML API.
+type xmlConnection struct {
 	// URI is the advertised connection URL.
 	URI string `xml:"uri,attr"`
 	// Local reports whether the selected connection is local.
@@ -345,7 +345,7 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 		return AuthStart{}, ErrAlreadyConfigured
 	}
 	if method == "" {
-		method = AuthMethodLegacy
+		method = AuthMethodStandard
 	}
 	if !validAuthMethod(method) {
 		return AuthStart{}, ErrInvalidAuthMethod
@@ -622,7 +622,7 @@ func (m *AuthManager) refresh(ctx context.Context, force bool) error {
 		return ErrAuthNotFound
 	}
 	if state.Method != AuthMethodJWT {
-		logger.Debug("Plex token refresh is not required for legacy authentication",
+		logger.Debug("Plex token refresh is not required for standard authentication",
 			"event", "plex_token_refresh_skipped",
 			"auth_method", state.Method,
 		)
@@ -763,7 +763,7 @@ func serverVerificationCandidates(method AuthMethod, accountToken, resourceToken
 
 // validAuthMethod reports whether method is a supported Plex authorization flow.
 func validAuthMethod(method AuthMethod) bool {
-	return method == AuthMethodLegacy || method == AuthMethodJWT
+	return method == AuthMethodStandard || method == AuthMethodJWT
 }
 
 // authorizationExpired reports whether a setup session is missing or past its expiry.
@@ -874,8 +874,8 @@ func (m *AuthManager) verifyServer(ctx context.Context, serverURL, clientID stri
 
 // resources retrieves the Plex resources available to an account.
 func (m *AuthManager) resources(ctx context.Context, method AuthMethod, clientID, token string) (map[string]resource, error) {
-	if method == AuthMethodLegacy {
-		return m.legacyResources(ctx, clientID, token)
+	if method == AuthMethodStandard {
+		return m.xmlResources(ctx, clientID, token)
 	}
 	logger := m.requestLogger(ctx)
 	query := url.Values{"includeHttps": {"1"}, "includeRelay": {"1"}, "includeIPv6": {"1"}}
@@ -909,11 +909,11 @@ func (m *AuthManager) resources(ctx context.Context, method AuthMethod, clientID
 	return resources, nil
 }
 
-// legacyResources retrieves Plex resources with server-compatible legacy tokens.
-func (m *AuthManager) legacyResources(ctx context.Context, clientID, token string) (map[string]resource, error) {
+// xmlResources retrieves Plex resources with server-compatible resource tokens.
+func (m *AuthManager) xmlResources(ctx context.Context, clientID, token string) (map[string]resource, error) {
 	logger := m.requestLogger(ctx)
 	query := url.Values{"includeHttps": {"1"}, "includeRelay": {"1"}, "includeIPv6": {"1"}}
-	var response legacyResourcesResponse
+	var response xmlResourcesResponse
 	if err := m.cloudXML(ctx, http.MethodGet, "/api/resources", clientID, token, query, &response); err != nil {
 		return nil, err
 	}
@@ -939,7 +939,7 @@ func (m *AuthManager) legacyResources(ctx context.Context, clientID, token strin
 			"platform", converted.Platform,
 			"connection_count", len(converted.Connections),
 			"has_resource_token", converted.AccessToken != "",
-			"auth_method", AuthMethodLegacy,
+			"auth_method", AuthMethodStandard,
 		)
 	}
 	if len(resources) == 0 {
@@ -948,7 +948,7 @@ func (m *AuthManager) legacyResources(ctx context.Context, clientID, token strin
 	logger.Info("Plex servers discovered",
 		"event", "plex_servers_discovered",
 		"server_count", len(resources),
-		"auth_method", AuthMethodLegacy,
+		"auth_method", AuthMethodStandard,
 	)
 	return resources, nil
 }
@@ -1020,7 +1020,7 @@ func (m *AuthManager) cloudJSON(ctx context.Context, method, path, clientID, tok
 	return nil
 }
 
-// cloudXML sends an XML request to the legacy Plex cloud API.
+// cloudXML sends an XML request to the Plex XML cloud API.
 func (m *AuthManager) cloudXML(ctx context.Context, method, path, clientID, token string, query url.Values, target any) error {
 	logger := m.requestLogger(ctx)
 	started := time.Now()

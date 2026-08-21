@@ -59,7 +59,7 @@ func TestStatusReturnsAuthorizedPendingSessionWithoutPolling(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		pending: map[string]*pendingAuth{
 			"setup": {
-				method:    AuthMethodLegacy,
+				method:    AuthMethodStandard,
 				expiresAt: now.Add(time.Minute),
 				userToken: "account-token",
 				resources: map[string]resource{

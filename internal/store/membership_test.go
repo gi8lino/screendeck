@@ -93,54 +93,6 @@ func TestRoomMembershipSession(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
-// TestSaveRoomMembership verifies existing sessions can be claimed and conflicting identities are rejected.
-func TestSaveRoomMembership(t *testing.T) {
-	ctx := context.Background()
-	database := newMembershipTestStore(t, ctx)
-	defer database.Close() // nolint:errcheck
-
-	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(
-		ctx,
-		Room{Code: "MEM003", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
-		Participant{ID: "host", Name: "Host"},
-		"host-hash",
-		[]string{"item"},
-		[]string{"item"},
-	))
-	require.NoError(t, database.SaveRoomMembership(
-		ctx,
-		"MEM003",
-		"host",
-		RoomMembershipCredential{IdentityHash: "identity-host", SessionToken: "host-token"},
-	))
-
-	session, err := database.RoomMembershipSession(ctx, "identity-host", "MEM003")
-	require.NoError(t, err)
-	assert.Equal(t, "host-token", session.Token)
-
-	require.NoError(t, database.JoinRoom(ctx, "MEM003", Participant{ID: "guest", Name: "Guest"}, "guest-hash"))
-	err = database.SaveRoomMembership(
-		ctx,
-		"MEM003",
-		"guest",
-		RoomMembershipCredential{IdentityHash: "identity-host", SessionToken: "guest-token"},
-	)
-	require.ErrorIs(t, err, ErrMembershipConflict)
-
-	require.NoError(t, database.SaveRoomMembership(
-		ctx,
-		"MEM003",
-		"host",
-		RoomMembershipCredential{IdentityHash: "identity-other", SessionToken: "host-token"},
-	))
-	_, err = database.RoomMembershipSession(ctx, "identity-host", "MEM003")
-	require.ErrorIs(t, err, ErrNotFound)
-	transferred, err := database.RoomMembershipSession(ctx, "identity-other", "MEM003")
-	require.NoError(t, err)
-	assert.Equal(t, "host-token", transferred.Token)
-}
-
 // newMembershipTestStore creates a store with one media item available for room tests.
 func newMembershipTestStore(t *testing.T, ctx context.Context) *Store {
 	t.Helper()

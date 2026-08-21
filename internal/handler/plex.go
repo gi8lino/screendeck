@@ -21,7 +21,7 @@ type selectPlexServerRequest struct {
 // StartPlexAuth returns the handler that begins Plex authorization.
 func (a *API) StartPlexAuth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		input := plexAuthRequest{Method: plex.AuthMethodLegacy}
+		input := plexAuthRequest{Method: plex.AuthMethodStandard}
 		if err := decode(r, &input); err != nil {
 			a.fail(r, w, err)
 			return

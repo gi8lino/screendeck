@@ -209,19 +209,6 @@ async function tryResumeRoom(roomCode) {
   }
 }
 
-// claimCurrentSession migrates a legacy local browser session into persistent backend membership storage.
-async function claimCurrentSession() {
-  const session = getSession();
-  if (!session?.code || !session?.token) return;
-  try {
-    await api(`/api/me/rooms/${encodeURIComponent(session.code)}/claim`, {
-      method: "POST",
-    });
-  } catch {
-    // The room may have expired or the participant may have been removed.
-  }
-}
-
 // invitedRoomCode returns a valid room code from the current share URL.
 function invitedRoomCode() {
   const code = new URLSearchParams(window.location.search)
@@ -236,8 +223,6 @@ async function boot() {
   try {
     setConfig(await api("/api/config"));
     updateFooter(getConfig());
-    await claimCurrentSession();
-
     const roomCode = invitedRoomCode();
     const session = getSession();
     if (roomCode && session?.code === roomCode) {

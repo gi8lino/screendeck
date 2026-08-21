@@ -35,19 +35,3 @@ func (a *API) ResumeRoom() http.HandlerFunc {
 		a.respond(w, http.StatusOK, session)
 	}
 }
-
-// ClaimRoom associates an existing participant session with the current browser identity.
-func (a *API) ClaimRoom() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		identityToken, err := ensureBrowserIdentity(w, r)
-		if err != nil {
-			a.fail(r, w, err)
-			return
-		}
-		if err := a.Rooms.ClaimIdentity(r.Context(), identityToken, r.PathValue("code"), participantToken(r)); err != nil {
-			a.fail(r, w, err)
-			return
-		}
-		a.respond(w, http.StatusOK, map[string]string{"status": "claimed"})
-	}
-}

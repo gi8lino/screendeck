@@ -129,8 +129,6 @@ func (a *API) Vote() http.HandlerFunc {
 	type request struct {
 		// ItemID identifies the canonical media item being voted on.
 		ItemID string `json:"itemId"`
-		// LegacyID accepts the former movieId field for cached clients during migration.
-		LegacyID string `json:"movieId"`
 		// Liked records whether the participant accepted the item.
 		Liked bool `json:"liked"`
 	}
@@ -139,9 +137,6 @@ func (a *API) Vote() http.HandlerFunc {
 		if err := decode(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
-		}
-		if input.ItemID == "" {
-			input.ItemID = input.LegacyID
 		}
 		if input.ItemID == "" {
 			a.fail(r, w, errors.New("itemId is required"))

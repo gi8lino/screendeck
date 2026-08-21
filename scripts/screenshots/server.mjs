@@ -325,14 +325,6 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (
-      request.method === "POST" &&
-      url.pathname === `/api/me/rooms/${roomCode}/claim`
-    ) {
-      sendJSON(response, 200, { status: "claimed" });
-      return;
-    }
-
-    if (
       request.method === "GET" &&
       url.pathname === `/api/rooms/${roomCode}/genres`
     ) {
@@ -455,3 +447,4 @@ server.listen(port, host, () => {
     `ScreenDeck screenshot demo listening on http://${host}:${port}\n`,
   );
 });
+

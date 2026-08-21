@@ -19,9 +19,9 @@ export function renderPlexSetup(navigation) {
   const status = el("p", "notice", "Ready to connect.");
   const servers = el("div", "server-list");
   const authActions = el("div", "actions");
-  const legacyButton = el("button", "btn primary", "Sign in with Plex");
-  legacyButton.onclick = () => startAuthorization("legacy");
-  authActions.append(legacyButton);
+  const standardButton = el("button", "btn primary", "Sign in with Plex");
+  standardButton.onclick = () => startAuthorization("standard");
+  authActions.append(standardButton);
   if (getConfig().experimental) {
     const jwtButton = el("button", "btn ghost", "Use JWT (experimental)");
     jwtButton.onclick = () => startAuthorization("jwt");
@@ -153,3 +153,4 @@ async function selectServer(server, setupToken, servers, status, navigation) {
       .forEach((button) => (button.disabled = false));
   }
 }
+

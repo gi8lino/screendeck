@@ -151,50 +151,6 @@ WHERE identity_hash = ?
 	return MembershipSession{Code: code, Token: string(token)}, nil
 }
 
-// SaveRoomMembership claims an existing participant session for a browser identity.
-func (s *Store) SaveRoomMembership(
-	ctx context.Context,
-	code, participantID string,
-	credential RoomMembershipCredential,
-) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() // nolint:errcheck
-
-	const identityRoomQuery = `
-SELECT participant_id
-FROM room_memberships
-WHERE identity_hash = ?
-  AND room_code = ?
-`
-	var linkedParticipantID string
-	err = tx.QueryRowContext(ctx, identityRoomQuery, credential.IdentityHash, code).Scan(&linkedParticipantID)
-	if err == nil && linkedParticipantID != participantID {
-		return ErrMembershipConflict
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-
-	// Possession of the participant token proves ownership of this room session.
-	// Moving the association lets a browser recover after its identity cookie is cleared.
-	const releasePreviousIdentityQuery = `
-DELETE FROM room_memberships
-WHERE participant_id = ?
-  AND identity_hash <> ?
-`
-	if _, err := tx.ExecContext(ctx, releasePreviousIdentityQuery, participantID, credential.IdentityHash); err != nil {
-		return err
-	}
-
-	if err := s.saveRoomMembershipTx(ctx, tx, code, participantID, credential); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 // saveRoomMembershipTx persists a browser identity association inside an existing transaction.
 func (s *Store) saveRoomMembershipTx(
 	ctx context.Context,

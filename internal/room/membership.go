@@ -32,30 +32,6 @@ func (s *Service) ResumeIdentity(ctx context.Context, identityToken, code string
 	return Session{Code: session.Code, Token: session.Token}, nil
 }
 
-// ClaimIdentity associates an existing participant session with a persistent browser identity.
-func (s *Service) ClaimIdentity(ctx context.Context, identityToken, code, participantToken string) error {
-	if strings.TrimSpace(identityToken) == "" {
-		return errors.New("browser identity is required")
-	}
-	code = strings.ToUpper(strings.TrimSpace(code))
-	if len(code) != 6 {
-		return errors.New("a six-character room code is required")
-	}
-	participant, err := s.store.ParticipantByToken(ctx, code, hashToken(participantToken))
-	if err != nil {
-		return err
-	}
-	return s.store.SaveRoomMembership(
-		ctx,
-		code,
-		participant.ID,
-		store.RoomMembershipCredential{
-			IdentityHash: hashToken(identityToken),
-			SessionToken: participantToken,
-		},
-	)
-}
-
 // membershipCredentials builds an optional persisted browser membership for a participant token.
 func membershipCredentials(identityToken, participantToken string) []store.RoomMembershipCredential {
 	if strings.TrimSpace(identityToken) == "" {

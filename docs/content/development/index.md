@@ -67,6 +67,14 @@ make test
 
 The CI workflow also runs `staticcheck` and `git diff --check`.
 
+## Database schema during development
+
+The ScreenDeck database schema is currently pre-release and is not backward compatible. Fresh databases are created at the schema version expected by the running build.
+
+If an existing database is unversioned or uses a different schema version, ScreenDeck refuses to start instead of modifying it automatically. During active development, recreate the database or deployment data volume after a schema-breaking change.
+
+Once stable releases require database upgrades, ScreenDeck can introduce ordered, forward-only migrations starting from the current versioned schema.
+
 ## Documentation site
 
 All MkDocs-specific files live under `docs/`:

@@ -49,7 +49,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	require.NoError(t, database.SavePlexAuth(context.Background(), plex.AuthState{
-		ClientID: "client", KeyID: "key", PrivateKey: privateKey, UserToken: "user-token", TokenExpiresAt: time.Now().Add(time.Hour),
+		Method: plex.AuthMethodJWT, ClientID: "client", KeyID: "key", PrivateKey: privateKey, UserToken: "user-token", TokenExpiresAt: time.Now().Add(time.Hour),
 		ServerID: "server", ServerName: "Test Plex", ServerURL: plexServer.URL, ServerToken: "token",
 	}))
 
@@ -92,13 +92,6 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	var resumed room.Session
 	decodeResponse(t, resumeResponse, &resumed)
 	assert.Equal(t, hostSession, resumed)
-
-	claimRequest := httptest.NewRequest(http.MethodPost, "/api/me/rooms/"+hostSession.Code+"/claim", nil)
-	claimRequest.AddCookie(hostCookies[0])
-	claimRequest.Header.Set("X-Participant-Token", hostSession.Token)
-	claimResponse := httptest.NewRecorder()
-	router.ServeHTTP(claimResponse, claimRequest)
-	require.Equal(t, http.StatusOK, claimResponse.Code, claimResponse.Body.String())
 
 	rejoinRequest := httptest.NewRequest(
 		http.MethodPost,
