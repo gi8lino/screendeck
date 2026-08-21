@@ -9,7 +9,9 @@ hide:
 
 Plex account/server tokens and the experimental Ed25519 private key are encrypted with AES-256-GCM before they are stored in SQLite.
 
-The separate `auth.key` file is created with mode `0600`. Back up the database and authentication key together; encrypted credentials cannot be recovered if the key is lost.
+For persistent databases, the separate `auth.key` file is created with mode `0600`. Back up the database and authentication key together; encrypted credentials cannot be recovered if the key is lost.
+
+When `database-path` is set to `:memory:`, ScreenDeck generates the encryption key in memory instead. No `auth.key` file is created, and both the key and database contents are lost when the application stops.
 
 Plex credentials are kept on the ScreenDeck server and are not sent to guest browsers. Temporary Plex setup tokens only authorize the server-selection flow.
 

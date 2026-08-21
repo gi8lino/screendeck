@@ -10,8 +10,8 @@ ScreenDeck accepts command-line flags and environment variables. Environment var
 | Flag                      | Environment variable                | Default                 | Description                                                    |
 | ------------------------- | ----------------------------------- | ----------------------- | -------------------------------------------------------------- |
 | `--listen-address` / `-a` | `SCREENDECK__LISTEN_ADDRESS`        | `:8080`                 | TCP address used by the HTTP server.                           |
-| `--database-path`         | `SCREENDECK__DATABASE_PATH`         | `./data/screendeck.db`  | SQLite database path.                                          |
-| `--auth-key-path`         | `SCREENDECK__AUTH_KEY_PATH`         | `./data/auth.key`       | Local encryption-key path.                                     |
+| `--database-path`         | `SCREENDECK__DATABASE_PATH`         | `./data/screendeck.db`  | SQLite database path. Use `:memory:` for ephemeral storage.    |
+| `--auth-key-path`         | `SCREENDECK__AUTH_KEY_PATH`         | `./data/auth.key`       | Local encryption-key path. Ignored for an in-memory database.  |
 | `--base-url`              | `SCREENDECK__BASE_URL`              | `http://localhost:8080` | Public URL used for room invitation links.                     |
 | `--exclude-libraries`     | `SCREENDECK__EXCLUDE_LIBRARIES`     | empty                   | Plex library titles or keys excluded from room creation.       |
 | `--plex-url-override`     | `SCREENDECK__PLEX_URL_OVERRIDE`     | empty                   | Runtime override for the discovered Plex server URL.           |
@@ -37,6 +37,26 @@ Examples:
 http://192.168.1.10:8080
 https://screendeck.home.example
 ```
+
+## Database storage
+
+By default, ScreenDeck stores its application state in a SQLite database on disk.
+
+For temporary or development deployments, set `database-path` to `:memory:`:
+
+```sh
+go run ./cmd --database-path :memory:
+```
+
+The equivalent environment variable is:
+
+```sh
+SCREENDECK__DATABASE_PATH=:memory:
+```
+
+In this mode, both the SQLite database and its encryption key exist only in memory. `auth-key-path` is ignored and no database or authentication-key file is created.
+
+All application state is lost when ScreenDeck stops or restarts, including Plex authorization, rooms, participants, votes, and saved room memberships.
 
 ## Saved rooms and room lifetime
 

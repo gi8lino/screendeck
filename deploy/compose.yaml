@@ -8,8 +8,8 @@ services:
       - "8080:8080"
     environment:
       SCREENDECK__BASE_URL: ${SCREENDECK__BASE_URL:-http://localhost:8080}
-      SCREENDECK__DATABASE_PATH: /data/screendeck.db
-      SCREENDECK__AUTH_KEY_PATH: /data/auth.key
+      SCREENDECK__DATABASE_PATH: ${SCREENDECK__DATABASE_PATH:-/data/screendeck.db}
+      SCREENDECK__AUTH_KEY_PATH: ${SCREENDECK__AUTH_KEY_PATH:-/data/auth.key}
     volumes:
       - screendeck-data:/data
 

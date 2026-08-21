@@ -5,7 +5,7 @@ hide:
 
 # Deployment
 
-ScreenDeck is designed to run as a single application instance with persistent storage for its SQLite database and authentication encryption key.
+ScreenDeck is designed to run as a single application instance. By default, its SQLite database and authentication encryption key are stored persistently, while an in-memory database can be used for temporary deployments.
 
 ## Docker Compose
 
@@ -58,6 +58,8 @@ ScreenDeck currently uses SQLite, so the example intentionally runs one replica.
 
 ## Persistent data
 
+The default deployments store ScreenDeck state persistently.
+
 Keep these two files together when backing up or restoring ScreenDeck:
 
 - `/data/screendeck.db`
@@ -68,6 +70,21 @@ The SQLite database contains application state including Plex configuration, act
 The authentication key encrypts sensitive values stored in the database, including Plex credentials and the participant session tokens used to resume saved rooms. Restoring `screendeck.db` without the matching `auth.key` prevents those encrypted values from being recovered.
 
 Browser identity cookies remain on users' browsers and are not part of the server backup. After a server restore, a browser can rediscover its saved rooms when its existing identity cookie still matches the restored membership data.
+
+## In-memory database
+
+For temporary or development deployments, ScreenDeck can use an in-memory SQLite database:
+
+```sh
+SCREENDECK__DATABASE_PATH=:memory: \
+  docker compose -f deploy/compose.yaml up -d
+```
+
+In this mode, the SQLite database and encryption key exist only in memory. No `screendeck.db` or `auth.key` file is created.
+
+All ScreenDeck state is lost when the application stops or restarts, including Plex authorization, rooms, participants, votes, and saved room memberships.
+
+Persistent storage is therefore recommended for normal deployments.
 
 ## Remote access
 
