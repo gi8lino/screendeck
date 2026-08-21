@@ -193,8 +193,14 @@ func (s *Service) Options(ctx context.Context, libraryKeys []string) (CatalogOpt
 	if err != nil {
 		return CatalogOptions{}, err
 	}
+	return catalogOptions(items), nil
+}
+
+// catalogOptions derives available genres and year bounds from media items.
+func catalogOptions(items []plex.Item) CatalogOptions {
 	genreSet := make(map[string]struct{})
 	options := CatalogOptions{Genres: make([]string, 0)}
+
 	for _, item := range items {
 		for _, genre := range item.Genres {
 			if strings.TrimSpace(genre) != "" {
@@ -208,91 +214,110 @@ func (s *Service) Options(ctx context.Context, libraryKeys []string) (CatalogOpt
 			options.MaxYear = item.Year
 		}
 	}
+
 	for genre := range genreSet {
 		options.Genres = append(options.Genres, genre)
 	}
 	sort.Strings(options.Genres)
-	return options, nil
+	return options
+}
+
+// createRoomOptions contains normalized input for creating a room.
+type createRoomOptions struct {
+	// name is the host display name.
+	name string
+	// libraryKeys identifies the Plex libraries included in the room.
+	libraryKeys []string
+	// filters contains room-wide catalog filters.
+	filters Filters
+	// genres contains the host's personal genre preferences.
+	genres []string
+	// genreMode controls how host genres are matched.
+	genreMode GenreMode
+	// sampling controls first-round ordering.
+	sampling SamplingStrategy
+	// roundSize limits the first-round deck when non-zero.
+	roundSize int
+	// identityToken optionally links the host to a persistent browser identity.
+	identityToken string
 }
 
 // Create creates a room and joins its first participant.
-func (s *Service) Create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, genreMode GenreMode, sampling SamplingStrategy, roundSize int) (Session, error) {
-	return s.create(ctx, name, libraryKeys, filters, genres, genreMode, sampling, roundSize, "")
+func (s *Service) Create(
+	ctx context.Context,
+	name string,
+	libraryKeys []string,
+	filters Filters,
+	genres []string,
+	genreMode GenreMode,
+	sampling SamplingStrategy,
+	roundSize int,
+) (Session, error) {
+	return s.create(ctx, createRoomOptions{
+		name:        name,
+		libraryKeys: libraryKeys,
+		filters:     filters,
+		genres:      genres,
+		genreMode:   genreMode,
+		sampling:    sampling,
+		roundSize:   roundSize,
+	})
 }
 
 // CreateForIdentity creates a room and associates the host with a persistent browser identity.
-func (s *Service) CreateForIdentity(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, genreMode GenreMode, sampling SamplingStrategy, roundSize int, identityToken string) (Session, error) {
+func (s *Service) CreateForIdentity(
+	ctx context.Context,
+	name string,
+	libraryKeys []string,
+	filters Filters,
+	genres []string,
+	genreMode GenreMode,
+	sampling SamplingStrategy,
+	roundSize int,
+	identityToken string,
+) (Session, error) {
 	if strings.TrimSpace(identityToken) == "" {
 		return Session{}, errors.New("browser identity is required")
 	}
-	return s.create(ctx, name, libraryKeys, filters, genres, genreMode, sampling, roundSize, identityToken)
+
+	return s.create(ctx, createRoomOptions{
+		name:          name,
+		libraryKeys:   libraryKeys,
+		filters:       filters,
+		genres:        genres,
+		genreMode:     genreMode,
+		sampling:      sampling,
+		roundSize:     roundSize,
+		identityToken: identityToken,
+	})
 }
 
 // create creates a room with an optional persistent browser identity association.
-func (s *Service) create(ctx context.Context, name string, libraryKeys []string, filters Filters, genres []string, genreMode GenreMode, sampling SamplingStrategy, roundSize int, identityToken string) (Session, error) {
-	name = cleanName(name)
-	if name == "" {
-		return Session{}, errors.New("name is required")
-	}
-	if len(libraryKeys) == 0 {
-		return Session{}, errors.New("select at least one library")
-	}
-	if err := validateFilters(filters); err != nil {
-		return Session{}, err
-	}
-	if roundSize < 0 || roundSize > 50000 {
-		return Session{}, errors.New("round size must be between 0 and 50000 titles")
-	}
-	genreMode = normalizeGenreMode(genreMode)
-	if genreMode == "" {
-		return Session{}, errors.New("genre mode must be any or all")
-	}
-	if sampling == "" {
-		sampling = SamplingRandom
-	}
-	if !validSamplingStrategy(sampling) {
-		return Session{}, errors.New("invalid first-round selection strategy")
-	}
-	_, items, err := s.loadItems(ctx, libraryKeys)
+func (s *Service) create(ctx context.Context, options createRoomOptions) (Session, error) {
+	options, err := normalizeCreateRoomOptions(options)
 	if err != nil {
 		return Session{}, err
 	}
-	seen := make(map[string]bool)
-	genreSet := make(map[string]struct{}, len(filters.Genres))
-	for _, genre := range filters.Genres {
-		if normalized := strings.ToLower(strings.TrimSpace(genre)); normalized != "" {
-			genreSet[normalized] = struct{}{}
-		}
+
+	_, items, err := s.loadItems(ctx, options.libraryKeys)
+	if err != nil {
+		return Session{}, err
 	}
-	eligible := make([]plex.Item, 0, len(items))
-	for _, item := range items {
-		if !matchesFilters(item, filters, genreSet) || seen[item.RatingKey] {
-			continue
-		}
-		seen[item.RatingKey] = true
-		eligible = append(eligible, item)
-	}
+	eligible := filterEligibleItems(items, options.filters)
 	if len(eligible) == 0 {
 		return Session{}, errors.New("the selected libraries contain no matching titles")
 	}
-	pool, err := orderInitialItems(eligible, sampling)
+
+	pool, err := orderInitialItems(eligible, options.sampling)
 	if err != nil {
 		return Session{}, err
 	}
-	availableGenreSet := make(map[string]string)
-	for _, item := range pool {
-		collectGenres(availableGenreSet, item.Genres)
-	}
-	participantGenres, err := canonicalGenres(genres, genreValues(availableGenreSet))
+	participantGenres, err := canonicalGenres(options.genres, genresFromItems(pool))
 	if err != nil {
 		return Session{}, err
 	}
-	selected := pool
-	if roundSize > 0 && len(selected) > roundSize {
-		selected = selected[:roundSize]
-	}
-	itemIDs := itemRatingKeys(selected)
-	poolIDs := itemRatingKeys(pool)
+	selected := limitItems(pool, options.roundSize)
+
 	code, err := roomCode()
 	if err != nil {
 		return Session{}, err
@@ -301,20 +326,100 @@ func (s *Service) create(ctx context.Context, name string, libraryKeys []string,
 	if err != nil {
 		return Session{}, err
 	}
+
 	now := time.Now().UTC()
-	err = s.store.CreateRoom(
+	if err := s.store.CreateRoom(
 		ctx,
 		store.Room{Code: code, Round: 1, CreatedAt: now, ExpiresAt: now.Add(s.roomTTL)},
-		store.Participant{ID: participantID, Name: name, Genres: participantGenres, GenreMode: string(genreMode)},
+		store.Participant{ID: participantID, Name: options.name, Genres: participantGenres, GenreMode: string(options.genreMode)},
 		tokenHash,
-		itemIDs,
-		poolIDs,
-		membershipCredentials(identityToken, token)...,
-	)
-	if err != nil {
+		itemRatingKeys(selected),
+		itemRatingKeys(pool),
+		membershipCredentials(options.identityToken, token)...,
+	); err != nil {
 		return Session{}, err
 	}
+
 	return Session{Code: code, Token: token}, nil
+}
+
+// normalizeCreateRoomOptions validates and canonicalizes room creation input.
+func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, error) {
+	options.name = cleanName(options.name)
+	if options.name == "" {
+		return createRoomOptions{}, errors.New("name is required")
+	}
+	if len(options.libraryKeys) == 0 {
+		return createRoomOptions{}, errors.New("select at least one library")
+	}
+	if err := validateFilters(options.filters); err != nil {
+		return createRoomOptions{}, err
+	}
+	if options.roundSize < 0 || options.roundSize > 50000 {
+		return createRoomOptions{}, errors.New("round size must be between 0 and 50000 titles")
+	}
+
+	options.genreMode = normalizeGenreMode(options.genreMode)
+	if options.genreMode == "" {
+		return createRoomOptions{}, errors.New("genre mode must be any or all")
+	}
+	if options.sampling == "" {
+		options.sampling = SamplingRandom
+	}
+	if !validSamplingStrategy(options.sampling) {
+		return createRoomOptions{}, errors.New("invalid first-round selection strategy")
+	}
+
+	return options, nil
+}
+
+// filterEligibleItems applies room filters and removes duplicate Plex rating keys.
+func filterEligibleItems(items []plex.Item, filters Filters) []plex.Item {
+	genres := normalizedGenreSet(filters.Genres)
+	seen := make(map[string]struct{}, len(items))
+	eligible := make([]plex.Item, 0, len(items))
+
+	for _, item := range items {
+		if !matchesFilters(item, filters, genres) {
+			continue
+		}
+		if _, duplicate := seen[item.RatingKey]; duplicate {
+			continue
+		}
+		seen[item.RatingKey] = struct{}{}
+		eligible = append(eligible, item)
+	}
+
+	return eligible
+}
+
+// normalizedGenreSet returns non-empty room filter genres in lower-case form.
+func normalizedGenreSet(genres []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(genres))
+	for _, genre := range genres {
+		normalized := strings.ToLower(strings.TrimSpace(genre))
+		if normalized != "" {
+			result[normalized] = struct{}{}
+		}
+	}
+	return result
+}
+
+// genresFromItems returns the canonical set of genres represented by the supplied items.
+func genresFromItems(items []plex.Item) []string {
+	genres := make(map[string]string)
+	for _, item := range items {
+		collectGenres(genres, item.Genres)
+	}
+	return genreValues(genres)
+}
+
+// limitItems returns the first limit items while preserving the original ordering.
+func limitItems(items []plex.Item, limit int) []plex.Item {
+	if limit > 0 && len(items) > limit {
+		return items[:limit]
+	}
+	return items
 }
 
 // validateFilters verifies room-wide catalog filter bounds.
@@ -382,10 +487,7 @@ func selectInitialItems(items []plex.Item, strategy SamplingStrategy, limit int)
 	if err != nil {
 		return nil, err
 	}
-	if limit > 0 && len(selected) > limit {
-		selected = selected[:limit]
-	}
-	return selected, nil
+	return limitItems(selected, limit), nil
 }
 
 // itemRatingKeys converts media items to their Plex rating keys in order.
@@ -402,29 +504,39 @@ func (s *Service) loadItems(ctx context.Context, libraryKeys []string) ([]plex.L
 	if len(libraryKeys) == 0 {
 		return nil, nil, errors.New("select at least one library")
 	}
+
 	libraries, err := s.Libraries(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	allowed := make(map[string]plex.Library, len(libraries))
-	for _, library := range libraries {
-		allowed[library.Key] = library
-	}
+	available := librariesByKey(libraries)
+
 	selected := make([]plex.Library, 0, len(libraryKeys))
 	var items []plex.Item
 	for _, key := range libraryKeys {
-		library, ok := allowed[key]
+		library, ok := available[key]
 		if !ok {
 			return nil, nil, fmt.Errorf("media library %q not found", key)
 		}
-		selected = append(selected, library)
+
 		libraryItems, err := s.libraryItems(ctx, library)
 		if err != nil {
 			return nil, nil, fmt.Errorf("load %s: %w", library.Title, err)
 		}
+		selected = append(selected, library)
 		items = append(items, libraryItems...)
 	}
+
 	return selected, items, nil
+}
+
+// librariesByKey indexes Plex libraries by their stable section key.
+func librariesByKey(libraries []plex.Library) map[string]plex.Library {
+	indexed := make(map[string]plex.Library, len(libraries))
+	for _, library := range libraries {
+		indexed[library.Key] = library
+	}
+	return indexed
 }
 
 // libraryItems returns cached or freshly loaded items for a library.
@@ -487,12 +599,23 @@ func (s *Service) Genres(ctx context.Context, code string) ([]string, error) {
 }
 
 // Join adds a participant to an existing room.
-func (s *Service) Join(ctx context.Context, code, name string, genres []string, genreMode GenreMode) (Session, error) {
+func (s *Service) Join(
+	ctx context.Context,
+	code, name string,
+	genres []string,
+	genreMode GenreMode,
+) (Session, error) {
 	return s.join(ctx, code, name, genres, genreMode, "")
 }
 
 // JoinForIdentity joins or resumes a room for a persistent browser identity.
-func (s *Service) JoinForIdentity(ctx context.Context, code, name string, genres []string, genreMode GenreMode, identityToken string) (Session, error) {
+func (s *Service) JoinForIdentity(
+	ctx context.Context,
+	code, name string,
+	genres []string,
+	genreMode GenreMode,
+	identityToken string,
+) (Session, error) {
 	if strings.TrimSpace(identityToken) == "" {
 		return Session{}, errors.New("browser identity is required")
 	}
@@ -508,11 +631,18 @@ func (s *Service) JoinForIdentity(ctx context.Context, code, name string, genres
 }
 
 // join adds a participant with an optional persistent browser identity association.
-func (s *Service) join(ctx context.Context, code, name string, genres []string, genreMode GenreMode, identityToken string) (Session, error) {
-	code, name = strings.ToUpper(strings.TrimSpace(code)), cleanName(name)
-	if len(code) != 6 || name == "" {
-		return Session{}, errors.New("a six-character room code and name are required")
+func (s *Service) join(
+	ctx context.Context,
+	code, name string,
+	genres []string,
+	genreMode GenreMode,
+	identityToken string,
+) (Session, error) {
+	code, name, genreMode, err := normalizeJoinInput(code, name, genreMode)
+	if err != nil {
+		return Session{}, err
 	}
+
 	availableGenres, err := s.store.RoomGenres(ctx, code)
 	if err != nil {
 		return Session{}, err
@@ -521,10 +651,7 @@ func (s *Service) join(ctx context.Context, code, name string, genres []string, 
 	if err != nil {
 		return Session{}, err
 	}
-	genreMode = normalizeGenreMode(genreMode)
-	if genreMode == "" {
-		return Session{}, errors.New("genre mode must be any or all")
-	}
+
 	participantID, token, tokenHash, err := credentials()
 	if err != nil {
 		return Session{}, err
@@ -538,8 +665,25 @@ func (s *Service) join(ctx context.Context, code, name string, genres []string, 
 	); err != nil {
 		return Session{}, err
 	}
+
 	s.Notify(code)
 	return Session{Code: code, Token: token}, nil
+}
+
+// normalizeJoinInput validates and canonicalizes room join input.
+func normalizeJoinInput(code, name string, genreMode GenreMode) (string, string, GenreMode, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	name = cleanName(name)
+	if len(code) != 6 || name == "" {
+		return "", "", "", errors.New("a six-character room code and name are required")
+	}
+
+	genreMode = normalizeGenreMode(genreMode)
+	if genreMode == "" {
+		return "", "", "", errors.New("genre mode must be any or all")
+	}
+
+	return code, name, genreMode, nil
 }
 
 // State returns a room state visible to an authenticated participant.

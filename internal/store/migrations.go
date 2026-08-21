@@ -32,40 +32,21 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	currentVersion := latestMigrationVersion(migrations)
 
+	currentVersion := latestMigrationVersion(migrations)
 	version, err := s.schemaVersion(ctx)
 	if err != nil {
 		return err
 	}
-	if version > currentVersion {
-		return fmt.Errorf(
-			"database schema version %d is newer than supported version %d",
-			version,
-			currentVersion,
-		)
+
+	if err := s.validateMigrationSource(ctx, version, currentVersion); err != nil {
+		return err
 	}
 
-	if version == 0 {
-		empty, err := s.schemaEmpty(ctx)
-		if err != nil {
-			return err
-		}
-		if !empty {
-			return errors.New("database schema is unversioned; recreate the database")
-		}
+	version, err = s.applyPendingMigrations(ctx, migrations, version)
+	if err != nil {
+		return err
 	}
-
-	for _, migration := range migrations {
-		if migration.version <= version {
-			continue
-		}
-		if err := s.applyMigration(ctx, migration); err != nil {
-			return err
-		}
-		version = migration.version
-	}
-
 	if version != currentVersion {
 		return fmt.Errorf(
 			"database schema version %d did not reach current version %d",
@@ -73,7 +54,47 @@ func (s *Store) migrate(ctx context.Context) error {
 			currentVersion,
 		)
 	}
+
 	return nil
+}
+
+// validateMigrationSource verifies that the current database can be upgraded safely.
+func (s *Store) validateMigrationSource(ctx context.Context, version, currentVersion int) error {
+	if version > currentVersion {
+		return fmt.Errorf(
+			"database schema version %d is newer than supported version %d",
+			version,
+			currentVersion,
+		)
+	}
+	if version != 0 {
+		return nil
+	}
+
+	empty, err := s.schemaEmpty(ctx)
+	if err != nil {
+		return err
+	}
+	if !empty {
+		return errors.New("database schema is unversioned; recreate the database")
+	}
+
+	return nil
+}
+
+// applyPendingMigrations applies every migration newer than the supplied database version.
+func (s *Store) applyPendingMigrations(ctx context.Context, migrations []migration, version int) (int, error) {
+	for _, migration := range migrations {
+		if migration.version <= version {
+			continue
+		}
+		if err := s.applyMigration(ctx, migration); err != nil {
+			return version, err
+		}
+		version = migration.version
+	}
+
+	return version, nil
 }
 
 // loadMigrations loads and validates embedded migration files in version order.
@@ -85,38 +106,74 @@ func loadMigrations() ([]migration, error) {
 
 	migrations := make([]migration, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
-			continue
-		}
-
-		versionText, _, ok := strings.Cut(entry.Name(), "_")
-		if !ok {
-			return nil, fmt.Errorf("invalid database migration name %q", entry.Name())
-		}
-		version, err := strconv.Atoi(versionText)
-		if err != nil || version <= 0 {
-			return nil, fmt.Errorf("invalid database migration version %q", versionText)
-		}
-
-		name := "migrations/" + entry.Name()
-		statement, err := migrationFiles.ReadFile(name)
+		migration, ok, err := loadMigration(entry)
 		if err != nil {
-			return nil, fmt.Errorf("read database migration %q: %w", name, err)
+			return nil, err
 		}
-		migrations = append(migrations, migration{
-			version:   version,
-			name:      name,
-			statement: string(statement),
-		})
+		if ok {
+			migrations = append(migrations, migration)
+		}
 	}
 
 	sort.Slice(migrations, func(i, j int) bool {
 		return migrations[i].version < migrations[j].version
 	})
+	if err := validateMigrationSequence(migrations); err != nil {
+		return nil, err
+	}
+
+	return migrations, nil
+}
+
+// loadMigration loads one SQL migration entry when the embedded file is eligible.
+func loadMigration(entry fs.DirEntry) (migration, bool, error) {
+	if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+		return migration{}, false, nil
+	}
+
+	version, err := migrationVersion(entry.Name())
+	if err != nil {
+		return migration{}, false, err
+	}
+
+	name := "migrations/" + entry.Name()
+	statement, err := migrationFiles.ReadFile(name)
+	if err != nil {
+		return migration{}, false, fmt.Errorf("read database migration %q: %w", name, err)
+	}
+
+	return migration{
+		version:   version,
+		name:      name,
+		statement: string(statement),
+	}, true, nil
+}
+
+// migrationVersion parses the positive numeric prefix from a migration file name.
+func migrationVersion(name string) (int, error) {
+	versionText, _, ok := strings.Cut(name, "_")
+	if !ok {
+		return 0, fmt.Errorf("invalid database migration name %q", name)
+	}
+
+	version, err := strconv.Atoi(versionText)
+	if err != nil || version <= 0 {
+		return 0, fmt.Errorf("invalid database migration version %q", versionText)
+	}
+
+	return version, nil
+}
+
+// validateMigrationSequence verifies that migration versions start at one and remain contiguous.
+func validateMigrationSequence(migrations []migration) error {
+	if len(migrations) == 0 {
+		return errors.New("no database migrations found")
+	}
+
 	for index, migration := range migrations {
 		expected := index + 1
 		if migration.version != expected {
-			return nil, fmt.Errorf(
+			return fmt.Errorf(
 				"database migrations must be contiguous: expected version %d, found %d in %q",
 				expected,
 				migration.version,
@@ -124,10 +181,8 @@ func loadMigrations() ([]migration, error) {
 			)
 		}
 	}
-	if len(migrations) == 0 {
-		return nil, errors.New("no database migrations found")
-	}
-	return migrations, nil
+
+	return nil
 }
 
 // latestMigrationVersion returns the newest schema version in the migration set.
@@ -155,5 +210,6 @@ func (s *Store) applyMigration(ctx context.Context, migration migration) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit database migration %d: %w", migration.version, err)
 	}
+
 	return nil
 }

@@ -123,6 +123,42 @@ type NextRoundState struct {
 
 // CreateRoom persists a room, its owner, the active deck, and the original eligible item pool.
 func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, itemIDs, poolIDs []string, memberships ...RoomMembershipCredential) error {
+	normalizeRoomCreation(&room, &participant)
+	participantGenres, err := encodeParticipantGenres(participant.Genres)
+	if err != nil {
+		return err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // nolint:errcheck
+
+	if err := insertRoomTx(ctx, tx, room); err != nil {
+		return err
+	}
+	if err := insertParticipantTx(ctx, tx, room.Code, participant, tokenHash, participantGenres); err != nil {
+		return err
+	}
+	if err := s.saveOptionalRoomMembershipTx(ctx, tx, room.Code, participant.ID, memberships); err != nil {
+		return err
+	}
+	if err := insertRoomItemsTx(ctx, tx, room.Code, itemIDs, 0); err != nil {
+		return err
+	}
+	if err := insertRoomPoolTx(ctx, tx, room.Code, poolIDs, itemIDs); err != nil {
+		return err
+	}
+	if err := reconcileRoomPhaseTx(ctx, tx, room.Code); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// normalizeRoomCreation applies default room and participant values before persistence.
+func normalizeRoomCreation(room *Room, participant *Participant) {
 	if room.Round <= 0 {
 		room.Round = 1
 	}
@@ -132,25 +168,32 @@ func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participa
 	if room.OwnerID == "" {
 		room.OwnerID = participant.ID
 	}
+
+	normalizeParticipant(participant)
+}
+
+// normalizeParticipant applies persistence defaults to participant state.
+func normalizeParticipant(participant *Participant) {
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
 	if participant.GenreMode == "" {
 		participant.GenreMode = "any"
 	}
+}
 
-	participantGenres, err := json.Marshal(participant.Genres)
+// encodeParticipantGenres serializes participant genres for SQLite JSON queries.
+func encodeParticipantGenres(genres []string) (string, error) {
+	encoded, err := json.Marshal(genres)
 	if err != nil {
-		return fmt.Errorf("encode participant genres: %w", err)
+		return "", fmt.Errorf("encode participant genres: %w", err)
 	}
+	return string(encoded), nil
+}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() // nolint:errcheck
-
-	const createRoomQuery = `
+// insertRoomTx inserts room metadata inside an existing transaction.
+func insertRoomTx(ctx context.Context, tx *sql.Tx, room Room) error {
+	const query = `
 INSERT INTO rooms (
   code,
   round,
@@ -162,20 +205,22 @@ INSERT INTO rooms (
   ?, ?, ?, ?, ?, ?
 )
 `
-	if _, err := tx.ExecContext(
+	_, err := tx.ExecContext(
 		ctx,
-		createRoomQuery,
+		query,
 		room.Code,
 		room.Round,
 		room.Phase,
 		room.OwnerID,
 		room.CreatedAt.Unix(),
 		room.ExpiresAt.Unix(),
-	); err != nil {
-		return err
-	}
+	)
+	return err
+}
 
-	const createParticipantQuery = `
+// insertParticipantTx inserts a participant inside an existing room transaction.
+func insertParticipantTx(ctx context.Context, tx *sql.Tx, code string, participant Participant, tokenHash, genres string) error {
+	const query = `
 INSERT INTO participants (
   id,
   room_code,
@@ -188,25 +233,23 @@ INSERT INTO participants (
   ?, ?, ?, ?, ?, ?, ?
 )
 `
-	if _, err := tx.ExecContext(
+	_, err := tx.ExecContext(
 		ctx,
-		createParticipantQuery,
+		query,
 		participant.ID,
-		room.Code,
+		code,
 		participant.Name,
-		string(participantGenres),
+		genres,
 		participant.GenreMode,
 		tokenHash,
 		time.Now().Unix(),
-	); err != nil {
-		return err
-	}
+	)
+	return err
+}
 
-	if err := s.saveOptionalRoomMembershipTx(ctx, tx, room.Code, participant.ID, memberships); err != nil {
-		return err
-	}
-
-	const insertRoomItemQuery = `
+// insertRoomItemsTx inserts an ordered set of active room items at the supplied start position.
+func insertRoomItemsTx(ctx context.Context, tx *sql.Tx, code string, itemIDs []string, startPosition int) error {
+	const query = `
 INSERT INTO room_items (
   room_code,
   item_id,
@@ -215,18 +258,23 @@ INSERT INTO room_items (
   ?, ?, ?
 )
 `
-	stmt, err := tx.PrepareContext(ctx, insertRoomItemQuery)
+	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close() // nolint:errcheck
-	for position, itemID := range itemIDs {
-		if _, err := stmt.ExecContext(ctx, room.Code, itemID, position); err != nil {
+
+	for offset, itemID := range itemIDs {
+		if _, err := stmt.ExecContext(ctx, code, itemID, startPosition+offset); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	const insertPoolItemQuery = `
+// insertRoomPoolTx inserts the original eligible item pool and marks active items as used.
+func insertRoomPoolTx(ctx context.Context, tx *sql.Tx, code string, poolIDs, activeIDs []string) error {
+	const query = `
 INSERT INTO room_item_pool (
   room_code,
   item_id,
@@ -236,40 +284,32 @@ INSERT INTO room_item_pool (
   ?, ?, ?, ?
 )
 `
-	poolStmt, err := tx.PrepareContext(ctx, insertPoolItemQuery)
+	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		return err
 	}
-	defer poolStmt.Close() // nolint:errcheck
+	defer stmt.Close() // nolint:errcheck
 
-	used := make(map[string]struct{}, len(itemIDs))
-	for _, itemID := range itemIDs {
-		used[itemID] = struct{}{}
+	active := make(map[string]struct{}, len(activeIDs))
+	for _, itemID := range activeIDs {
+		active[itemID] = struct{}{}
 	}
 	for position, itemID := range poolIDs {
-		_, active := used[itemID]
-		if _, err := poolStmt.ExecContext(ctx, room.Code, itemID, position, active); err != nil {
+		_, used := active[itemID]
+		if _, err := stmt.ExecContext(ctx, code, itemID, position, used); err != nil {
 			return err
 		}
 	}
-	if err := reconcileRoomPhaseTx(ctx, tx, room.Code); err != nil {
-		return err
-	}
-	return tx.Commit()
+
+	return nil
 }
 
 // JoinRoom persists a participant in an active room.
 func (s *Store) JoinRoom(ctx context.Context, code string, participant Participant, tokenHash string, memberships ...RoomMembershipCredential) error {
-	if participant.Genres == nil {
-		participant.Genres = []string{}
-	}
-	if participant.GenreMode == "" {
-		participant.GenreMode = "any"
-	}
-
-	genres, err := json.Marshal(participant.Genres)
+	normalizeParticipant(&participant)
+	genres, err := encodeParticipantGenres(participant.Genres)
 	if err != nil {
-		return fmt.Errorf("encode participant genres: %w", err)
+		return err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -278,7 +318,31 @@ func (s *Store) JoinRoom(ctx context.Context, code string, participant Participa
 	}
 	defer tx.Rollback() // nolint:errcheck
 
-	const joinQuery = `
+	if err := joinParticipantTx(ctx, tx, code, participant, tokenHash, genres); err != nil {
+		return err
+	}
+	if err := s.saveOptionalRoomMembershipTx(ctx, tx, code, participant.ID, memberships); err != nil {
+		return err
+	}
+
+	// Membership changed, so any pending next-round agreement must be renewed
+	// by the new set of active participants.
+	if err := cancelNextRoundRequestTx(ctx, tx, code); err != nil {
+		return err
+	}
+	if err := invalidateNonUnanimousMatchesTx(ctx, tx, code); err != nil {
+		return err
+	}
+	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// joinParticipantTx inserts a participant only when the target room is still active.
+func joinParticipantTx(ctx context.Context, tx *sql.Tx, code string, participant Participant, tokenHash, genres string) error {
+	const query = `
 INSERT INTO participants (
   id,
   room_code,
@@ -302,10 +366,10 @@ WHERE code = ?
 `
 	result, err := tx.ExecContext(
 		ctx,
-		joinQuery,
+		query,
 		participant.ID,
 		participant.Name,
-		string(genres),
+		genres,
 		participant.GenreMode,
 		tokenHash,
 		time.Now().Unix(),
@@ -315,6 +379,7 @@ WHERE code = ?
 	if err != nil {
 		return err
 	}
+
 	count, err := result.RowsAffected()
 	if err != nil {
 		return err
@@ -322,19 +387,12 @@ WHERE code = ?
 	if count == 0 {
 		return ErrNotFound
 	}
-	if err := s.saveOptionalRoomMembershipTx(ctx, tx, code, participant.ID, memberships); err != nil {
-		return err
-	}
+	return nil
+}
 
-	// Membership changed, so any pending next-round agreement must be renewed
-	// by the new set of active participants.
-	if err := cancelNextRoundRequestTx(ctx, tx, code); err != nil {
-		return err
-	}
-
-	// A newly joined participant has not voted yet, so prior matches are no
-	// longer unanimous until that participant also likes them.
-	const invalidateMatchesQuery = `
+// invalidateNonUnanimousMatchesTx removes matches invalidated by a newly joined participant.
+func invalidateNonUnanimousMatchesTx(ctx context.Context, tx *sql.Tx, code string) error {
+	const query = `
 DELETE FROM item_matches
 WHERE room_code = ?
   AND (
@@ -349,13 +407,8 @@ WHERE room_code = ?
     WHERE room_code = ?
   )
 `
-	if _, err := tx.ExecContext(ctx, invalidateMatchesQuery, code, code, code); err != nil {
-		return err
-	}
-	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
-		return err
-	}
-	return tx.Commit()
+	_, err := tx.ExecContext(ctx, query, code, code, code)
+	return err
 }
 
 // ParticipantByToken authenticates and returns a room participant.
@@ -390,21 +443,11 @@ WHERE room_code = ?
 
 // RoomGenres returns the genres represented by the current room deck.
 func (s *Store) RoomGenres(ctx context.Context, code string) ([]string, error) {
-	const roomQuery = `
-SELECT 1
-FROM rooms
-WHERE code = ?
-  AND expires_at > ?
-`
-	var exists int
-	if err := s.db.QueryRowContext(ctx, roomQuery, code, time.Now().Unix()).Scan(&exists); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
+	if err := s.ensureActiveRoom(ctx, code); err != nil {
 		return nil, err
 	}
 
-	const genresQuery = `
+	const query = `
 SELECT DISTINCT CAST(j.value AS TEXT)
 FROM (
   SELECT
@@ -427,7 +470,7 @@ JOIN json_each(m.genres) j
 WHERE trim(CAST(j.value AS TEXT)) <> ''
 ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE
 `
-	rows, err := s.db.QueryContext(ctx, genresQuery, code, code)
+	rows, err := s.db.QueryContext(ctx, query, code, code)
 	if err != nil {
 		return nil, err
 	}
@@ -447,9 +490,90 @@ ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE
 	return genres, nil
 }
 
+// ensureActiveRoom verifies that a room exists and has not expired.
+func (s *Store) ensureActiveRoom(ctx context.Context, code string) error {
+	const query = `
+SELECT 1
+FROM rooms
+WHERE code = ?
+  AND expires_at > ?
+`
+	var exists int
+	if err := s.db.QueryRowContext(ctx, query, code, time.Now().Unix()).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	return nil
+}
+
 // RoomState returns the state of a room for one participant.
 func (s *Store) RoomState(ctx context.Context, code, participantID string) (RoomState, error) {
-	const roomQuery = `
+	room, err := s.loadRoom(ctx, code)
+	if err != nil {
+		return RoomState{}, err
+	}
+
+	me, err := s.loadRoomParticipant(ctx, code, participantID, room)
+	if err != nil {
+		return RoomState{}, err
+	}
+	participants, err := s.loadRoomParticipants(ctx, code, room)
+	if err != nil {
+		return RoomState{}, err
+	}
+
+	candidate, err := s.nextItem(ctx, code, participantID)
+	if err != nil {
+		return RoomState{}, err
+	}
+	matches, err := s.matchItems(ctx, code)
+	if err != nil {
+		return RoomState{}, err
+	}
+
+	nextRound, err := s.loadNextRoundState(ctx, code, room, participants, matches)
+	if err != nil {
+		return RoomState{}, err
+	}
+	progress, err := s.loadProgress(ctx, code, participantID)
+	if err != nil {
+		return RoomState{}, err
+	}
+
+	remaining, err := s.roundRemaining(ctx, code)
+	if err != nil {
+		return RoomState{}, err
+	}
+	roundComplete := room.Phase == RoomPhaseRoundComplete || room.Phase == RoomPhaseFinished || remaining == 0
+
+	winner, err := s.loadWinner(ctx, code, room, matches)
+	if err != nil {
+		return RoomState{}, err
+	}
+	moreTitles, err := s.loadMoreTitlesState(ctx, code, room.Round)
+	if err != nil {
+		return RoomState{}, err
+	}
+
+	return RoomState{
+		Room:          room,
+		Me:            me,
+		Participants:  participants,
+		Candidate:     candidate,
+		Matches:       matches,
+		Winner:        winner,
+		Progress:      progress,
+		NextRound:     nextRound,
+		RoundComplete: roundComplete,
+		MoreTitles:    moreTitles,
+	}, nil
+}
+
+// loadRoom returns active room metadata.
+func (s *Store) loadRoom(ctx context.Context, code string) (Room, error) {
+	const query = `
 SELECT
   code,
   round,
@@ -461,26 +585,31 @@ FROM rooms
 WHERE code = ?
   AND expires_at > ?
 `
-	var state RoomState
+	var room Room
 	var created, expires int64
-	err := s.db.QueryRowContext(ctx, roomQuery, code, time.Now().Unix()).Scan(
-		&state.Room.Code,
-		&state.Room.Round,
-		&state.Room.Phase,
-		&state.Room.OwnerID,
+	err := s.db.QueryRowContext(ctx, query, code, time.Now().Unix()).Scan(
+		&room.Code,
+		&room.Round,
+		&room.Phase,
+		&room.OwnerID,
 		&created,
 		&expires,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return state, ErrNotFound
+		return Room{}, ErrNotFound
 	}
 	if err != nil {
-		return state, err
+		return Room{}, err
 	}
-	state.Room.CreatedAt = time.Unix(created, 0).UTC()
-	state.Room.ExpiresAt = time.Unix(expires, 0).UTC()
 
-	const meQuery = `
+	room.CreatedAt = time.Unix(created, 0).UTC()
+	room.ExpiresAt = time.Unix(expires, 0).UTC()
+	return room, nil
+}
+
+// loadRoomParticipant returns one participant with current-round readiness and host state.
+func (s *Store) loadRoomParticipant(ctx context.Context, code, participantID string, room Room) (Participant, error) {
+	const query = `
 SELECT
   p.id,
   p.name,
@@ -497,23 +626,29 @@ FROM participants p
 WHERE p.id = ?
   AND p.room_code = ?
 `
-	var meGenres string
-	if err := s.db.QueryRowContext(ctx, meQuery, state.Room.Round, participantID, code).Scan(
-		&state.Me.ID,
-		&state.Me.Name,
-		&meGenres,
-		&state.Me.GenreMode,
-		&state.Me.ReadyForNextRound,
+	var participant Participant
+	var genres string
+	if err := s.db.QueryRowContext(ctx, query, room.Round, participantID, code).Scan(
+		&participant.ID,
+		&participant.Name,
+		&genres,
+		&participant.GenreMode,
+		&participant.ReadyForNextRound,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return state, ErrNotFound
+			return Participant{}, ErrNotFound
 		}
-		return state, err
+		return Participant{}, err
 	}
-	decodeGenres(meGenres, &state.Me.Genres)
-	state.Me.IsHost = state.Me.ID == state.Room.OwnerID
 
-	const participantsQuery = `
+	decodeGenres(genres, &participant.Genres)
+	participant.IsHost = participant.ID == room.OwnerID
+	return participant, nil
+}
+
+// loadRoomParticipants returns all participants with current-round readiness and host state.
+func (s *Store) loadRoomParticipants(ctx context.Context, code string, room Room) ([]Participant, error) {
+	const query = `
 SELECT
   p.id,
   p.name,
@@ -530,44 +665,49 @@ FROM participants p
 WHERE p.room_code = ?
 ORDER BY p.joined_at
 `
-	rows, err := s.db.QueryContext(ctx, participantsQuery, state.Room.Round, code)
+	rows, err := s.db.QueryContext(ctx, query, room.Round, code)
 	if err != nil {
-		return state, err
+		return nil, err
 	}
+	defer rows.Close() // nolint:errcheck
+
+	var participants []Participant
 	for rows.Next() {
-		var participant Participant
-		var genres string
-		if err := rows.Scan(
-			&participant.ID,
-			&participant.Name,
-			&genres,
-			&participant.GenreMode,
-			&participant.ReadyForNextRound,
-		); err != nil {
-			return state, err
+		participant, err := scanParticipant(rows, room.OwnerID)
+		if err != nil {
+			return nil, err
 		}
-		decodeGenres(genres, &participant.Genres)
-		participant.IsHost = participant.ID == state.Room.OwnerID
-		state.Participants = append(state.Participants, participant)
+		participants = append(participants, participant)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close() // nolint:errcheck
-		return state, err
+		return nil, err
 	}
-	if err := rows.Close(); err != nil {
-		return state, err
+	return participants, nil
+}
+
+// scanParticipant decodes a participant row that includes current-round readiness.
+func scanParticipant(row scanner, ownerID string) (Participant, error) {
+	var participant Participant
+	var genres string
+	if err := row.Scan(
+		&participant.ID,
+		&participant.Name,
+		&genres,
+		&participant.GenreMode,
+		&participant.ReadyForNextRound,
+	); err != nil {
+		return Participant{}, err
 	}
 
-	state.Candidate, err = s.nextItem(ctx, code, participantID)
-	if err != nil {
-		return state, err
-	}
-	state.Matches, err = s.matchItems(ctx, code)
-	if err != nil {
-		return state, err
-	}
+	decodeGenres(genres, &participant.Genres)
+	participant.IsHost = participant.ID == ownerID
+	return participant, nil
+}
 
-	state.NextRound.Required = len(state.Participants)
+// loadNextRoundState returns current-round readiness and requester information.
+func (s *Store) loadNextRoundState(ctx context.Context, code string, room Room, participants []Participant, matches []plex.Item) (NextRoundState, error) {
+	state := NextRoundState{Required: len(participants)}
+
 	const readyQuery = `
 SELECT COUNT(*)
 FROM round_ready rr
@@ -577,22 +717,35 @@ JOIN participants p
 WHERE rr.room_code = ?
   AND rr.round = ?
 `
-	if err := s.db.QueryRowContext(ctx, readyQuery, code, state.Room.Round).Scan(&state.NextRound.Ready); err != nil {
-		return state, err
+	if err := s.db.QueryRowContext(ctx, readyQuery, code, room.Round).Scan(&state.Ready); err != nil {
+		return NextRoundState{}, err
 	}
 
+	requester, err := s.loadNextRoundRequester(ctx, code, room.OwnerID)
+	if err != nil {
+		return NextRoundState{}, err
+	}
+	state.RequestedBy = requester
+	state.Available = state.Required > 1 && len(matches) > 1
+	return state, nil
+}
+
+// loadNextRoundRequester returns the participant that initiated next-round consensus when still present.
+func (s *Store) loadNextRoundRequester(ctx context.Context, code, ownerID string) (*Participant, error) {
 	const requesterIDQuery = `
 SELECT next_round_requester_id
 FROM rooms
 WHERE code = ?
 `
-	var requester Participant
 	var requesterID string
 	if err := s.db.QueryRowContext(ctx, requesterIDQuery, code).Scan(&requesterID); err != nil {
-		return state, err
+		return nil, err
 	}
-	if requesterID != "" {
-		const requesterQuery = `
+	if requesterID == "" {
+		return nil, nil
+	}
+
+	const requesterQuery = `
 SELECT
   id,
   name,
@@ -601,19 +754,24 @@ FROM participants
 WHERE room_code = ?
   AND id = ?
 `
-		if err := s.db.QueryRowContext(ctx, requesterQuery, code, requesterID).Scan(
-			&requester.ID,
-			&requester.Name,
-			&requester.GenreMode,
-		); err == nil {
-			requester.IsHost = requester.ID == state.Room.OwnerID
-			state.NextRound.RequestedBy = &requester
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return state, err
+	var requester Participant
+	if err := s.db.QueryRowContext(ctx, requesterQuery, code, requesterID).Scan(
+		&requester.ID,
+		&requester.Name,
+		&requester.GenreMode,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
 		}
+		return nil, err
 	}
-	state.NextRound.Available = state.NextRound.Required > 1 && len(state.Matches) > 1
 
+	requester.IsHost = requester.ID == ownerID
+	return &requester, nil
+}
+
+// loadProgress returns participant-specific swipe progress for the active round.
+func (s *Store) loadProgress(ctx context.Context, code, participantID string) (Progress, error) {
 	const progressQuery = `
 SELECT
   COUNT(v.item_id),
@@ -654,11 +812,12 @@ WHERE p.id = ?
     )
   )
 `
+	var progress Progress
 	if err := s.db.QueryRowContext(ctx, progressQuery, participantID, code).Scan(
-		&state.Progress.Voted,
-		&state.Progress.Total,
+		&progress.Voted,
+		&progress.Total,
 	); err != nil {
-		return state, err
+		return Progress{}, err
 	}
 
 	const roundTotalQuery = `
@@ -666,23 +825,20 @@ SELECT COUNT(*)
 FROM room_items
 WHERE room_code = ?
 `
-	if err := s.db.QueryRowContext(ctx, roundTotalQuery, code).Scan(&state.Progress.RoundTotal); err != nil {
-		return state, err
+	if err := s.db.QueryRowContext(ctx, roundTotalQuery, code).Scan(&progress.RoundTotal); err != nil {
+		return Progress{}, err
 	}
-	state.Progress.FilteredOut = state.Progress.RoundTotal - state.Progress.Total
+	progress.FilteredOut = progress.RoundTotal - progress.Total
+	return progress, nil
+}
 
-	remaining, err := s.roundRemaining(ctx, code)
-	if err != nil {
-		return state, err
-	}
-	state.RoundComplete = state.Room.Phase == RoomPhaseRoundComplete || state.Room.Phase == RoomPhaseFinished
-	if remaining == 0 && !state.RoundComplete {
-		state.RoundComplete = true
+// loadWinner returns final winner details when the room has converged on one match.
+func (s *Store) loadWinner(ctx context.Context, code string, room Room, matches []plex.Item) (*WinnerState, error) {
+	if room.Phase != RoomPhaseFinished || len(matches) != 1 {
+		return nil, nil
 	}
 
-	if state.Room.Phase == RoomPhaseFinished && len(state.Matches) == 1 {
-		winner := &WinnerState{Item: state.Matches[0]}
-		const supportersQuery = `
+	const query = `
 SELECT
   p.id,
   p.name,
@@ -697,42 +853,56 @@ WHERE p.room_code = ?
   AND v.liked = 1
 ORDER BY p.joined_at
 `
-		rows, err := s.db.QueryContext(ctx, supportersQuery, code, state.Matches[0].RatingKey)
+	rows, err := s.db.QueryContext(ctx, query, code, matches[0].RatingKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() // nolint:errcheck
+
+	winner := &WinnerState{Item: matches[0]}
+	for rows.Next() {
+		participant, err := scanWinnerSupporter(rows, room.OwnerID)
 		if err != nil {
-			return state, err
+			return nil, err
 		}
-		for rows.Next() {
-			var participant Participant
-			var genres string
-			if err := rows.Scan(&participant.ID, &participant.Name, &genres, &participant.GenreMode); err != nil {
-				return state, err
-			}
-			decodeGenres(genres, &participant.Genres)
-			participant.IsHost = participant.ID == state.Room.OwnerID
-			winner.LikedBy = append(winner.LikedBy, participant)
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close() // nolint:errcheck
-			return state, err
-		}
-		if err := rows.Close(); err != nil {
-			return state, err
-		}
-		state.Winner = winner
+		winner.LikedBy = append(winner.LikedBy, participant)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return winner, nil
+}
+
+// scanWinnerSupporter decodes a participant row used by final winner details.
+func scanWinnerSupporter(row scanner, ownerID string) (Participant, error) {
+	var participant Participant
+	var genres string
+	if err := row.Scan(&participant.ID, &participant.Name, &genres, &participant.GenreMode); err != nil {
+		return Participant{}, err
 	}
 
-	if state.Room.Round == 1 {
-		const availableQuery = `
+	decodeGenres(genres, &participant.Genres)
+	participant.IsHost = participant.ID == ownerID
+	return participant, nil
+}
+
+// loadMoreTitlesState returns the unused first-round pool state for the room host.
+func (s *Store) loadMoreTitlesState(ctx context.Context, code string, round int) (MoreTitlesState, error) {
+	if round != 1 {
+		return MoreTitlesState{}, nil
+	}
+
+	const query = `
 SELECT COUNT(*)
 FROM room_item_pool
 WHERE room_code = ?
   AND used = 0
 `
-		if err := s.db.QueryRowContext(ctx, availableQuery, code).Scan(&state.MoreTitles.Available); err != nil {
-			return state, err
-		}
-		state.MoreTitles.CanAdd = state.MoreTitles.Available > 0
+	var state MoreTitlesState
+	if err := s.db.QueryRowContext(ctx, query, code).Scan(&state.Available); err != nil {
+		return MoreTitlesState{}, err
 	}
+	state.CanAdd = state.Available > 0
 	return state, nil
 }
 
@@ -918,7 +1088,32 @@ func (s *Store) Vote(ctx context.Context, code, participantID, itemID string, li
 	}
 	defer tx.Rollback() // nolint:errcheck
 
-	const voteQuery = `
+	if err := upsertVoteTx(ctx, tx, code, participantID, itemID, liked); err != nil {
+		return false, err
+	}
+
+	participants, likes, err := voteMatchCountsTx(ctx, tx, code, itemID)
+	if err != nil {
+		return false, err
+	}
+	matched := unanimousMatch(participants, likes)
+	if err := setMatchStateTx(ctx, tx, code, itemID, matched); err != nil {
+		return false, err
+	}
+
+	if err := cancelNextRoundIfUnavailableTx(ctx, tx, code); err != nil {
+		return false, err
+	}
+	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
+		return false, err
+	}
+
+	return matched, tx.Commit()
+}
+
+// upsertVoteTx records a vote only when the participant can vote for the active room item.
+func upsertVoteTx(ctx context.Context, tx *sql.Tx, code, participantID, itemID string, liked bool) error {
+	const query = `
 INSERT INTO item_votes (
   room_code,
   participant_id,
@@ -972,7 +1167,7 @@ ON CONFLICT (room_code, participant_id, item_id) DO UPDATE SET
 `
 	result, err := tx.ExecContext(
 		ctx,
-		voteQuery,
+		query,
 		code,
 		participantID,
 		itemID,
@@ -985,17 +1180,22 @@ ON CONFLICT (room_code, participant_id, item_id) DO UPDATE SET
 		itemID,
 	)
 	if err != nil {
-		return false, err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	if count == 0 {
-		return false, ErrNotFound
+		return err
 	}
 
-	const matchCountsQuery = `
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// voteMatchCountsTx returns active participant and positive-vote counts for an item.
+func voteMatchCountsTx(ctx context.Context, tx *sql.Tx, code, itemID string) (participants, likes int, err error) {
+	const query = `
 SELECT
   (
     SELECT COUNT(*)
@@ -1010,22 +1210,8 @@ SELECT
       AND liked = 1
   )
 `
-	var participants, likes int
-	if err := tx.QueryRowContext(ctx, matchCountsQuery, code, code, itemID).Scan(&participants, &likes); err != nil {
-		return false, err
-	}
-	matched := unanimousMatch(participants, likes)
-	if err := setMatchStateTx(ctx, tx, code, itemID, matched); err != nil {
-		return false, err
-	}
-
-	if err := cancelNextRoundIfUnavailableTx(ctx, tx, code); err != nil {
-		return false, err
-	}
-	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
-		return false, err
-	}
-	return matched, tx.Commit()
+	err = tx.QueryRowContext(ctx, query, code, code, itemID).Scan(&participants, &likes)
+	return participants, likes, err
 }
 
 // RemoveParticipant removes a non-host participant when requested by the current room host.
@@ -1036,7 +1222,23 @@ func (s *Store) RemoveParticipant(ctx context.Context, code, requesterTokenHash,
 	}
 	defer tx.Rollback() // nolint:errcheck
 
-	const requesterQuery = `
+	requesterID, err := authenticateRoomHostTx(ctx, tx, code, requesterTokenHash)
+	if err != nil {
+		return err
+	}
+	if requesterID == participantID {
+		return errors.New("the room host cannot remove themselves")
+	}
+
+	if err := removeParticipantTx(ctx, tx, code, participantID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// authenticateRoomHostTx authenticates a room participant and verifies that they are the current host.
+func authenticateRoomHostTx(ctx context.Context, tx *sql.Tx, code, tokenHash string) (string, error) {
+	const hostQuery = `
 SELECT id
 FROM participants p
 JOIN rooms r
@@ -1046,32 +1248,35 @@ WHERE p.room_code = ?
   AND r.owner_id = p.id
 `
 	var requesterID string
-	if err := tx.QueryRowContext(ctx, requesterQuery, code, requesterTokenHash).Scan(&requesterID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			const participantQuery = `
+	if err := tx.QueryRowContext(ctx, hostQuery, code, tokenHash).Scan(&requesterID); err == nil {
+		return requesterID, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+
+	authenticated, err := roomTokenAuthenticatedTx(ctx, tx, code, tokenHash)
+	if err != nil {
+		return "", err
+	}
+	if !authenticated {
+		return "", ErrNotFound
+	}
+	return "", ErrForbidden
+}
+
+// roomTokenAuthenticatedTx reports whether a participant token belongs to the room.
+func roomTokenAuthenticatedTx(ctx context.Context, tx *sql.Tx, code, tokenHash string) (bool, error) {
+	const query = `
 SELECT COUNT(*)
 FROM participants
 WHERE room_code = ?
   AND token_hash = ?
 `
-			var authenticated int
-			if queryErr := tx.QueryRowContext(ctx, participantQuery, code, requesterTokenHash).Scan(&authenticated); queryErr != nil {
-				return queryErr
-			}
-			if authenticated == 0 {
-				return ErrNotFound
-			}
-			return ErrForbidden
-		}
-		return err
+	var count int
+	if err := tx.QueryRowContext(ctx, query, code, tokenHash).Scan(&count); err != nil {
+		return false, err
 	}
-	if requesterID == participantID {
-		return errors.New("the room host cannot remove themselves")
-	}
-	if err := removeParticipantTx(ctx, tx, code, participantID); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return count > 0, nil
 }
 
 // LeaveRoom removes an authenticated participant and transfers room ownership when necessary.
@@ -1103,30 +1308,56 @@ WHERE room_code = ?
 
 // removeParticipantTx deletes one participant and reconciles ownership, matches, and room phase.
 func removeParticipantTx(ctx context.Context, tx *sql.Tx, code, participantID string) error {
-	const targetQuery = `
+	if err := ensureParticipantExistsTx(ctx, tx, code, participantID); err != nil {
+		return err
+	}
+	if err := deleteParticipantTx(ctx, tx, code, participantID); err != nil {
+		return err
+	}
+	if err := transferRoomOwnershipTx(ctx, tx, code, participantID); err != nil {
+		return err
+	}
+	if err := completeDepartureMatchesTx(ctx, tx, code); err != nil {
+		return err
+	}
+	if err := cancelNextRoundRequestTx(ctx, tx, code); err != nil {
+		return err
+	}
+	return reconcileRoomPhaseTx(ctx, tx, code)
+}
+
+// ensureParticipantExistsTx verifies that a participant still belongs to the room.
+func ensureParticipantExistsTx(ctx context.Context, tx *sql.Tx, code, participantID string) error {
+	const query = `
 SELECT COUNT(*)
 FROM participants
 WHERE room_code = ?
   AND id = ?
 `
-	var participants int
-	if err := tx.QueryRowContext(ctx, targetQuery, code, participantID).Scan(&participants); err != nil {
+	var count int
+	if err := tx.QueryRowContext(ctx, query, code, participantID).Scan(&count); err != nil {
 		return err
 	}
-	if participants == 0 {
+	if count == 0 {
 		return ErrNotFound
 	}
+	return nil
+}
 
-	const deleteParticipantQuery = `
+// deleteParticipantTx removes a participant and cascades its dependent room records.
+func deleteParticipantTx(ctx context.Context, tx *sql.Tx, code, participantID string) error {
+	const query = `
 DELETE FROM participants
 WHERE room_code = ?
   AND id = ?
 `
-	if _, err := tx.ExecContext(ctx, deleteParticipantQuery, code, participantID); err != nil {
-		return err
-	}
+	_, err := tx.ExecContext(ctx, query, code, participantID)
+	return err
+}
 
-	const transferOwnershipQuery = `
+// transferRoomOwnershipTx transfers ownership when the departing participant was the host.
+func transferRoomOwnershipTx(ctx context.Context, tx *sql.Tx, code, participantID string) error {
+	const query = `
 UPDATE rooms
 SET owner_id = COALESCE(
   (
@@ -1141,13 +1372,14 @@ SET owner_id = COALESCE(
 WHERE code = ?
   AND owner_id = ?
 `
-	if _, err := tx.ExecContext(ctx, transferOwnershipQuery, code, code, participantID); err != nil {
-		return err
-	}
+	_, err := tx.ExecContext(ctx, query, code, code, participantID)
+	return err
+}
 
-	// A departure can make previously cast likes unanimous. Completed matches
-	// are intentionally retained even if the room membership later changes.
-	const completeMatchesQuery = `
+// completeDepartureMatchesTx records likes that became unanimous after a participant left.
+func completeDepartureMatchesTx(ctx context.Context, tx *sql.Tx, code string) error {
+	// Completed matches are intentionally retained even if room membership later changes.
+	const query = `
 INSERT OR IGNORE INTO item_matches (
   room_code,
   item_id,
@@ -1176,16 +1408,8 @@ WHERE rm.room_code = ?
     WHERE room_code = ?
   )
 `
-	if _, err := tx.ExecContext(ctx, completeMatchesQuery, time.Now().Unix(), code, code, code, code); err != nil {
-		return err
-	}
-	if err := cancelNextRoundRequestTx(ctx, tx, code); err != nil {
-		return err
-	}
-	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
-		return err
-	}
-	return nil
+	_, err := tx.ExecContext(ctx, query, time.Now().Unix(), code, code, code, code)
+	return err
 }
 
 // DeleteExpired removes rooms whose expiration time has passed.

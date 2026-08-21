@@ -167,36 +167,61 @@ func (c *Client) Items(ctx context.Context, library Library) ([]Item, error) {
 	if !validLibrary(library) {
 		return nil, ErrInvalidLibrary
 	}
+
 	mediaType := "1"
 	if library.Type == "show" {
 		mediaType = "2"
 	}
+	query := url.Values{
+		"type":                   {mediaType},
+		"X-Plex-Container-Start": {"0"},
+		"X-Plex-Container-Size":  {"50000"},
+	}
+
 	var response itemsResponse
-	query := url.Values{"type": {mediaType}, "X-Plex-Container-Start": {"0"}, "X-Plex-Container-Size": {"50000"}}
 	if err := c.getJSON(ctx, "/library/sections/"+library.Key+"/all", query, &response); err != nil {
 		return nil, err
 	}
+
 	items := make([]Item, 0, len(response.MediaContainer.Metadata))
-	for _, item := range response.MediaContainer.Metadata {
-		genres := make([]string, 0, len(item.Genres))
-		for _, genre := range item.Genres {
-			genres = append(genres, genre.Tag)
-		}
-		viewed := item.ViewCount > 0
-		if library.Type == "show" {
-			viewed = item.LeafCount > 0 && item.ViewedLeafCount >= item.LeafCount
-		}
-		itemType := item.Type
-		if itemType == "" {
-			itemType = library.Type
-		}
-		items = append(items, Item{
-			RatingKey: item.RatingKey, Library: library.Key, Type: itemType, GUID: item.GUID, Title: item.Title,
-			Year: item.Year, Summary: item.Summary, Duration: item.Duration, Rating: item.Rating,
-			Thumb: item.Thumb, Genres: genres, Viewed: viewed, AddedAt: item.AddedAt,
-		})
+	for _, metadata := range response.MediaContainer.Metadata {
+		items = append(items, itemFromMetadata(library, metadata))
 	}
 	return items, nil
+}
+
+// itemFromMetadata converts a raw Plex metadata entry into a ScreenDeck item.
+func itemFromMetadata(library Library, metadata metadataItem) Item {
+	genres := make([]string, 0, len(metadata.Genres))
+	for _, genre := range metadata.Genres {
+		genres = append(genres, genre.Tag)
+	}
+
+	viewed := metadata.ViewCount > 0
+	if library.Type == "show" {
+		viewed = metadata.LeafCount > 0 && metadata.ViewedLeafCount >= metadata.LeafCount
+	}
+
+	itemType := metadata.Type
+	if itemType == "" {
+		itemType = library.Type
+	}
+
+	return Item{
+		RatingKey: metadata.RatingKey,
+		Library:   library.Key,
+		Type:      itemType,
+		GUID:      metadata.GUID,
+		Title:     metadata.Title,
+		Year:      metadata.Year,
+		Summary:   metadata.Summary,
+		Duration:  metadata.Duration,
+		Rating:    metadata.Rating,
+		Thumb:     metadata.Thumb,
+		Genres:    genres,
+		Viewed:    viewed,
+		AddedAt:   metadata.AddedAt,
+	}
 }
 
 // supportedLibraryType reports whether ScreenDeck supports a Plex library type.

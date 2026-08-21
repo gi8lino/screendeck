@@ -4,8 +4,22 @@ import { backButton, el, root, showToast, topbar } from "./ui.js";
 
 // renderPlexSetup displays Plex authentication and server selection.
 export function renderPlexSetup(navigation) {
+  const view = createPlexSetupView(navigation);
+  const start = (method) => startAuthorization(method, view, navigation);
+
+  view.standardButton.onclick = () => start("standard");
+  if (getConfig().experimental) {
+    const jwtButton = el("button", "btn ghost", "Use JWT (experimental)");
+    jwtButton.onclick = () => start("jwt");
+    view.authActions.append(jwtButton);
+  }
+}
+
+// createPlexSetupView builds the static Plex authorization panel.
+function createPlexSetupView(navigation) {
   root.replaceChildren();
   root.append(topbar(backButton(navigation.renderHome)));
+
   const panel = el("section", "panel");
   panel.append(
     el("div", "eyebrow", "Plex connection"),
@@ -16,51 +30,49 @@ export function renderPlexSetup(navigation) {
       "Plex opens in a separate window. Sign in there, then return here to select the media server you want to use.",
     ),
   );
+
   const status = el("p", "notice", "Ready to connect.");
   const servers = el("div", "server-list");
   const authActions = el("div", "actions");
   const standardButton = el("button", "btn primary", "Sign in with Plex");
-  standardButton.onclick = () => startAuthorization("standard");
   authActions.append(standardButton);
-  if (getConfig().experimental) {
-    const jwtButton = el("button", "btn ghost", "Use JWT (experimental)");
-    jwtButton.onclick = () => startAuthorization("jwt");
-    authActions.append(jwtButton);
-  }
   panel.append(status, servers, authActions);
   root.append(panel);
+  return { status, servers, authActions, standardButton };
+}
 
-  // startAuthorization runs one Plex authorization flow.
-  async function startAuthorization(method) {
-    setAuthButtonsDisabled(authActions, true);
-    status.textContent =
-      method === "jwt"
-        ? "Creating an experimental JWT authorization…"
-        : "Creating a Plex authorization…";
-    const popup = window.open("", "plex-auth", "width=720,height=760");
-    try {
-      const started = await api("/api/plex/auth", {
-        method: "POST",
-        body: JSON.stringify({ method }),
-      });
-      openAuthorization(started.authUrl, popup, servers);
-      status.textContent = "Waiting for authorization in Plex…";
-      const auth = await waitForAuthorization(started.setupToken);
-      closePopup(popup);
-      status.textContent = "Authorized. Choose your Plex Media Server.";
-      authActions.remove();
-      renderServers(
-        auth.servers,
-        started.setupToken,
-        servers,
-        status,
-        navigation,
-      );
-    } catch (error) {
-      closePopup(popup);
-      status.textContent = error.message;
-      setAuthButtonsDisabled(authActions, false);
-    }
+// startAuthorization runs one Plex authorization flow.
+async function startAuthorization(method, view, navigation) {
+  setAuthButtonsDisabled(view.authActions, true);
+  view.status.textContent =
+    method === "jwt"
+      ? "Creating an experimental JWT authorization…"
+      : "Creating a Plex authorization…";
+  const popup = window.open("", "plex-auth", "width=720,height=760");
+
+  try {
+    const started = await api("/api/plex/auth", {
+      method: "POST",
+      body: JSON.stringify({ method }),
+    });
+    openAuthorization(started.authUrl, popup, view.servers);
+    view.status.textContent = "Waiting for authorization in Plex…";
+
+    const auth = await waitForAuthorization(started.setupToken);
+    closePopup(popup);
+    view.status.textContent = "Authorized. Choose your Plex Media Server.";
+    view.authActions.remove();
+    renderServers(
+      auth.servers,
+      started.setupToken,
+      view.servers,
+      view.status,
+      navigation,
+    );
+  } catch (error) {
+    closePopup(popup);
+    view.status.textContent = error.message;
+    setAuthButtonsDisabled(view.authActions, false);
   }
 }
 
@@ -153,3 +165,4 @@ async function selectServer(server, setupToken, servers, status, navigation) {
       .forEach((button) => (button.disabled = false));
   }
 }
+

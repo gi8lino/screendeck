@@ -14,6 +14,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const encryptionKeySize = 32
+
 // ErrNotFound indicates that a requested persisted entity does not exist.
 var ErrNotFound = errors.New("not found")
 
@@ -33,41 +35,70 @@ type Store struct {
 
 // Open opens the SQLite database, prepares encryption, and applies schema migrations.
 func Open(path string, configuredKeyPath ...string) (*Store, error) {
-	if path != ":memory:" {
-		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-			return nil, fmt.Errorf("create database directory: %w", err)
-		}
-	}
-	db, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	db, err := openSQLite(path)
 	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, err
 	}
-	db.SetMaxOpenConns(1)
-	keyPath := ""
-	if len(configuredKeyPath) > 0 {
-		keyPath = configuredKeyPath[0]
-	}
+
+	keyPath := optionalKeyPath(configuredKeyPath)
 	key, err := loadEncryptionKey(path, keyPath)
 	if err != nil {
 		db.Close() // nolint:errcheck
 		return nil, err
 	}
-	block, err := aes.NewCipher(key)
+
+	aead, err := newEncryptionCipher(key)
 	if err != nil {
 		db.Close() // nolint:errcheck
 		return nil, err
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		db.Close() // nolint:errcheck
-		return nil, err
-	}
+
 	store := &Store{db: db, cipher: aead}
 	if err := store.migrate(context.Background()); err != nil {
 		db.Close() // nolint:errcheck
 		return nil, err
 	}
+
 	return store, nil
+}
+
+// openSQLite opens the configured SQLite database and applies connection-level settings.
+func openSQLite(path string) (*sql.DB, error) {
+	if path != ":memory:" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			return nil, fmt.Errorf("create database directory: %w", err)
+		}
+	}
+
+	dsn := path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	return db, nil
+}
+
+// optionalKeyPath returns the first optional encryption-key path.
+func optionalKeyPath(configured []string) string {
+	if len(configured) == 0 {
+		return ""
+	}
+	return configured[0]
+}
+
+// newEncryptionCipher constructs the AES-GCM cipher used for stored secrets.
+func newEncryptionCipher(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	return aead, nil
 }
 
 // Close closes the underlying database.
@@ -76,31 +107,51 @@ func (s *Store) Close() error { return s.db.Close() }
 // loadEncryptionKey loads or creates the database encryption key.
 func loadEncryptionKey(databasePath, configuredPath string) ([]byte, error) {
 	if databasePath == ":memory:" {
-		key := make([]byte, 32)
-		_, err := rand.Read(key)
-		return key, err
+		return randomEncryptionKey()
 	}
+
 	keyPath := configuredPath
 	if keyPath == "" {
 		keyPath = filepath.Join(filepath.Dir(databasePath), "auth.key")
 	}
+
 	if err := os.MkdirAll(filepath.Dir(keyPath), 0o750); err != nil {
 		return nil, fmt.Errorf("create authentication key directory: %w", err)
 	}
-	key, err := os.ReadFile(keyPath)
+
+	key, err := readEncryptionKey(keyPath)
 	if err == nil {
-		if len(key) != 32 {
-			return nil, errors.New("authentication key must contain exactly 32 bytes")
-		}
 		return key, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read authentication key: %w", err)
-	}
-	key = make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
+
+	return createEncryptionKey(databasePath, keyPath)
+}
+
+// readEncryptionKey reads and validates an existing encryption-key file.
+func readEncryptionKey(keyPath string) ([]byte, error) {
+	key, err := os.ReadFile(keyPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("read authentication key: %w", err)
+	}
+	if len(key) != encryptionKeySize {
+		return nil, errors.New("authentication key must contain exactly 32 bytes")
+	}
+	return key, nil
+}
+
+// createEncryptionKey creates a new encryption-key file without replacing an existing key.
+func createEncryptionKey(databasePath, keyPath string) ([]byte, error) {
+	key, err := randomEncryptionKey()
+	if err != nil {
+		return nil, err
+	}
+
 	file, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
 		return loadEncryptionKey(databasePath, keyPath)
@@ -108,11 +159,22 @@ func loadEncryptionKey(databasePath, configuredPath string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create authentication key: %w", err)
 	}
+
 	if _, err := file.Write(key); err != nil {
 		file.Close() // nolint:errcheck
 		return nil, fmt.Errorf("write authentication key: %w", err)
 	}
 	if err := file.Close(); err != nil {
+		return nil, err
+	}
+
+	return key, nil
+}
+
+// randomEncryptionKey creates a new random AES-256 key.
+func randomEncryptionKey() ([]byte, error) {
+	key := make([]byte, encryptionKeySize)
+	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
 	return key, nil
@@ -132,6 +194,7 @@ func (s *Store) open(value []byte) ([]byte, error) {
 	if len(value) < s.cipher.NonceSize() {
 		return nil, errors.New("encrypted authentication value is truncated")
 	}
+
 	nonce := value[:s.cipher.NonceSize()]
 	return s.cipher.Open(nil, nonce, value[s.cipher.NonceSize():], nil)
 }

@@ -46,10 +46,13 @@ func Parse(args []string, version string) (Config, error) {
 	tf.Version(version)
 	tf.EnvPrefix("SCREENDECK_")
 
+	// Server
 	listen := tf.TCPAddr("listen-address", &net.TCPAddr{Port: 8080}, "Address on which the web server listens").
 		Short("a").
 		Placeholder("ADDR").
 		Value()
+
+	// Authentication
 	tf.StringVar(&cfg.DatabasePath, "database-path", "./data/screendeck.db", "Path to the SQLite database").
 		Placeholder("PATH").
 		Value()
@@ -57,6 +60,7 @@ func Parse(args []string, version string) (Config, error) {
 		Placeholder("PATH").
 		Value()
 
+	// Application
 	tf.StringVar(&cfg.BaseURL, "base-url", "http://localhost:8080", "Public URL used for room links").
 		Validate(func(u string) error {
 			if _, err := url.ParseRequestURI(u); err != nil {
@@ -80,6 +84,15 @@ func Parse(args []string, version string) (Config, error) {
 		Placeholder("DURATION").
 		Value()
 
+	tf.DurationVar(&cfg.RoomTTL, "room-ttl", 24*time.Hour, "How long rooms remain available").
+		Validate(func(d time.Duration) error {
+			if d <= 0 {
+				return fmt.Errorf("room-ttl must be a positive duration")
+			}
+			return nil
+		}).
+		Placeholder("DURATION").Value()
+
 	tf.StringSliceVar(&cfg.ExcludeLibraries, "exclude-libraries", []string{}, "Plex library titles or keys to exclude from room creation").
 		TrimSpace().
 		Placeholder("LIBRARY").
@@ -101,26 +114,19 @@ func Parse(args []string, version string) (Config, error) {
 		Placeholder("URL").
 		Value()
 
-	tf.DurationVar(&cfg.RoomTTL, "room-ttl", 24*time.Hour, "How long rooms remain available").
-		Validate(func(d time.Duration) error {
-			if d <= 0 {
-				return fmt.Errorf("room-ttl must be a positive duration")
-			}
-			return nil
-		}).
-		Placeholder("DURATION").Value()
-
+	// Logging
 	tf.BoolVar(&cfg.Debug, "debug", false, "Enable debug request logging").
 		Short("d").
 		Value()
-
-	tf.BoolVar(&cfg.Experimental, "experimental", false, "Show experimental features, including Plex JWT authentication").Value()
 
 	logFormat := tf.String("log-format", "json", "Log output format").
 		Choices(string(logging.LogFormatText), string(logging.LogFormatJSON)).
 		Short("l").
 		Placeholder("FORMAT").
 		Value()
+
+		// Experimental
+	tf.BoolVar(&cfg.Experimental, "experimental", false, "Show experimental features, including Plex JWT authentication").Value()
 
 	if err := tf.Parse(args); err != nil {
 		return Config{}, err

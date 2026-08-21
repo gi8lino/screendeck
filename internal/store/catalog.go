@@ -20,7 +20,19 @@ func (s *Store) SaveLibrary(ctx context.Context, library plex.Library, items []p
 	}
 	defer tx.Rollback() // nolint:errcheck
 
-	const saveLibraryQuery = `
+	if err := saveLibraryTx(ctx, tx, library); err != nil {
+		return err
+	}
+	if err := saveLibraryItemsTx(ctx, tx, items); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// saveLibraryTx persists the library metadata inside an existing transaction.
+func saveLibraryTx(ctx context.Context, tx *sql.Tx, library plex.Library) error {
+	const query = `
 INSERT INTO libraries (
   key,
   title,
@@ -32,11 +44,15 @@ ON CONFLICT (key) DO UPDATE SET
   title = excluded.title,
   synced_at = excluded.synced_at
 `
-	if _, err := tx.ExecContext(ctx, saveLibraryQuery, library.Key, library.Title, time.Now().Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, query, library.Key, library.Title, time.Now().Unix()); err != nil {
 		return fmt.Errorf("save library: %w", err)
 	}
+	return nil
+}
 
-	const saveItemQuery = `
+// saveLibraryItemsTx persists all media items inside an existing transaction.
+func saveLibraryItemsTx(ctx context.Context, tx *sql.Tx, items []plex.Item) error {
+	const query = `
 INSERT INTO media_items (
   rating_key,
   library_key,
@@ -68,37 +84,48 @@ ON CONFLICT (rating_key) DO UPDATE SET
   viewed = excluded.viewed,
   added_at = excluded.added_at
 `
-	stmt, err := tx.PrepareContext(ctx, saveItemQuery)
+	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close() // nolint:errcheck
 
 	for _, item := range items {
-		genres, err := json.Marshal(item.Genres)
-		if err != nil {
-			return fmt.Errorf("encode genres for item %q: %w", item.Title, err)
-		}
-		if _, err := stmt.ExecContext(
-			ctx,
-			item.RatingKey,
-			item.Library,
-			item.Type,
-			item.GUID,
-			item.Title,
-			item.Year,
-			item.Summary,
-			item.Duration,
-			item.Rating,
-			item.Thumb,
-			string(genres),
-			item.Viewed,
-			item.AddedAt,
-		); err != nil {
-			return fmt.Errorf("save item %q: %w", item.Title, err)
+		if err := saveLibraryItem(ctx, stmt, item); err != nil {
+			return err
 		}
 	}
-	return tx.Commit()
+
+	return nil
+}
+
+// saveLibraryItem persists one media item using a prepared statement.
+func saveLibraryItem(ctx context.Context, stmt *sql.Stmt, item plex.Item) error {
+	genres, err := json.Marshal(item.Genres)
+	if err != nil {
+		return fmt.Errorf("encode genres for item %q: %w", item.Title, err)
+	}
+
+	if _, err := stmt.ExecContext(
+		ctx,
+		item.RatingKey,
+		item.Library,
+		item.Type,
+		item.GUID,
+		item.Title,
+		item.Year,
+		item.Summary,
+		item.Duration,
+		item.Rating,
+		item.Thumb,
+		string(genres),
+		item.Viewed,
+		item.AddedAt,
+	); err != nil {
+		return fmt.Errorf("save item %q: %w", item.Title, err)
+	}
+
+	return nil
 }
 
 // ItemPoster returns the poster path for a stored media item.
@@ -118,5 +145,6 @@ WHERE rating_key = ?
 	if strings.TrimSpace(thumb) == "" {
 		return "", ErrNotFound
 	}
+
 	return thumb, nil
 }

@@ -272,62 +272,93 @@ async function serveStatic(pathname, response) {
   }
 }
 
-const server = http.createServer(async (request, response) => {
-  try {
-    const url = new URL(
-      request.url,
-      `http://${request.headers.host || `${host}:${port}`}`,
-    );
+const demoPages = new Map([
+  ["/demo/home", ""],
+  ["/demo/host", "demo-host"],
+  ["/demo/alice", "demo-alice"],
+  ["/demo/bob", "demo-bob"],
+  ["/demo/winner", "demo-winner"],
+]);
 
-    if (request.method === "GET" && url.pathname === "/healthz") {
+// demoConfig returns the deterministic public configuration fixture.
+function demoConfig() {
+  return {
+    version: "demo",
+    commit: "screenshots",
+    baseUrl: `http://${host}:${port}`,
+    experimental: false,
+    plexConfigured: true,
+    plexServerName: "ScreenDeck Demo Plex",
+  };
+}
+
+// savedRoomMemberships returns the room list shown on the screenshot home page.
+function savedRoomMemberships() {
+  return [
+    {
+      code: roomCode,
+      round: 1,
+      phase: "next_round_requested",
+      participantId: "host",
+      name: "Host",
+      isHost: true,
+      participantCount: participants.length,
+      createdAt: "2026-08-20T07:30:00Z",
+      expiresAt: "2026-08-21T07:30:00Z",
+    },
+  ];
+}
+
+// serveRoomEvents keeps the deterministic room event stream open for the frontend.
+function serveRoomEvents(request, response) {
+  response.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  response.write("event: update\ndata: connected\n\n");
+
+  const timer = setInterval(() => response.write(": keepalive\n\n"), 15000);
+  request.on("close", () => clearInterval(timer));
+}
+
+// servePoster returns the local real poster fixture for a known media item.
+async function servePoster(pathname, response) {
+  const id = decodeURIComponent(pathname.slice("/api/posters/".length));
+  if (!items[id]) {
+    response.writeHead(404, {
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+    response.end("not found");
+    return;
+  }
+
+  const poster = await fs.readFile(path.join(posterRoot, `${id}.jpg`));
+  response.writeHead(200, {
+    "Content-Type": "image/jpeg",
+    "Cache-Control": "no-store",
+  });
+  response.end(poster);
+}
+
+// handleAPIRequest serves deterministic API fixtures used by the real frontend.
+async function handleAPIRequest(request, response, url) {
+  const route = `${request.method} ${url.pathname}`;
+
+  switch (route) {
+    case "GET /healthz":
       sendJSON(response, 200, { status: "ok" });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/api/config") {
-      sendJSON(response, 200, {
-        version: "demo",
-        commit: "screenshots",
-        baseUrl: `http://${host}:${port}`,
-        experimental: false,
-        plexConfigured: true,
-        plexServerName: "ScreenDeck Demo Plex",
-      });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/api/me/rooms") {
-      sendJSON(response, 200, [
-        {
-          code: roomCode,
-          round: 1,
-          phase: "next_round_requested",
-          participantId: "host",
-          name: "Host",
-          isHost: true,
-          participantCount: participants.length,
-          createdAt: "2026-08-20T07:30:00Z",
-          expiresAt: "2026-08-21T07:30:00Z",
-        },
-      ]);
-      return;
-    }
-
-    if (
-      request.method === "POST" &&
-      url.pathname === `/api/me/rooms/${roomCode}/session`
-    ) {
-      sendJSON(response, 200, {
-        code: roomCode,
-        token: "demo-host",
-      });
-      return;
-    }
-
-    if (
-      request.method === "GET" &&
-      url.pathname === `/api/rooms/${roomCode}/genres`
-    ) {
+      return true;
+    case "GET /api/config":
+      sendJSON(response, 200, demoConfig());
+      return true;
+    case "GET /api/me/rooms":
+      sendJSON(response, 200, savedRoomMemberships());
+      return true;
+    case `POST /api/me/rooms/${roomCode}/session`:
+      sendJSON(response, 200, { code: roomCode, token: "demo-host" });
+      return true;
+    case `GET /api/rooms/${roomCode}/genres`:
       sendJSON(response, 200, {
         genres: [
           "Adventure",
@@ -339,94 +370,74 @@ const server = http.createServer(async (request, response) => {
           "Thriller",
         ],
       });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === `/api/rooms/${roomCode}`) {
+      return true;
+    case `GET /api/rooms/${roomCode}`: {
       const token = String(request.headers["x-participant-token"] || "");
-
       sendJSON(
         response,
         200,
         token === "demo-winner" ? winnerState() : activeState(token),
       );
-      return;
+      return true;
     }
+    case `GET /api/rooms/${roomCode}/events`:
+      serveRoomEvents(request, response);
+      return true;
+    default:
+      break;
+  }
 
-    if (
-      request.method === "GET" &&
-      url.pathname === `/api/rooms/${roomCode}/events`
-    ) {
-      response.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      });
-      response.write("event: update\ndata: connected\n\n");
+  if (request.method === "GET" && url.pathname.startsWith("/api/posters/")) {
+    await servePoster(url.pathname, response);
+    return true;
+  }
 
-      const timer = setInterval(() => response.write(": keepalive\n\n"), 15000);
-      request.on("close", () => clearInterval(timer));
-      return;
-    }
+  return false;
+}
 
-    if (request.method === "GET" && url.pathname.startsWith("/api/posters/")) {
-      const id = decodeURIComponent(url.pathname.slice("/api/posters/".length));
-      const item = items[id];
+// handleDemoPage initializes the requested screenshot session before loading the app.
+function handleDemoPage(request, response, url) {
+  if (request.method !== "GET" || !demoPages.has(url.pathname)) return false;
 
-      if (!item) {
-        response.writeHead(404, {
-          "Content-Type": "text/plain; charset=utf-8",
-        });
-        response.end("not found");
-        return;
-      }
+  demoPage(response, demoPages.get(url.pathname));
+  return true;
+}
 
-      const poster = await fs.readFile(path.join(posterRoot, `${id}.jpg`));
+// requestURL parses a request against the screenshot server origin.
+function requestURL(request) {
+  return new URL(
+    request.url,
+    `http://${request.headers.host || `${host}:${port}`}`,
+  );
+}
 
-      response.writeHead(200, {
-        "Content-Type": "image/jpeg",
-        "Cache-Control": "no-store",
-      });
-      response.end(poster);
-      return;
-    }
+// handleRequest routes fixture API requests, demo entry points, and static assets.
+async function handleRequest(request, response) {
+  const url = requestURL(request);
 
-    if (request.method === "GET" && url.pathname === "/demo/home") {
-      demoPage(response);
-      return;
-    }
+  if (await handleAPIRequest(request, response, url)) return;
+  if (handleDemoPage(request, response, url)) return;
 
-    if (request.method === "GET" && url.pathname === "/demo/host") {
-      demoPage(response, "demo-host");
-      return;
-    }
+  await serveStatic(url.pathname, response);
+}
 
-    if (request.method === "GET" && url.pathname === "/demo/alice") {
-      demoPage(response, "demo-alice");
-      return;
-    }
+// writeServerError records an unexpected fixture failure and completes the response.
+function writeServerError(response, error) {
+  console.error(error);
 
-    if (request.method === "GET" && url.pathname === "/demo/bob") {
-      demoPage(response, "demo-bob");
-      return;
-    }
+  if (!response.headersSent) {
+    response.writeHead(500, {
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+  }
+  response.end("internal server error");
+}
 
-    if (request.method === "GET" && url.pathname === "/demo/winner") {
-      demoPage(response, "demo-winner");
-      return;
-    }
-
-    await serveStatic(url.pathname, response);
+const server = http.createServer(async (request, response) => {
+  try {
+    await handleRequest(request, response);
   } catch (error) {
-    console.error(error);
-
-    if (!response.headersSent) {
-      response.writeHead(500, {
-        "Content-Type": "text/plain; charset=utf-8",
-      });
-    }
-
-    response.end("internal server error");
+    writeServerError(response, error);
   }
 });
 
@@ -447,3 +458,4 @@ server.listen(port, host, () => {
     `ScreenDeck screenshot demo listening on http://${host}:${port}\n`,
   );
 });
+

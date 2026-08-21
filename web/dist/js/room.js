@@ -44,7 +44,15 @@ export function stopRoomEvents() {
 function drawRoom(state) {
   const session = getSession();
   root.replaceChildren();
+  root.append(roomTopbar(session), roomHeader(state));
 
+  const grid = el("section", "room-grid");
+  grid.append(roomMain(state), roomSidebar(state));
+  root.append(grid);
+}
+
+// roomTopbar creates navigation actions for the active room.
+function roomTopbar(session) {
   const rooms = el("button", "btn ghost", "My rooms");
   rooms.onclick = () => {
     stopRoomEvents();
@@ -54,38 +62,46 @@ function drawRoom(state) {
   };
 
   const leave = el("button", "btn ghost", "Leave");
-  leave.onclick = async () => {
-    if (leave.disabled) return;
-    leave.disabled = true;
-    const confirmed = await confirmAction({
-      title: "Leave room?",
-      message:
-        "Leaving removes your membership from this room. Your votes will no longer count toward matches.",
-      confirmLabel: "Leave room",
-      destructive: true,
+  leave.onclick = () => leaveCurrentRoom(leave, session);
+
+  const actions = el("div", "topbar-actions");
+  actions.append(rooms, leave);
+  return topbar(actions);
+}
+
+// leaveCurrentRoom confirms departure and clears the local participant session.
+async function leaveCurrentRoom(button, session) {
+  if (button.disabled) return;
+  button.disabled = true;
+
+  const confirmed = await confirmAction({
+    title: "Leave room?",
+    message:
+      "Leaving removes your membership from this room. Your votes will no longer count toward matches.",
+    confirmLabel: "Leave room",
+    destructive: true,
+  });
+  if (!confirmed) {
+    button.disabled = false;
+    return;
+  }
+
+  stopRoomEvents();
+  try {
+    await api(`/api/rooms/${encodeURIComponent(session.code)}`, {
+      method: "DELETE",
     });
-    if (!confirmed) {
-      leave.disabled = false;
-      return;
-    }
+  } catch {
+    /* session may already be gone */
+  }
 
-    stopRoomEvents();
-    try {
-      await api(`/api/rooms/${encodeURIComponent(session.code)}`, {
-        method: "DELETE",
-      });
-    } catch {
-      /* session may already be gone */
-    }
-    resetMatchTracking();
-    saveSession(null);
-    navigation.renderHome();
-  };
+  resetMatchTracking();
+  saveSession(null);
+  navigation.renderHome();
+}
 
-  const roomActions = el("div", "topbar-actions");
-  roomActions.append(rooms, leave);
-  root.append(topbar(roomActions));
-
+// roomHeader renders the round summary, participants, and share code.
+function roomHeader(state) {
   const head = el("section", "room-head");
   const intro = el("div");
   intro.append(
@@ -95,15 +111,25 @@ function drawRoom(state) {
       `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`,
     ),
     el("h2", "", `Good hunting, ${state.me.name}.`),
+    participantList(state),
   );
+
+  head.append(intro, roomCodeButton(state.room.code));
+  return head;
+}
+
+// participantList renders room participants and host removal controls.
+function participantList(state) {
   const people = el("div", "people");
   const canRemoveParticipants =
     state.me.isHost && state.participants.length > 1;
+
   state.participants.forEach((participant) => {
     const labels = [participant.name];
     if (participant.id === state.me.id) labels.push("you");
     if (participant.isHost) labels.push("host");
     if (participant.readyForNextRound) labels.push("next round ✓");
+
     const person = el(
       "div",
       `person${participant.id === state.me.id ? " me" : ""}${participant.readyForNextRound ? " ready" : ""}`,
@@ -112,6 +138,7 @@ function drawRoom(state) {
       ? `Genres (${participant.genreMode === "all" ? "all" : "any"}): ${participant.genres.join(", ")}`
       : "Genres: everything";
     person.append(el("span", "person-label", labels.join(" · ")));
+
     if (canRemoveParticipants && participant.id !== state.me.id) {
       const remove = el("button", "person-remove", "×");
       remove.type = "button";
@@ -128,60 +155,82 @@ function drawRoom(state) {
     }
     people.append(person);
   });
-  intro.append(people);
 
-  const code = el("button", "room-code", state.room.code);
+  return people;
+}
+
+// roomCodeButton creates the share control for the current room.
+function roomCodeButton(roomCode) {
+  const code = el("button", "room-code", roomCode);
   code.title = "Copy room link";
   code.onclick = async () => {
     try {
-      await navigator.clipboard.writeText(roomURL(state.room.code));
+      await navigator.clipboard.writeText(roomURL(roomCode));
       showToast("Room link copied");
     } catch {
       showToast("Could not copy room link");
     }
   };
-  head.append(intro, code);
-  root.append(head);
+  return code;
+}
 
-  const grid = el("section", "room-grid");
-  const left = el("div");
+// roomMain renders the active card, terminal room state, and personal progress.
+function roomMain(state) {
+  const main = el("div");
   if (state.room.phase === "finished" && state.winner) {
-    left.append(winnerCard(state));
+    main.append(winnerCard(state));
   } else if (state.candidate) {
-    const showDetails = () => showItemDetails(state.candidate);
-    const deck = el("div", "deck");
-    const card = itemCard(state.candidate, showDetails);
-    deck.append(card);
-    left.append(deck);
-
-    const actions = el("div", "swipe-actions");
-    const no = el("button", "btn icon no", "×");
-    no.title = "Pass";
-    no.onclick = () => vote(state.candidate, false, card);
-    const details = el("button", "btn icon info", "i");
-    details.title = "View details";
-    details.setAttribute("aria-label", "View title details");
-    details.onclick = showDetails;
-    const yes = el("button", "btn icon yes", "♥");
-    yes.title = "Like";
-    yes.onclick = () => vote(state.candidate, true, card);
-    actions.append(no, details, yes);
-    left.append(actions);
-    enableSwipe(card, state.candidate);
+    appendSwipeCandidate(main, state.candidate);
   } else {
-    left.append(finishedCard(state));
+    main.append(finishedCard(state));
   }
-  const progressText = [
+
+  main.append(el("div", "progress", roomProgressText(state).join(" · ")));
+  return main;
+}
+
+// appendSwipeCandidate adds the active card and swipe controls to the room view.
+function appendSwipeCandidate(container, item) {
+  const showDetails = () => showItemDetails(item);
+  const deck = el("div", "deck");
+  const card = itemCard(item, showDetails);
+  deck.append(card);
+  container.append(deck);
+
+  const actions = el("div", "swipe-actions");
+  const no = el("button", "btn icon no", "×");
+  no.title = "Pass";
+  no.onclick = () => vote(item, false, card);
+
+  const details = el("button", "btn icon info", "i");
+  details.title = "View details";
+  details.setAttribute("aria-label", "View title details");
+  details.onclick = showDetails;
+
+  const yes = el("button", "btn icon yes", "♥");
+  yes.title = "Like";
+  yes.onclick = () => vote(item, true, card);
+  actions.append(no, details, yes);
+  container.append(actions);
+  enableSwipe(card, item);
+}
+
+// roomProgressText returns the personal progress labels shown below the deck.
+function roomProgressText(state) {
+  const labels = [
     `${state.progress.voted} of ${state.progress.total} considered`,
     `round ${state.room.round}`,
   ];
   if (state.progress.filteredOut > 0) {
-    progressText.push(
+    labels.push(
       `${state.progress.filteredOut} of ${state.progress.roundTotal} excluded by your genre preferences`,
     );
   }
-  left.append(el("div", "progress", progressText.join(" · ")));
+  return labels;
+}
 
+// roomSidebar renders matches and room-wide round controls.
+function roomSidebar(state) {
   const side = el("aside", "side");
   side.append(
     el(
@@ -191,13 +240,12 @@ function drawRoom(state) {
     ),
     matchSummary(state),
   );
+
   const moreTitles = moreTitlesPanel(state);
   if (moreTitles) side.append(moreTitles);
   const nextRound = nextRoundPanel(state);
   if (nextRound) side.append(nextRound);
-
-  grid.append(left, side);
-  root.append(grid);
+  return side;
 }
 
 // phaseLabel converts the persisted room state machine phase into UI copy.
@@ -295,19 +343,7 @@ function showMatches(matches, round) {
   });
 
   dialog.append(close, header, list);
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) dialog.close();
-  });
-  dialog.addEventListener(
-    "close",
-    () => {
-      dialog.remove();
-      showNextMatch();
-    },
-    { once: true },
-  );
-  document.body.append(dialog);
-  dialog.showModal();
+  showModalDialog(dialog, showNextMatch);
 }
 
 // moreTitlesPanel lets the room expand the first round from its unused reserve.
@@ -373,40 +409,7 @@ function nextRoundPanel(state) {
 
   const panel = el("section", "next-round-panel");
   panel.append(el("h3", "", "Next round"));
-
-  if (readiness.ready > 0) {
-    const requester = readiness.requestedBy;
-    panel.append(
-      el(
-        "p",
-        "next-round-status",
-        requester
-          ? `${requester.id === state.me.id ? "You" : requester.name} asked for the next round.`
-          : "A next round was requested.",
-      ),
-      el("p", "muted", `${readiness.ready} of ${readiness.required} ready`),
-    );
-    const roster = el("div", "next-round-roster");
-    state.participants.forEach((participant) => {
-      const ready = participant.readyForNextRound;
-      roster.append(
-        el(
-          "div",
-          `next-round-person${ready ? " ready" : ""}`,
-          `${ready ? "✓" : "○"} ${participant.name}${participant.id === state.me.id ? " · you" : ""}`,
-        ),
-      );
-    });
-    panel.append(roster);
-  } else {
-    panel.append(
-      el(
-        "p",
-        "muted",
-        "Ask everyone to narrow the deck to the matches you have right now. Readiness resets if the group changes or fewer than two matches remain.",
-      ),
-    );
-  }
+  appendNextRoundStatus(panel, state, readiness);
 
   if (matches.length < 2 && state.me.readyForNextRound) {
     panel.append(
@@ -418,23 +421,67 @@ function nextRoundPanel(state) {
     );
   }
 
-  if (matches.length >= 2 || state.me.readyForNextRound) {
-    const button = el(
-      "button",
-      state.me.readyForNextRound
-        ? "btn ghost next-round-button"
-        : "btn primary next-round-button",
-      state.me.readyForNextRound
-        ? "Withdraw readiness"
-        : readiness.ready > 0
-          ? "Ready for next round"
-          : "Ask for next round",
-    );
-    button.type = "button";
-    button.onclick = () => toggleNextRoundReady(state, button);
-    panel.append(button);
-  }
+  appendNextRoundAction(panel, state, matches, readiness);
   return panel;
+}
+
+// appendNextRoundStatus adds the current request state and participant readiness.
+function appendNextRoundStatus(panel, state, readiness) {
+  if (readiness.ready === 0) {
+    panel.append(
+      el(
+        "p",
+        "muted",
+        "Ask everyone to narrow the deck to the matches you have right now. Readiness resets if the group changes or fewer than two matches remain.",
+      ),
+    );
+    return;
+  }
+
+  const requester = readiness.requestedBy;
+  panel.append(
+    el(
+      "p",
+      "next-round-status",
+      requester
+        ? `${requester.id === state.me.id ? "You" : requester.name} asked for the next round.`
+        : "A next round was requested.",
+    ),
+    el("p", "muted", `${readiness.ready} of ${readiness.required} ready`),
+  );
+
+  const roster = el("div", "next-round-roster");
+  state.participants.forEach((participant) => {
+    const ready = participant.readyForNextRound;
+    roster.append(
+      el(
+        "div",
+        `next-round-person${ready ? " ready" : ""}`,
+        `${ready ? "✓" : "○"} ${participant.name}${participant.id === state.me.id ? " · you" : ""}`,
+      ),
+    );
+  });
+  panel.append(roster);
+}
+
+// appendNextRoundAction adds the current participant's readiness action when available.
+function appendNextRoundAction(panel, state, matches, readiness) {
+  if (matches.length < 2 && !state.me.readyForNextRound) return;
+
+  const button = el(
+    "button",
+    state.me.readyForNextRound
+      ? "btn ghost next-round-button"
+      : "btn primary next-round-button",
+    state.me.readyForNextRound
+      ? "Withdraw readiness"
+      : readiness.ready > 0
+        ? "Ready for next round"
+        : "Ask for next round",
+  );
+  button.type = "button";
+  button.onclick = () => toggleNextRoundReady(state, button);
+  panel.append(button);
 }
 
 // toggleNextRoundReady records or withdraws this participant's agreement.
@@ -695,19 +742,7 @@ function showItemDetails(item) {
     content.append(el("p", "dialog-genres", item.genres.join(" · ")));
   }
   dialog.append(close, image, content);
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) dialog.close();
-  });
-  dialog.addEventListener(
-    "close",
-    () => {
-      dialog.remove();
-      showNextMatch();
-    },
-    { once: true },
-  );
-  document.body.append(dialog);
-  dialog.showModal();
+  showModalDialog(dialog, showNextMatch);
 }
 
 // trackMatches notices matches created by other participants without interrupting swiping.
@@ -819,6 +854,14 @@ function showNextMatch() {
   const layout = el("div", "match-dialog-layout");
   layout.append(poster, content);
   dialog.append(burst, close, layout);
+  showModalDialog(dialog, () => {
+    matchDialogOpen = false;
+    showNextMatch();
+  });
+}
+
+// showModalDialog opens a dialog and removes it after backdrop or explicit closure.
+function showModalDialog(dialog, onClose) {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
   });
@@ -826,8 +869,7 @@ function showNextMatch() {
     "close",
     () => {
       dialog.remove();
-      matchDialogOpen = false;
-      showNextMatch();
+      onClose?.();
     },
     { once: true },
   );
@@ -946,3 +988,4 @@ function connectEvents() {
     setTimeout(connectEvents, 3000);
   };
 }
+

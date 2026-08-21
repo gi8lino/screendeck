@@ -19,8 +19,15 @@ const savedRoomsPreviewLimit = 5;
 function renderHome() {
   stopRoomEvents();
   root.replaceChildren();
-  root.append(topbar());
+  root.append(topbar(), homeHero());
 
+  const rooms = savedRoomsSection();
+  root.append(rooms);
+  void loadSavedRooms(rooms);
+}
+
+// homeHero creates the landing-page copy and primary actions.
+function homeHero() {
   const config = getConfig();
   const hero = el("section", "hero home-hero");
   hero.append(
@@ -32,6 +39,7 @@ function renderHome() {
       "Invite your people, swipe through movies and TV shows from Plex, and find what everyone actually wants to watch.",
     ),
   );
+
   if (!config.plexConfigured) {
     hero.append(
       el(
@@ -41,6 +49,7 @@ function renderHome() {
       ),
     );
   }
+
   const actions = el("div", "actions");
   const create = el(
     "button",
@@ -50,19 +59,22 @@ function renderHome() {
   create.onclick = config.plexConfigured
     ? () => renderCreateRoom(navigation)
     : () => renderPlexSetup(navigation);
+
   const join = el("button", "btn ghost", "Join friends");
   join.onclick = () => navigation.renderJoinRoom();
   actions.append(create, join);
   hero.append(actions);
-  root.append(hero);
+  return hero;
+}
 
+// savedRoomsSection creates the persistent-room container in its loading state.
+function savedRoomsSection() {
   const rooms = el("section", "saved-rooms");
   rooms.append(
     savedRoomsHeader(),
     el("div", "empty saved-rooms-loading", "Loading your rooms…"),
   );
-  root.append(rooms);
-  void loadSavedRooms(rooms);
+  return rooms;
 }
 
 // savedRoomsHeader creates the heading shown above persistent room memberships.
@@ -154,18 +166,22 @@ function savedRoomCard(room) {
 
   const open = el("span", "saved-room-open", "Open →");
   card.append(main, open);
-  card.onclick = async () => {
-    if (card.disabled) return;
-    card.disabled = true;
-    try {
-      await resumeRoom(room.code);
-    } catch (error) {
-      showToast(error.message);
-      card.disabled = false;
-      void loadSavedRooms(card.closest(".saved-rooms"));
-    }
-  };
+  card.onclick = () => openSavedRoom(card, room.code);
   return card;
+}
+
+// openSavedRoom resumes one membership and restores the card after failures.
+async function openSavedRoom(card, roomCode) {
+  if (card.disabled) return;
+  card.disabled = true;
+
+  try {
+    await resumeRoom(roomCode);
+  } catch (error) {
+    showToast(error.message);
+    card.disabled = false;
+    void loadSavedRooms(card.closest(".saved-rooms"));
+  }
 }
 
 // participantLabel formats a room participant count for display.
@@ -246,3 +262,4 @@ async function boot() {
 }
 
 await boot();
+
