@@ -447,4 +447,3 @@ server.listen(port, host, () => {
     `ScreenDeck screenshot demo listening on http://${host}:${port}\n`,
   );
 });
-

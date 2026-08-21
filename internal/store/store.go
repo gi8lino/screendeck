@@ -31,7 +31,7 @@ type Store struct {
 	cipher cipher.AEAD
 }
 
-// Open opens the SQLite database, prepares encryption, and initializes its schema.
+// Open opens the SQLite database, prepares encryption, and applies schema migrations.
 func Open(path string, configuredKeyPath ...string) (*Store, error) {
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -63,7 +63,7 @@ func Open(path string, configuredKeyPath ...string) (*Store, error) {
 		return nil, err
 	}
 	store := &Store{db: db, cipher: aead}
-	if err := store.initSchema(context.Background()); err != nil {
+	if err := store.migrate(context.Background()); err != nil {
 		db.Close() // nolint:errcheck
 		return nil, err
 	}

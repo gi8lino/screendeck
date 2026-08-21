@@ -67,13 +67,26 @@ make test
 
 The CI workflow also runs `staticcheck` and `git diff --check`.
 
-## Database schema during development
+## Database migrations
 
-The ScreenDeck database schema is currently pre-release and is not backward compatible. Fresh databases are created at the schema version expected by the running build.
+ScreenDeck uses ordered, forward-only SQLite migrations stored in `internal/store/migrations`. The migration runner embeds these files into the binary and tracks the applied schema with SQLite's `PRAGMA user_version`.
 
-If an existing database is unversioned or uses a different schema version, ScreenDeck refuses to start instead of modifying it automatically. During active development, recreate the database or deployment data volume after a schema-breaking change.
+A fresh database starts at version `0` and runs every migration in order. An existing versioned database runs only migrations newer than its current version. Databases created by a newer ScreenDeck build are rejected rather than downgraded.
 
-Once stable releases require database upgrades, ScreenDeck can introduce ordered, forward-only migrations starting from the current versioned schema.
+The first migration contains the complete initial schema:
+
+```text
+internal/store/
+├── store.go
+├── schema.go
+├── migrations.go
+└── migrations/
+    └── 001_initial.sql
+```
+
+When the schema changes, add the next numbered migration such as `002_add_room_settings.sql`. Migration numbers must remain contiguous, and migrations that have shipped must not be changed or removed.
+
+Pre-release databases from before the migration system are intentionally not migrated. A non-empty database with `user_version = 0` is rejected and should be recreated.
 
 ## Documentation site
 
