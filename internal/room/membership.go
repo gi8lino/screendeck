@@ -21,14 +21,17 @@ func (s *Service) ResumeIdentity(ctx context.Context, identityToken, code string
 	if strings.TrimSpace(identityToken) == "" {
 		return Session{}, errors.New("browser identity is required")
 	}
+
 	code = strings.ToUpper(strings.TrimSpace(code))
 	if len(code) != 6 {
 		return Session{}, errors.New("a six-character room code is required")
 	}
+
 	session, err := s.store.RoomMembershipSession(ctx, hashToken(identityToken), code)
 	if err != nil {
 		return Session{}, err
 	}
+
 	return Session{Code: session.Code, Token: session.Token}, nil
 }
 
@@ -37,6 +40,7 @@ func membershipCredentials(identityToken, participantToken string) []store.RoomM
 	if strings.TrimSpace(identityToken) == "" {
 		return nil
 	}
+
 	return []store.RoomMembershipCredential{{
 		IdentityHash: hashToken(identityToken),
 		SessionToken: participantToken,

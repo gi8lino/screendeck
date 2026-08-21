@@ -99,7 +99,7 @@ func TestStandardAuthorizationServerSelection(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprintf(
+			_, _ = fmt.Fprintf(
 				w,
 				`<MediaContainer size="1"><Device name="Home Plex" clientIdentifier="server-1" provides="server" owned="1" platform="Linux" accessToken="standard-server-token"><Connection uri=%q local="1" relay="0"/></Device></MediaContainer>`,
 				pms.URL,
@@ -176,7 +176,7 @@ func TestJWTAuthorizationServerSelectionAndRefresh(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(
+		_, _ = fmt.Fprint(
 			w,
 			`{"MediaContainer":{"Directory":[{"key":"1","title":"Films","type":"movie"},{"key":"2","title":"Series","type":"show"}]}}`,
 		) // nolint:errcheck
@@ -234,7 +234,7 @@ func TestJWTAuthorizationServerSelectionAndRefresh(t *testing.T) {
 				pmsToken = "server-token-2"
 			}
 
-			fmt.Fprintf(
+			_, _ = fmt.Fprintf(
 				w,
 				`[{"name":"Home Plex","clientIdentifier":"server-1","provides":"server","owned":true,"platform":"Linux","accessToken":%q,"connections":[{"uri":%q,"local":true,"relay":false}]}]`,
 				pmsToken,
