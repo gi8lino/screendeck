@@ -59,19 +59,26 @@ Rooms you create or join are remembered for the current browser profile. Return 
 
 ## Quick start
 
-Copy the example environment file and set the address your friends will use to open ScreenDeck:
-
-```sh
-cp .env.example .env
-```
-
-Then start it with Docker Compose:
+Start ScreenDeck with Docker Compose:
 
 ```sh
 docker compose -f deploy/compose.yaml up -d
 ```
 
-Open ScreenDeck, choose **Connect Plex**, approve the Plex login, and select your server. After that, create a room and share its six-character code.
+By default, ScreenDeck is available at:
+
+```text
+http://localhost:8080
+```
+
+If other devices should access ScreenDeck, set the public URL when starting it:
+
+```sh
+SCREENDECK__BASE_URL=http://192.168.1.10:8080 \
+  docker compose -f deploy/compose.yaml up -d
+```
+
+Open ScreenDeck, choose **Connect Plex**, approve the Plex login, and select your server. Then create a room and share its six-character code.
 
 For Kubernetes and other deployment details, see the [deployment guide](https://gi8lino.github.io/screendeck/deployment/).
 
