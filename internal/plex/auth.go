@@ -351,7 +351,7 @@ func NewAuthManager(
 }
 
 // Configured reports whether a Plex server has been configured.
-func (m *AuthManager) Configured() (bool, string) {
+func (m *AuthManager) Configured() (configured bool, serverName string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return authStateConfigured(m.state), m.state.ServerName
@@ -860,7 +860,7 @@ func (m *AuthManager) refreshServerAccess(
 	logger *slog.Logger,
 	state AuthState,
 	accountToken string,
-) (AuthState, string, error) {
+) (refreshedState AuthState, effectiveURL string, err error) {
 	resources, err := m.resources(ctx, AuthMethodJWT, state.ClientID, accountToken)
 	if err != nil {
 		return AuthState{}, "", err
@@ -876,7 +876,7 @@ func (m *AuthManager) refreshServerAccess(
 		resourceToken = server.AccessToken
 	}
 
-	effectiveURL := m.serverURL(state.ServerURL)
+	effectiveURL = m.serverURL(state.ServerURL)
 	serverToken, err := m.verifyServer(
 		ctx,
 		effectiveURL,
@@ -897,7 +897,9 @@ func (m *AuthManager) refreshServerAccess(
 	state.UserToken = accountToken
 	state.ServerToken = serverToken
 	state.TokenExpiresAt = tokenExpiry(accountToken, m.now().Add(7*24*time.Hour))
-	return state, effectiveURL, nil
+
+	refreshedState = state
+	return refreshedState, effectiveURL, nil
 }
 
 // authStateSnapshot returns an immutable copy of the active Plex authentication state.
@@ -1407,7 +1409,7 @@ func serverInfos(resources map[string]resource) []ServerInfo {
 }
 
 // preferredConnection chooses the best reachable Plex connection.
-func preferredConnection(connections []connection) (connection, bool) {
+func preferredConnection(connections []connection) (selected connection, ok bool) {
 	if len(connections) == 0 {
 		return connection{}, false
 	}

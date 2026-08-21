@@ -83,7 +83,9 @@ func (s *Store) validateMigrationSource(ctx context.Context, version, currentVer
 }
 
 // applyPendingMigrations applies every migration newer than the supplied database version.
-func (s *Store) applyPendingMigrations(ctx context.Context, migrations []migration, version int) (int, error) {
+func (s *Store) applyPendingMigrations(ctx context.Context, migrations []migration, currentVersion int) (version int, err error) {
+	version = currentVersion
+
 	for _, migration := range migrations {
 		if migration.version <= version {
 			continue
@@ -126,7 +128,7 @@ func loadMigrations() ([]migration, error) {
 }
 
 // loadMigration loads one SQL migration entry when the embedded file is eligible.
-func loadMigration(entry fs.DirEntry) (migration, bool, error) {
+func loadMigration(entry fs.DirEntry) (result migration, ok bool, err error) {
 	if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 		return migration{}, false, nil
 	}
@@ -142,11 +144,12 @@ func loadMigration(entry fs.DirEntry) (migration, bool, error) {
 		return migration{}, false, fmt.Errorf("read database migration %q: %w", name, err)
 	}
 
-	return migration{
+	result = migration{
 		version:   version,
 		name:      name,
 		statement: string(statement),
-	}, true, nil
+	}
+	return result, true, nil
 }
 
 // migrationVersion parses the positive numeric prefix from a migration file name.

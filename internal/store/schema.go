@@ -15,7 +15,7 @@ func (s *Store) schemaVersion(ctx context.Context) (int, error) {
 }
 
 // schemaEmpty reports whether the database contains no application tables.
-func (s *Store) schemaEmpty(ctx context.Context) (bool, error) {
+func (s *Store) schemaEmpty(ctx context.Context) (empty bool, err error) {
 	const query = `
 SELECT COUNT(*)
 FROM sqlite_master

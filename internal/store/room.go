@@ -1081,7 +1081,7 @@ INSERT OR IGNORE INTO item_matches (
 }
 
 // Vote persists a participant vote and reports whether it produces a unanimous match.
-func (s *Store) Vote(ctx context.Context, code, participantID, itemID string, liked bool) (bool, error) {
+func (s *Store) Vote(ctx context.Context, code, participantID, itemID string, liked bool) (matched bool, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -1096,7 +1096,7 @@ func (s *Store) Vote(ctx context.Context, code, participantID, itemID string, li
 	if err != nil {
 		return false, err
 	}
-	matched := unanimousMatch(participants, likes)
+	matched = unanimousMatch(participants, likes)
 	if err := setMatchStateTx(ctx, tx, code, itemID, matched); err != nil {
 		return false, err
 	}
@@ -1265,7 +1265,7 @@ WHERE p.room_code = ?
 }
 
 // roomTokenAuthenticatedTx reports whether a participant token belongs to the room.
-func roomTokenAuthenticatedTx(ctx context.Context, tx *sql.Tx, code, tokenHash string) (bool, error) {
+func roomTokenAuthenticatedTx(ctx context.Context, tx *sql.Tx, code, tokenHash string) (authenticated bool, err error) {
 	const query = `
 SELECT COUNT(*)
 FROM participants

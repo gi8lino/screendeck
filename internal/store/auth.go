@@ -153,7 +153,9 @@ func (s *Store) LoadPlexAuth(ctx context.Context) (plex.AuthState, error) {
 }
 
 // loadPlexAuth reads encrypted Plex authentication state from SQLite.
-func (s *Store) loadPlexAuth(ctx context.Context) (plex.AuthState, storedPlexAuth, error) {
+func (s *Store) loadPlexAuth(
+	ctx context.Context,
+) (state plex.AuthState, stored storedPlexAuth, err error) {
 	const query = `
 SELECT
   auth_method,
@@ -169,9 +171,7 @@ SELECT
 FROM plex_auth
 WHERE id = 1
 `
-	var state plex.AuthState
-	var stored storedPlexAuth
-	err := s.db.QueryRowContext(ctx, query).Scan(
+	err = s.db.QueryRowContext(ctx, query).Scan(
 		&stored.method,
 		&state.ClientID,
 		&state.KeyID,

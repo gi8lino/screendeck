@@ -450,7 +450,7 @@ WHERE code = ?
 }
 
 // advanceRoundTx snapshots the current matches and makes them the next shuffled deck.
-func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (int, int, error) {
+func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (nextRound, titleCount int, err error) {
 	itemIDs, err := matchItemIDsTx(ctx, tx, code)
 	if err != nil {
 		return 0, 0, err
@@ -469,11 +469,12 @@ func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (in
 		return 0, 0, err
 	}
 
-	nextRound := round + 1
+	nextRound = round + 1
+	titleCount = len(itemIDs)
 	if err := updateRoomRoundTx(ctx, tx, code, round, nextRound); err != nil {
 		return 0, 0, err
 	}
-	return nextRound, len(itemIDs), nil
+	return nextRound, titleCount, nil
 }
 
 // matchItemIDsTx returns the current room matches in database order.

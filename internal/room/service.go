@@ -660,7 +660,7 @@ func itemRatingKeys(items []plex.Item) []string {
 func (s *Service) loadItems(
 	ctx context.Context,
 	libraryKeys []string,
-) ([]plex.Library, []plex.Item, error) {
+) (selected []plex.Library, items []plex.Item, err error) {
 	if len(libraryKeys) == 0 {
 		return nil, nil, errors.New("select at least one library")
 	}
@@ -672,8 +672,7 @@ func (s *Service) loadItems(
 
 	available := librariesByKey(libraries)
 
-	selected := make([]plex.Library, 0, len(libraryKeys))
-	var items []plex.Item
+	selected = make([]plex.Library, 0, len(libraryKeys))
 
 	for _, key := range libraryKeys {
 		library, ok := available[key]
@@ -953,25 +952,30 @@ func normalizeJoinInput(
 	code,
 	name string,
 	genreMode GenreMode,
-) (string, string, GenreMode, error) {
-	code = strings.ToUpper(strings.TrimSpace(code))
-	name = cleanName(name)
+) (
+	normalizedCode,
+	normalizedName string,
+	normalizedGenreMode GenreMode,
+	err error,
+) {
+	normalizedCode = strings.ToUpper(strings.TrimSpace(code))
+	normalizedName = cleanName(name)
 
-	if len(code) != 6 || name == "" {
+	if len(normalizedCode) != 6 || normalizedName == "" {
 		return "", "", "", errors.New(
 			"a six-character room code and name are required",
 		)
 	}
 
-	genreMode = normalizeGenreMode(genreMode)
+	normalizedGenreMode = normalizeGenreMode(genreMode)
 
-	if genreMode == "" {
+	if normalizedGenreMode == "" {
 		return "", "", "", errors.New(
 			"genre mode must be any or all",
 		)
 	}
 
-	return code, name, genreMode, nil
+	return normalizedCode, normalizedName, normalizedGenreMode, nil
 }
 
 // State returns a room state visible to an authenticated participant.
@@ -1003,7 +1007,7 @@ func (s *Service) Vote(
 	token,
 	itemID string,
 	liked bool,
-) (bool, error) {
+) (matched bool, err error) {
 	code = strings.ToUpper(code)
 
 	participant, err := s.store.ParticipantByToken(
@@ -1015,7 +1019,7 @@ func (s *Service) Vote(
 		return false, err
 	}
 
-	matched, err := s.store.Vote(
+	matched, err = s.store.Vote(
 		ctx,
 		code,
 		participant.ID,
@@ -1196,7 +1200,7 @@ type plexResponse struct {
 // Subscribe registers a room change listener and returns its cancellation function.
 func (s *Service) Subscribe(
 	code string,
-) (<-chan struct{}, func()) {
+) (events <-chan struct{}, unsubscribe func()) {
 	ch := make(chan struct{}, 1)
 
 	s.mu.Lock()
