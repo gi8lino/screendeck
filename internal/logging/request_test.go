@@ -48,6 +48,7 @@ func TestRequestID(t *testing.T) {
 
 	t.Run("returns empty for nil context", func(t *testing.T) {
 		t.Parallel()
+		//lint:ignore SA1012 RequestID intentionally receives nil to verify defensive behavior.
 		assert.Empty(t, RequestID(nil))
 	})
 }
