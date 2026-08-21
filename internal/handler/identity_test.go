@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestEnsureBrowserIdentity verifies browser identity creation and reuse.
 func TestEnsureBrowserIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -47,7 +46,6 @@ func TestEnsureBrowserIdentity(t *testing.T) {
 	})
 }
 
-// TestNewBrowserIdentityToken verifies generated browser identity tokens are valid.
 func TestNewBrowserIdentityToken(t *testing.T) {
 	t.Parallel()
 
@@ -86,7 +84,6 @@ func TestValidBrowserIdentityToken(t *testing.T) {
 	})
 }
 
-// TestRequestUsesHTTPS verifies direct and proxied HTTPS detection.
 func TestRequestUsesHTTPS(t *testing.T) {
 	t.Parallel()
 

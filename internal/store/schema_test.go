@@ -8,9 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSchemaVersion verifies SQLite user_version is returned by the schema helper.
 func TestSchemaVersion(t *testing.T) {
+	t.Parallel()
+
 	t.Run("reads user version", func(t *testing.T) {
+		t.Parallel()
+
 		raw, err := sql.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer raw.Close() // nolint:errcheck
@@ -24,9 +27,12 @@ func TestSchemaVersion(t *testing.T) {
 	})
 }
 
-// TestSchemaEmpty verifies SQLite user tables determine whether a schema is empty.
 func TestSchemaEmpty(t *testing.T) {
+	t.Parallel()
+
 	t.Run("empty database", func(t *testing.T) {
+		t.Parallel()
+
 		raw, err := sql.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer raw.Close() // nolint:errcheck
@@ -38,6 +44,8 @@ func TestSchemaEmpty(t *testing.T) {
 	})
 
 	t.Run("database with user table", func(t *testing.T) {
+		t.Parallel()
+
 		raw, err := sql.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer raw.Close() // nolint:errcheck

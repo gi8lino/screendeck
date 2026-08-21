@@ -7,9 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestSetupLogger verifies logger format and level selection.
 func TestSetupLogger(t *testing.T) {
+	t.Parallel()
+
 	t.Run("JSON info", func(t *testing.T) {
+		t.Parallel()
+
 		var output bytes.Buffer
 		SetupLogger(LogFormatJSON, false, &output).Info("ready",
 			"event", "test",
@@ -20,6 +23,8 @@ func TestSetupLogger(t *testing.T) {
 	})
 
 	t.Run("text debug", func(t *testing.T) {
+		t.Parallel()
+
 		var output bytes.Buffer
 		SetupLogger(LogFormatText, true, &output).Debug("details")
 

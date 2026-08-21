@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRoundReadinessNarrowsBeforeDeckCompletion verifies unanimous readiness can advance a round early.
 func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
@@ -112,8 +113,9 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestAddMoreTitlesUsesUnusedPool verifies first-round expansion is duplicate-free and bounded by the original pool.
 func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
@@ -145,8 +147,9 @@ func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
 	assert.Equal(t, 1, state.MoreTitles.Available)
 }
 
-// TestNextRoundRequestCancelsWhenMatchesDropBelowTwo verifies stale readiness cannot survive an invalid match set.
 func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
@@ -214,8 +217,9 @@ func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	assert.Equal(t, RoomPhaseSwiping, state.Room.Phase)
 }
 
-// TestConcurrentReadinessAdvancesExactlyOneRound verifies simultaneous consent cannot skip or duplicate a round.
 func TestConcurrentReadinessAdvancesExactlyOneRound(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database := seedReadyConcurrencyRoom(t, "RACE02")
 	defer database.Close() // nolint:errcheck
@@ -255,8 +259,9 @@ func TestConcurrentReadinessAdvancesExactlyOneRound(t *testing.T) {
 	assert.Equal(t, 0, state.NextRound.Ready)
 }
 
-// TestConcurrentDuplicateReadinessIsIdempotent verifies duplicate ready submissions count a participant once.
 func TestConcurrentDuplicateReadinessIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database := seedReadyConcurrencyRoom(t, "RACE03")
 	defer database.Close() // nolint:errcheck
@@ -294,8 +299,9 @@ func TestConcurrentDuplicateReadinessIsIdempotent(t *testing.T) {
 	assert.Equal(t, RoomPhaseNextRoundRequested, state.Room.Phase)
 }
 
-// TestConcurrentFinalReadyRequestIsIdempotent verifies two final submissions cannot advance twice.
 func TestConcurrentFinalReadyRequestIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database := seedReadyConcurrencyRoom(t, "RACE04")
 	defer database.Close() // nolint:errcheck
@@ -340,8 +346,9 @@ func TestConcurrentFinalReadyRequestIsIdempotent(t *testing.T) {
 	assert.Equal(t, 2, state.Progress.RoundTotal)
 }
 
-// TestReadyParticipantDepartureCancelsConsensus verifies membership changes cannot inherit stale readiness.
 func TestReadyParticipantDepartureCancelsConsensus(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database := seedReadyConcurrencyRoom(t, "RACE05")
 	defer database.Close() // nolint:errcheck
@@ -392,63 +399,79 @@ func seedReadyConcurrencyRoom(t *testing.T, code string) *Store {
 	return database
 }
 
-// TestStaleRoundReadinessRequest verifies stale round detection.
 func TestStaleRoundReadinessRequest(t *testing.T) {
+	t.Parallel()
+
 	t.Run("older round", func(t *testing.T) {
+		t.Parallel()
 		assert.True(t, staleRoundReadinessRequest(3, 2))
 	})
 
 	t.Run("current round", func(t *testing.T) {
+		t.Parallel()
 		assert.False(t, staleRoundReadinessRequest(2, 2))
 	})
 
 	t.Run("future round", func(t *testing.T) {
+		t.Parallel()
 		assert.False(t, staleRoundReadinessRequest(2, 3))
 	})
 
 	t.Run("unspecified round", func(t *testing.T) {
+		t.Parallel()
 		assert.False(t, staleRoundReadinessRequest(2, 0))
 	})
 }
 
-// TestFutureRoundReadinessRequest verifies future round detection.
 func TestFutureRoundReadinessRequest(t *testing.T) {
+	t.Parallel()
+
 	t.Run("newer round", func(t *testing.T) {
+		t.Parallel()
 		assert.True(t, futureRoundReadinessRequest(2, 3))
 	})
 
 	t.Run("current round", func(t *testing.T) {
+		t.Parallel()
 		assert.False(t, futureRoundReadinessRequest(2, 2))
 	})
 
 	t.Run("older round", func(t *testing.T) {
+		t.Parallel()
 		assert.False(t, futureRoundReadinessRequest(3, 2))
 	})
 
 	t.Run("unspecified round", func(t *testing.T) {
+		t.Parallel()
 		assert.False(t, futureRoundReadinessRequest(2, 0))
 	})
 }
 
-// TestRoomPhase verifies lifecycle precedence for readiness, completion, and winner states.
 func TestRoomPhase(t *testing.T) {
+	t.Parallel()
+
 	t.Run("next round requested", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, RoomPhaseNextRoundRequested, roomPhase(1, 0, 1))
 	})
 
 	t.Run("single winner", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, RoomPhaseFinished, roomPhase(0, 0, 1))
 	})
 
 	t.Run("round complete without matches", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, RoomPhaseRoundComplete, roomPhase(0, 0, 0))
 	})
 
 	t.Run("round complete with multiple matches", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, RoomPhaseRoundComplete, roomPhase(0, 0, 2))
 	})
 
 	t.Run("swiping", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, RoomPhaseSwiping, roomPhase(0, 1, 1))
 	})
 }

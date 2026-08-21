@@ -14,8 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPlexAuthenticationIsEncryptedAtRest verifies stored Plex secrets are encrypted.
 func TestPlexAuthenticationIsEncryptedAtRest(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	directory := t.TempDir()
 	keyPath := filepath.Join(directory, "auth.key")
@@ -72,6 +73,8 @@ WHERE id = 1
 
 // TestStandardPlexAuthenticationRoundTrip verifies standard authentication does not require a device key.
 func TestStandardPlexAuthenticationRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	database, err := Open(":memory:")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
@@ -92,11 +95,17 @@ func TestStandardPlexAuthenticationRoundTrip(t *testing.T) {
 
 // TestValidatePlexAuthState verifies stored Plex key material matches the selected authentication method.
 func TestValidatePlexAuthState(t *testing.T) {
+	t.Parallel()
+
 	t.Run("standard without private key", func(t *testing.T) {
+		t.Parallel()
+
 		require.NoError(t, validatePlexAuthState(plex.AuthState{Method: plex.AuthMethodStandard}))
 	})
 
 	t.Run("standard rejects private key", func(t *testing.T) {
+		t.Parallel()
+
 		err := validatePlexAuthState(plex.AuthState{
 			Method:     plex.AuthMethodStandard,
 			PrivateKey: ed25519.PrivateKey(make([]byte, ed25519.PrivateKeySize)),
@@ -106,6 +115,8 @@ func TestValidatePlexAuthState(t *testing.T) {
 	})
 
 	t.Run("JWT accepts Ed25519 private key", func(t *testing.T) {
+		t.Parallel()
+
 		require.NoError(t, validatePlexAuthState(plex.AuthState{
 			Method:     plex.AuthMethodJWT,
 			PrivateKey: ed25519.PrivateKey(make([]byte, ed25519.PrivateKeySize)),
@@ -113,6 +124,8 @@ func TestValidatePlexAuthState(t *testing.T) {
 	})
 
 	t.Run("JWT rejects invalid private key", func(t *testing.T) {
+		t.Parallel()
+
 		err := validatePlexAuthState(plex.AuthState{
 			Method:     plex.AuthMethodJWT,
 			PrivateKey: ed25519.PrivateKey(make([]byte, 10)),
@@ -122,21 +135,28 @@ func TestValidatePlexAuthState(t *testing.T) {
 	})
 
 	t.Run("rejects invalid method", func(t *testing.T) {
+		t.Parallel()
+
 		err := validatePlexAuthState(plex.AuthState{Method: plex.AuthMethod("invalid")})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid Plex authentication method")
 	})
 }
 
-// TestApplyStoredPlexPrivateKey verifies persisted key bytes are validated before assignment.
 func TestApplyStoredPlexPrivateKey(t *testing.T) {
+	t.Parallel()
+
 	t.Run("standard accepts empty key", func(t *testing.T) {
+		t.Parallel()
+
 		state := plex.AuthState{Method: plex.AuthMethodStandard}
 		require.NoError(t, applyStoredPlexPrivateKey(&state, nil))
 		assert.Empty(t, state.PrivateKey)
 	})
 
 	t.Run("standard rejects stored key", func(t *testing.T) {
+		t.Parallel()
+
 		state := plex.AuthState{Method: plex.AuthMethodStandard}
 		err := applyStoredPlexPrivateKey(&state, []byte("unexpected"))
 		require.Error(t, err)
@@ -144,6 +164,8 @@ func TestApplyStoredPlexPrivateKey(t *testing.T) {
 	})
 
 	t.Run("JWT assigns valid key", func(t *testing.T) {
+		t.Parallel()
+
 		privateKey := make([]byte, ed25519.PrivateKeySize)
 		state := plex.AuthState{Method: plex.AuthMethodJWT}
 		require.NoError(t, applyStoredPlexPrivateKey(&state, privateKey))
@@ -151,6 +173,8 @@ func TestApplyStoredPlexPrivateKey(t *testing.T) {
 	})
 
 	t.Run("JWT rejects invalid size", func(t *testing.T) {
+		t.Parallel()
+
 		state := plex.AuthState{Method: plex.AuthMethodJWT}
 		err := applyStoredPlexPrivateKey(&state, []byte("short"))
 		require.Error(t, err)
@@ -158,6 +182,8 @@ func TestApplyStoredPlexPrivateKey(t *testing.T) {
 	})
 
 	t.Run("rejects invalid method", func(t *testing.T) {
+		t.Parallel()
+
 		state := plex.AuthState{Method: plex.AuthMethod("invalid")}
 		err := applyStoredPlexPrivateKey(&state, nil)
 		require.Error(t, err)

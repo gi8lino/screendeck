@@ -10,9 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRequestID verifies request identifiers are propagated or generated as needed.
 func TestRequestID(t *testing.T) {
+	t.Parallel()
+
 	t.Run("propagates provided identifier", func(t *testing.T) {
+		t.Parallel()
+
 		handler := RequestID()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "known-request", logging.RequestID(r.Context()))
 			w.WriteHeader(http.StatusNoContent)
@@ -27,6 +30,8 @@ func TestRequestID(t *testing.T) {
 	})
 
 	t.Run("generates missing identifier", func(t *testing.T) {
+		t.Parallel()
+
 		var contextID string
 		handler := RequestID()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			contextID = logging.RequestID(r.Context())

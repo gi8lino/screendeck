@@ -11,9 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLibraries verifies supported Plex libraries are loaded with authenticated requests.
 func TestLibraries(t *testing.T) {
+	t.Parallel()
+
 	t.Run("loads supported libraries", func(t *testing.T) {
+		t.Parallel()
+
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "token", r.Header.Get("X-Plex-Token"))
 			assert.Equal(t, "screendeck-go", r.Header.Get("X-Plex-Client-Identifier"))
@@ -32,9 +35,12 @@ func TestLibraries(t *testing.T) {
 	})
 }
 
-// TestItems verifies movie and show metadata conversion and library validation.
 func TestItems(t *testing.T) {
+	t.Parallel()
+
 	t.Run("loads movie metadata", func(t *testing.T) {
+		t.Parallel()
+
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/library/sections/1/all", r.URL.Path)
 			assert.Equal(t, "1", r.URL.Query().Get("type"))
@@ -55,6 +61,8 @@ func TestItems(t *testing.T) {
 	})
 
 	t.Run("loads show metadata", func(t *testing.T) {
+		t.Parallel()
+
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/library/sections/2/all", r.URL.Path)
 			assert.Equal(t, "2", r.URL.Query().Get("type"))
@@ -74,6 +82,8 @@ func TestItems(t *testing.T) {
 	})
 
 	t.Run("rejects unsafe library key", func(t *testing.T) {
+		t.Parallel()
+
 		client, err := New("http://plex.test", "token")
 		require.NoError(t, err)
 
@@ -82,6 +92,8 @@ func TestItems(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported library type", func(t *testing.T) {
+		t.Parallel()
+
 		client, err := New("http://plex.test", "token")
 		require.NoError(t, err)
 
@@ -90,9 +102,12 @@ func TestItems(t *testing.T) {
 	})
 }
 
-// TestPoster verifies poster requests and path validation.
 func TestPoster(t *testing.T) {
+	t.Parallel()
+
 	t.Run("uses authenticated Plex headers", func(t *testing.T) {
+		t.Parallel()
+
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/poster/42", r.URL.Path)
 			assert.Equal(t, "token", r.Header.Get("X-Plex-Token"))
@@ -115,6 +130,8 @@ func TestPoster(t *testing.T) {
 	})
 
 	t.Run("rejects relative path", func(t *testing.T) {
+		t.Parallel()
+
 		client, err := New("http://plex.test", "token")
 		require.NoError(t, err)
 
@@ -123,6 +140,8 @@ func TestPoster(t *testing.T) {
 	})
 
 	t.Run("rejects protocol relative path", func(t *testing.T) {
+		t.Parallel()
+
 		client, err := New("http://plex.test", "token")
 		require.NoError(t, err)
 
@@ -131,9 +150,12 @@ func TestPoster(t *testing.T) {
 	})
 }
 
-// TestItemFromMetadata verifies raw Plex metadata normalization.
 func TestItemFromMetadata(t *testing.T) {
+	t.Parallel()
+
 	t.Run("movie", func(t *testing.T) {
+		t.Parallel()
+
 		item := itemFromMetadata(
 			Library{Key: "1", Type: "movie"},
 			metadataItem{
@@ -159,6 +181,8 @@ func TestItemFromMetadata(t *testing.T) {
 	})
 
 	t.Run("partially watched show", func(t *testing.T) {
+		t.Parallel()
+
 		item := itemFromMetadata(
 			Library{Key: "2", Type: "show"},
 			metadataItem{
@@ -175,6 +199,8 @@ func TestItemFromMetadata(t *testing.T) {
 	})
 
 	t.Run("fully watched show", func(t *testing.T) {
+		t.Parallel()
+
 		item := itemFromMetadata(
 			Library{Key: "2", Type: "show"},
 			metadataItem{

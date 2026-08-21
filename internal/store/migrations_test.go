@@ -9,9 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMigrate verifies fresh, current, unversioned, and future database handling.
 func TestMigrate(t *testing.T) {
+	t.Parallel()
+
 	t.Run("creates versioned database", func(t *testing.T) {
+		t.Parallel()
+
 		database, err := Open(":memory:")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
@@ -33,6 +36,8 @@ func TestMigrate(t *testing.T) {
 	})
 
 	t.Run("reopens current database without replaying migrations", func(t *testing.T) {
+		t.Parallel()
+
 		directory := t.TempDir()
 		databasePath := filepath.Join(directory, "screendeck.db")
 		keyPath := filepath.Join(directory, "auth.key")
@@ -70,6 +75,8 @@ func TestMigrate(t *testing.T) {
 	})
 
 	t.Run("rejects unversioned database", func(t *testing.T) {
+		t.Parallel()
+
 		directory := t.TempDir()
 		databasePath := filepath.Join(directory, "unversioned.db")
 		raw, err := sql.Open("sqlite", databasePath)
@@ -83,6 +90,8 @@ func TestMigrate(t *testing.T) {
 	})
 
 	t.Run("rejects newer database", func(t *testing.T) {
+		t.Parallel()
+
 		directory := t.TempDir()
 		databasePath := filepath.Join(directory, "future.db")
 		raw, err := sql.Open("sqlite", databasePath)
@@ -96,9 +105,12 @@ func TestMigrate(t *testing.T) {
 	})
 }
 
-// TestLoadMigrations verifies embedded migrations are ordered and contiguous.
 func TestLoadMigrations(t *testing.T) {
+	t.Parallel()
+
 	t.Run("loads initial migration", func(t *testing.T) {
+		t.Parallel()
+
 		migrations, err := loadMigrations()
 		require.NoError(t, err)
 		require.Len(t, migrations, 1)
@@ -108,39 +120,53 @@ func TestLoadMigrations(t *testing.T) {
 	})
 }
 
-// TestMigrationVersion verifies migration file names use a positive numeric prefix.
 func TestMigrationVersion(t *testing.T) {
+	t.Parallel()
+
 	t.Run("initial migration", func(t *testing.T) {
+		t.Parallel()
+
 		version, err := migrationVersion("001_initial.sql")
 		require.NoError(t, err)
 		assert.Equal(t, 1, version)
 	})
 
 	t.Run("higher version", func(t *testing.T) {
+		t.Parallel()
+
 		version, err := migrationVersion("042_add_indexes.sql")
 		require.NoError(t, err)
 		assert.Equal(t, 42, version)
 	})
 
 	t.Run("missing prefix", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := migrationVersion("initial.sql")
 		require.Error(t, err)
 	})
 
 	t.Run("zero version", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := migrationVersion("000_initial.sql")
 		require.Error(t, err)
 	})
 
 	t.Run("non numeric prefix", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := migrationVersion("abc_initial.sql")
 		require.Error(t, err)
 	})
 }
 
-// TestValidateMigrationSequence verifies migrations start at one and remain contiguous.
 func TestValidateMigrationSequence(t *testing.T) {
+	t.Parallel()
+
 	t.Run("contiguous", func(t *testing.T) {
+		t.Parallel()
+
 		err := validateMigrationSequence([]migration{
 			{version: 1, name: "migrations/001_initial.sql"},
 			{version: 2, name: "migrations/002_add_room_settings.sql"},
@@ -150,12 +176,16 @@ func TestValidateMigrationSequence(t *testing.T) {
 	})
 
 	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+
 		err := validateMigrationSequence(nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no database migrations")
 	})
 
 	t.Run("gap", func(t *testing.T) {
+		t.Parallel()
+
 		err := validateMigrationSequence([]migration{
 			{version: 1, name: "migrations/001_initial.sql"},
 			{version: 3, name: "migrations/003_add_indexes.sql"},
@@ -165,9 +195,12 @@ func TestValidateMigrationSequence(t *testing.T) {
 	})
 }
 
-// TestApplyMigration verifies successful migrations advance atomically and failures roll back.
 func TestApplyMigration(t *testing.T) {
+	t.Parallel()
+
 	t.Run("advances version", func(t *testing.T) {
+		t.Parallel()
+
 		database, err := Open(":memory:")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
@@ -203,6 +236,8 @@ CREATE TABLE migration_probe (
 	})
 
 	t.Run("rolls back on failure", func(t *testing.T) {
+		t.Parallel()
+
 		database, err := Open(":memory:")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck

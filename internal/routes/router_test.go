@@ -22,8 +22,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRoomFlowThroughHTTP verifies the room lifecycle through the API.
 func TestRoomFlowThroughHTTP(t *testing.T) {
+	t.Parallel()
+
 	plexServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -163,8 +164,9 @@ func decodeResponse(t *testing.T, recorder *httptest.ResponseRecorder, target an
 	require.NoError(t, json.NewDecoder(recorder.Body).Decode(target))
 }
 
-// TestHealthAndFrontend verifies the health endpoint and embedded frontend.
 func TestHealthAndFrontend(t *testing.T) {
+	t.Parallel()
+
 	database, err := store.Open(":memory:")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck

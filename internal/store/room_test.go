@@ -11,6 +11,8 @@ import (
 
 // TestUnanimousMatchLifecycle verifies matching across all room participants.
 func TestUnanimousMatchLifecycle(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
@@ -48,6 +50,8 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 
 // TestLeavingParticipantCanCompleteMatch verifies departed participants no longer block matches.
 func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
@@ -75,6 +79,8 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 
 // TestHostOwnershipTransfersOnLeave verifies the earliest remaining participant becomes host.
 func TestHostOwnershipTransfersOnLeave(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
@@ -143,9 +149,12 @@ func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
 }
 
-// TestRemoveParticipant verifies host-only participant removal and room-state reconciliation.
 func TestRemoveParticipant(t *testing.T) {
+	t.Parallel()
+
 	t.Run("host can remove another participant and readiness resets", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := t.Context()
 		database, err := Open(":memory:")
 		require.NoError(t, err)
@@ -191,6 +200,8 @@ func TestRemoveParticipant(t *testing.T) {
 	})
 
 	t.Run("non host cannot remove participants", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := t.Context()
 		database, err := Open(":memory:")
 		require.NoError(t, err)
@@ -211,9 +222,12 @@ func TestRemoveParticipant(t *testing.T) {
 	})
 }
 
-// TestNormalizeRoomCreation verifies room and owner defaults are applied without replacing explicit values.
 func TestNormalizeRoomCreation(t *testing.T) {
+	t.Parallel()
+
 	t.Run("applies defaults", func(t *testing.T) {
+		t.Parallel()
+
 		room := Room{Code: "ABC123"}
 		participant := Participant{ID: "participant-1"}
 
@@ -228,6 +242,8 @@ func TestNormalizeRoomCreation(t *testing.T) {
 	})
 
 	t.Run("preserves explicit values", func(t *testing.T) {
+		t.Parallel()
+
 		room := Room{
 			Code:    "DEF456",
 			Round:   3,
@@ -250,9 +266,12 @@ func TestNormalizeRoomCreation(t *testing.T) {
 	})
 }
 
-// TestNormalizeParticipant verifies participant persistence defaults preserve explicit preferences.
 func TestNormalizeParticipant(t *testing.T) {
+	t.Parallel()
+
 	t.Run("applies defaults", func(t *testing.T) {
+		t.Parallel()
+
 		participant := Participant{}
 
 		normalizeParticipant(&participant)
@@ -272,8 +291,9 @@ func TestNormalizeParticipant(t *testing.T) {
 	})
 }
 
-// TestEncodeParticipantGenres verifies participant genres are serialized as JSON for SQLite queries.
 func TestEncodeParticipantGenres(t *testing.T) {
+	t.Parallel()
+
 	encoded, err := encodeParticipantGenres([]string{"Drama", "Science Fiction"})
 	require.NoError(t, err)
 	assert.Equal(t, `["Drama","Science Fiction"]`, encoded)

@@ -11,8 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestRecoverPanics verifies router recovery middleware converts panics into HTTP 500 responses.
 func TestRecoverPanics(t *testing.T) {
+	t.Parallel()
+
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, nil))
 	handler := RecoverPanics(logger)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {

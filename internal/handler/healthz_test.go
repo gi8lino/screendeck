@@ -20,9 +20,12 @@ func (d fakeHealthProber) Ping(context.Context) error {
 	return d.err
 }
 
-// TestHealth verifies healthProber health determines the HTTP health status.
 func TestHealth(t *testing.T) {
+	t.Parallel()
+
 	t.Run("healthy healthProber", func(t *testing.T) {
+		t.Parallel()
+
 		api := &API{
 			healthProber: fakeHealthProber{},
 		}
@@ -36,6 +39,8 @@ func TestHealth(t *testing.T) {
 	})
 
 	t.Run("unhealthy healthProber", func(t *testing.T) {
+		t.Parallel()
+
 		api := &API{
 			healthProber: fakeHealthProber{
 				err: errors.New("healthProber unavailable"),

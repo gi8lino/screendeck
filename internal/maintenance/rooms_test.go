@@ -29,9 +29,12 @@ func (s *cleanupTestStore) DeleteExpired(context.Context) error {
 	return s.err
 }
 
-// TestRunRoomCleanup verifies periodic cleanup, cancellation, and error logging.
 func TestRunRoomCleanup(t *testing.T) {
+	t.Parallel()
+
 	t.Run("runs and stops", func(t *testing.T) {
+		t.Parallel()
+
 		ctx, cancel := context.WithCancel(t.Context())
 		t.Cleanup(cancel)
 
@@ -63,6 +66,8 @@ func TestRunRoomCleanup(t *testing.T) {
 	})
 
 	t.Run("logs failures", func(t *testing.T) {
+		t.Parallel()
+
 		ctx, cancel := context.WithCancel(t.Context())
 		t.Cleanup(cancel)
 
