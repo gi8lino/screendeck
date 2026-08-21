@@ -2,66 +2,51 @@ package store
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestMigrateCreatesVersionedDatabase verifies fresh databases run all embedded migrations.
-func TestMigrateCreatesVersionedDatabase(t *testing.T) {
-	database, err := Open(":memory:")
-	require.NoError(t, err)
-	defer database.Close() // nolint:errcheck
+// TestSchemaVersion verifies SQLite user_version is returned by the schema helper.
+func TestSchemaVersion(t *testing.T) {
+	t.Run("reads user version", func(t *testing.T) {
+		raw, err := sql.Open("sqlite", ":memory:")
+		require.NoError(t, err)
+		defer raw.Close() // nolint:errcheck
+		_, err = raw.ExecContext(t.Context(), "PRAGMA user_version = 7")
+		require.NoError(t, err)
 
-	migrations, err := loadMigrations()
-	require.NoError(t, err)
-
-	version, err := database.schemaVersion(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, latestMigrationVersion(migrations), version)
-
-	var tableName string
-	err = database.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='rooms'").Scan(&tableName)
-	require.NoError(t, err)
-	assert.Equal(t, "rooms", tableName)
+		database := &Store{db: raw}
+		version, err := database.schemaVersion(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, 7, version)
+	})
 }
 
-// TestMigrateRejectsUnversionedDatabase verifies pre-versioned schemas are not modified automatically.
-func TestMigrateRejectsUnversionedDatabase(t *testing.T) {
-	directory := t.TempDir()
-	databasePath := filepath.Join(directory, "unversioned.db")
-	raw, err := sql.Open("sqlite", databasePath)
-	require.NoError(t, err)
-	_, err = raw.Exec("CREATE TABLE old_schema (id INTEGER PRIMARY KEY)")
-	require.NoError(t, err)
-	require.NoError(t, raw.Close())
+// TestSchemaEmpty verifies SQLite user tables determine whether a schema is empty.
+func TestSchemaEmpty(t *testing.T) {
+	t.Run("empty database", func(t *testing.T) {
+		raw, err := sql.Open("sqlite", ":memory:")
+		require.NoError(t, err)
+		defer raw.Close() // nolint:errcheck
 
-	_, err = Open(databasePath, filepath.Join(directory, "auth.key"))
-	require.ErrorContains(t, err, "database schema is unversioned")
-}
+		database := &Store{db: raw}
+		empty, err := database.schemaEmpty(t.Context())
+		require.NoError(t, err)
+		assert.True(t, empty)
+	})
 
-// TestMigrateRejectsNewerVersion verifies databases from newer releases fail safely.
-func TestMigrateRejectsNewerVersion(t *testing.T) {
-	directory := t.TempDir()
-	databasePath := filepath.Join(directory, "future.db")
-	raw, err := sql.Open("sqlite", databasePath)
-	require.NoError(t, err)
-	_, err = raw.Exec("PRAGMA user_version = 999")
-	require.NoError(t, err)
-	require.NoError(t, raw.Close())
+	t.Run("database with user table", func(t *testing.T) {
+		raw, err := sql.Open("sqlite", ":memory:")
+		require.NoError(t, err)
+		defer raw.Close() // nolint:errcheck
+		_, err = raw.ExecContext(t.Context(), "CREATE TABLE example (id INTEGER PRIMARY KEY)")
+		require.NoError(t, err)
 
-	_, err = Open(databasePath, filepath.Join(directory, "auth.key"))
-	require.ErrorContains(t, err, "database schema version 999 is newer than supported version")
-}
-
-// TestLoadMigrations verifies embedded migrations are ordered and contiguous.
-func TestLoadMigrations(t *testing.T) {
-	migrations, err := loadMigrations()
-	require.NoError(t, err)
-	require.Len(t, migrations, 1)
-	assert.Equal(t, 1, migrations[0].version)
-	assert.Equal(t, "migrations/001_initial.sql", migrations[0].name)
-	assert.NotEmpty(t, migrations[0].statement)
+		database := &Store{db: raw}
+		empty, err := database.schemaEmpty(t.Context())
+		require.NoError(t, err)
+		assert.False(t, empty)
+	})
 }

@@ -1,0 +1,280 @@
+package store
+
+import (
+	"testing"
+	"time"
+
+	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestUnanimousMatchLifecycle verifies matching across all room participants.
+func TestUnanimousMatchLifecycle(t *testing.T) {
+	ctx := t.Context()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	item := plex.Item{RatingKey: "42", Library: "1", Type: "movie", Title: "Arrival", Genres: []string{"Science Fiction"}}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ABC123", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"42"}, []string{"42"}))
+	require.NoError(t, database.JoinRoom(ctx, "ABC123", Participant{ID: "p2", Name: "Two"}, "hash2"))
+
+	matched, err := database.Vote(ctx, "ABC123", "p1", "42", true)
+	require.NoError(t, err)
+	assert.False(t, matched)
+
+	matched, err = database.Vote(ctx, "ABC123", "p2", "42", true)
+	require.NoError(t, err)
+	assert.True(t, matched)
+
+	state, err := database.RoomState(ctx, "ABC123", "p2")
+	require.NoError(t, err)
+	assert.Nil(t, state.Candidate)
+	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
+	assert.Len(t, state.Matches, 1)
+	require.NotNil(t, state.Winner)
+	assert.Equal(t, "42", state.Winner.Item.RatingKey)
+	assert.Len(t, state.Winner.LikedBy, 2)
+	assert.Equal(t, "One", state.Winner.LikedBy[0].Name)
+	assert.Equal(t, "Two", state.Winner.LikedBy[1].Name)
+	assert.True(t, state.Participants[0].IsHost)
+	assert.False(t, state.Participants[1].IsHost)
+	assert.Equal(t, 1, state.Progress.Voted)
+}
+
+// TestLeavingParticipantCanCompleteMatch verifies departed participants no longer block matches.
+func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
+	ctx := t.Context()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	item := plex.Item{RatingKey: "7", Library: "1", Type: "movie", Title: "Alien"}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "LEAVE1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"7"}, []string{"7"}))
+	require.NoError(t, database.JoinRoom(ctx, "LEAVE1", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, database.JoinRoom(ctx, "LEAVE1", Participant{ID: "p3", Name: "Three"}, "hash3"))
+
+	_, err = database.Vote(ctx, "LEAVE1", "p1", "7", true)
+	require.NoError(t, err)
+	_, err = database.Vote(ctx, "LEAVE1", "p2", "7", true)
+	require.NoError(t, err)
+	require.NoError(t, database.LeaveRoom(ctx, "LEAVE1", "hash3"))
+
+	state, err := database.RoomState(ctx, "LEAVE1", "p1")
+	require.NoError(t, err)
+	assert.Len(t, state.Matches, 1)
+	assert.Len(t, state.Participants, 2)
+}
+
+// TestHostOwnershipTransfersOnLeave verifies the earliest remaining participant becomes host.
+func TestHostOwnershipTransfersOnLeave(t *testing.T) {
+	ctx := t.Context()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "HOST01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
+	require.NoError(t, database.JoinRoom(ctx, "HOST01", Participant{ID: "p2", Name: "Next"}, "hash2"))
+
+	state, err := database.RoomState(ctx, "HOST01", "p1")
+	require.NoError(t, err)
+	assert.Equal(t, "p1", state.Room.OwnerID)
+	assert.True(t, state.Me.IsHost)
+
+	require.NoError(t, database.LeaveRoom(ctx, "HOST01", "hash1"))
+	state, err = database.RoomState(ctx, "HOST01", "p2")
+	require.NoError(t, err)
+	assert.Equal(t, "p2", state.Room.OwnerID)
+	assert.True(t, state.Me.IsHost)
+}
+
+// TestConcurrentFinalVotesCreateOneMatch verifies simultaneous likes cannot create duplicate match state.
+func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
+	ctx := t.Context()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
+	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(ctx, Room{Code: "RACE01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a"}))
+	require.NoError(t, database.JoinRoom(ctx, "RACE01", Participant{ID: "p2", Name: "Two"}, "hash2"))
+
+	// voteResult captures the outcome of a concurrent vote in tests.
+	type voteResult struct {
+		// matched stores the matched value.
+		matched bool
+		// err stores the err value.
+		err error
+	}
+	start := make(chan struct{})
+	results := make(chan voteResult, 2)
+	go func() {
+		<-start
+		matched, voteErr := database.Vote(ctx, "RACE01", "p1", "a", true)
+		results <- voteResult{matched: matched, err: voteErr}
+	}()
+	go func() {
+		<-start
+		matched, voteErr := database.Vote(ctx, "RACE01", "p2", "a", true)
+		results <- voteResult{matched: matched, err: voteErr}
+	}()
+	close(start)
+	first := <-results
+	second := <-results
+
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	assert.NotEqual(t, first.matched, second.matched)
+	state, err := database.RoomState(ctx, "RACE01", "p1")
+	require.NoError(t, err)
+	assert.Len(t, state.Matches, 1)
+	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
+}
+
+// TestRemoveParticipant verifies host-only participant removal and room-state reconciliation.
+func TestRemoveParticipant(t *testing.T) {
+	t.Run("host can remove another participant and readiness resets", func(t *testing.T) {
+		ctx := t.Context()
+		database, err := Open(":memory:")
+		require.NoError(t, err)
+		defer database.Close() // nolint:errcheck
+
+		items := []plex.Item{
+			{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
+			{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+		}
+		require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+		now := time.Now().UTC()
+		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMHOST", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+		require.NoError(t, database.JoinRoom(ctx, "RMHOST", Participant{ID: "p2", Name: "Guest"}, "hash2"))
+		require.NoError(t, database.JoinRoom(ctx, "RMHOST", Participant{ID: "p3", Name: "Third"}, "hash3"))
+		_, err = database.Vote(ctx, "RMHOST", "p1", "a", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p2", "a", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p3", "a", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p1", "b", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p2", "b", true)
+		require.NoError(t, err)
+		_, err = database.Vote(ctx, "RMHOST", "p3", "b", true)
+		require.NoError(t, err)
+		_, _, _, _, _, err = database.SetRoundReady(ctx, "RMHOST", "p1", 1, true)
+		require.NoError(t, err)
+
+		require.NoError(t, database.RemoveParticipant(ctx, "RMHOST", "hash1", "p2"))
+
+		_, err = database.RoomState(ctx, "RMHOST", "p2")
+		require.ErrorIs(t, err, ErrNotFound)
+
+		state, err := database.RoomState(ctx, "RMHOST", "p1")
+		require.NoError(t, err)
+		assert.Len(t, state.Participants, 2)
+		assert.Equal(t, "p1", state.Room.OwnerID)
+		assert.Equal(t, 0, state.NextRound.Ready)
+		assert.Nil(t, state.NextRound.RequestedBy)
+		assert.False(t, state.Participants[0].ReadyForNextRound)
+		assert.False(t, state.Participants[1].ReadyForNextRound)
+	})
+
+	t.Run("non host cannot remove participants", func(t *testing.T) {
+		ctx := t.Context()
+		database, err := Open(":memory:")
+		require.NoError(t, err)
+		defer database.Close() // nolint:errcheck
+
+		item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
+		require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+		now := time.Now().UTC()
+		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMNOPE", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
+		require.NoError(t, database.JoinRoom(ctx, "RMNOPE", Participant{ID: "p2", Name: "Guest"}, "hash2"))
+
+		err = database.RemoveParticipant(ctx, "RMNOPE", "hash2", "p1")
+		require.ErrorIs(t, err, ErrForbidden)
+
+		state, err := database.RoomState(ctx, "RMNOPE", "p1")
+		require.NoError(t, err)
+		assert.Len(t, state.Participants, 2)
+	})
+}
+
+// TestNormalizeRoomCreation verifies room and owner defaults are applied without replacing explicit values.
+func TestNormalizeRoomCreation(t *testing.T) {
+	t.Run("applies defaults", func(t *testing.T) {
+		room := Room{Code: "ABC123"}
+		participant := Participant{ID: "participant-1"}
+
+		normalizeRoomCreation(&room, &participant)
+
+		assert.Equal(t, 1, room.Round)
+		assert.Equal(t, RoomPhaseSwiping, room.Phase)
+		assert.Equal(t, "participant-1", room.OwnerID)
+		require.NotNil(t, participant.Genres)
+		assert.Empty(t, participant.Genres)
+		assert.Equal(t, "any", participant.GenreMode)
+	})
+
+	t.Run("preserves explicit values", func(t *testing.T) {
+		room := Room{
+			Code:    "DEF456",
+			Round:   3,
+			Phase:   RoomPhaseFinished,
+			OwnerID: "owner-2",
+		}
+		participant := Participant{
+			ID:        "participant-2",
+			Genres:    []string{"Drama"},
+			GenreMode: "all",
+		}
+
+		normalizeRoomCreation(&room, &participant)
+
+		assert.Equal(t, 3, room.Round)
+		assert.Equal(t, RoomPhaseFinished, room.Phase)
+		assert.Equal(t, "owner-2", room.OwnerID)
+		assert.Equal(t, []string{"Drama"}, participant.Genres)
+		assert.Equal(t, "all", participant.GenreMode)
+	})
+}
+
+// TestNormalizeParticipant verifies participant persistence defaults preserve explicit preferences.
+func TestNormalizeParticipant(t *testing.T) {
+	t.Run("applies defaults", func(t *testing.T) {
+		participant := Participant{}
+
+		normalizeParticipant(&participant)
+
+		require.NotNil(t, participant.Genres)
+		assert.Empty(t, participant.Genres)
+		assert.Equal(t, "any", participant.GenreMode)
+	})
+
+	t.Run("preserves explicit preferences", func(t *testing.T) {
+		participant := Participant{Genres: []string{"Drama"}, GenreMode: "all"}
+
+		normalizeParticipant(&participant)
+
+		assert.Equal(t, []string{"Drama"}, participant.Genres)
+		assert.Equal(t, "all", participant.GenreMode)
+	})
+}
+
+// TestEncodeParticipantGenres verifies participant genres are serialized as JSON for SQLite queries.
+func TestEncodeParticipantGenres(t *testing.T) {
+	encoded, err := encodeParticipantGenres([]string{"Drama", "Science Fiction"})
+	require.NoError(t, err)
+	assert.Equal(t, `["Drama","Science Fiction"]`, encoded)
+}

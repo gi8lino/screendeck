@@ -12,7 +12,7 @@ import (
 
 // TestRoomMemberships verifies browser identities list only their active room memberships.
 func TestRoomMemberships(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	database := newMembershipTestStore(t, ctx)
 	defer database.Close() // nolint:errcheck
 
@@ -60,7 +60,7 @@ func TestRoomMemberships(t *testing.T) {
 
 // TestRoomMembershipSession verifies persisted room sessions can be restored without storing plaintext tokens.
 func TestRoomMembershipSession(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	database := newMembershipTestStore(t, ctx)
 	defer database.Close() // nolint:errcheck
 
@@ -104,4 +104,41 @@ func newMembershipTestStore(t *testing.T, ctx context.Context) *Store {
 		[]plex.Item{{RatingKey: "item", Library: "1", Type: "movie", Title: "Arrival"}},
 	))
 	return database
+}
+
+// TestValidateIdentityHash verifies browser identity hash validation.
+func TestValidateIdentityHash(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		require.NoError(t, validateIdentityHash("identity-hash"))
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		require.Error(t, validateIdentityHash(""))
+	})
+
+	t.Run("reserved invalid value", func(t *testing.T) {
+		require.Error(t, validateIdentityHash("invalid"))
+	})
+}
+
+// TestValidateRoomMembershipCredential verifies identity and participant credentials are required.
+func TestValidateRoomMembershipCredential(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		require.NoError(t, validateRoomMembershipCredential(RoomMembershipCredential{
+			IdentityHash: "identity-hash",
+			SessionToken: "participant-token",
+		}))
+	})
+
+	t.Run("missing identity", func(t *testing.T) {
+		err := validateRoomMembershipCredential(RoomMembershipCredential{SessionToken: "participant-token"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "browser identity")
+	})
+
+	t.Run("missing session token", func(t *testing.T) {
+		err := validateRoomMembershipCredential(RoomMembershipCredential{IdentityHash: "identity-hash"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "participant session token")
+	})
 }

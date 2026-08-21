@@ -2,7 +2,6 @@ package routes
 
 import (
 	"bytes"
-	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -48,12 +47,12 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	require.NoError(t, database.SavePlexAuth(context.Background(), plex.AuthState{
+	require.NoError(t, database.SavePlexAuth(t.Context(), plex.AuthState{
 		Method: plex.AuthMethodJWT, ClientID: "client", KeyID: "key", PrivateKey: privateKey, UserToken: "user-token", TokenExpiresAt: time.Now().Add(time.Hour),
 		ServerID: "server", ServerName: "Test Plex", ServerURL: plexServer.URL, ServerToken: "token",
 	}))
 
-	authManager, err := plex.NewAuthManager(context.Background(), database, logger, plexServer.URL, "", false)
+	authManager, err := plex.NewAuthManager(t.Context(), database, logger, plexServer.URL, "", false)
 	require.NoError(t, err)
 	api := handler.New("test", "commit", "http://movies.test", false, rooms, authManager, logger)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ScreenDeck</title>")}}
@@ -162,7 +161,7 @@ func TestHealthAndFrontend(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authManager, err := plex.NewAuthManager(context.Background(), database, logger, "http://plex.test", "", false)
+	authManager, err := plex.NewAuthManager(t.Context(), database, logger, "http://plex.test", "", false)
 	require.NoError(t, err)
 	api := handler.New("test", "commit", "http://movies.test", false, room.NewService(database, authManager, time.Hour, nil), authManager, logger)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
@@ -170,10 +169,10 @@ func TestHealthAndFrontend(t *testing.T) {
 	require.NoError(t, err)
 
 	health := httptest.NewRecorder()
-	router.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/healthz", nil).WithContext(context.Background()))
+	router.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/healthz", nil).WithContext(t.Context()))
 	assert.Equal(t, http.StatusOK, health.Code)
 
 	frontend := httptest.NewRecorder()
-	router.ServeHTTP(frontend, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(context.Background()))
+	router.ServeHTTP(frontend, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(t.Context()))
 	assert.Equal(t, http.StatusOK, frontend.Code)
 }
