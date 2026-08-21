@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "../..");
 const webRoot = path.join(root, "web", "dist");
+const posterRoot = path.join(scriptDir, "posters");
 const roomCode = "DECK42";
 
 const args = new Map();
@@ -106,14 +107,6 @@ const summaries = {
 for (const item of Object.values(items)) {
   item.summary = summaries[item.id];
 }
-
-const posterColors = {
-  arrival: ["#263f57", "#7899aa"],
-  dune: ["#6b4028", "#d39556"],
-  knives: ["#4a2235", "#ae667a"],
-  severance: ["#223638", "#709496"],
-  expanse: ["#1e2949", "#5e75ab"],
-};
 
 function media(id, title, year, type, rating, genres, duration) {
   return {
@@ -221,36 +214,6 @@ function sendJSON(response, status, value) {
     "Content-Length": Buffer.byteLength(body),
   });
   response.end(body);
-}
-
-function escapeXML(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function posterSVG(item) {
-  const [start, end] = posterColors[item.id] || ["#292731", "#5e596a"];
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="${start}"/>
-      <stop offset="1" stop-color="${end}"/>
-    </linearGradient>
-  </defs>
-  <rect width="600" height="900" fill="url(#g)"/>
-  <circle cx="460" cy="165" r="185" fill="#fff" opacity=".08"/>
-  <circle cx="120" cy="740" r="230" fill="#000" opacity=".14"/>
-  <text x="58" y="90" fill="#fff" opacity=".7" font-family="system-ui,sans-serif" font-size="24" font-weight="700" letter-spacing="5">${item.type === "show" ? "TV SERIES" : "MOVIE"}</text>
-  <text x="58" y="660" fill="#fff" font-family="system-ui,sans-serif" font-size="54" font-weight="800">${escapeXML(item.title)}</text>
-  <text x="58" y="715" fill="#fff" opacity=".75" font-family="system-ui,sans-serif" font-size="28">${item.year}</text>
-  <text x="58" y="820" fill="#fff" opacity=".52" font-family="system-ui,sans-serif" font-size="22">ScreenDeck demo</text>
-</svg>`;
 }
 
 function demoPage(response, token = "") {
@@ -419,15 +382,20 @@ const server = http.createServer(async (request, response) => {
       const item = items[id];
 
       if (!item) {
-        response.writeHead(404);
+        response.writeHead(404, {
+          "Content-Type": "text/plain; charset=utf-8",
+        });
         response.end("not found");
         return;
       }
 
+      const poster = await fs.readFile(path.join(posterRoot, `${id}.jpg`));
+
       response.writeHead(200, {
-        "Content-Type": "image/svg+xml",
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "no-store",
       });
-      response.end(posterSVG(item));
+      response.end(poster);
       return;
     }
 
@@ -487,4 +455,3 @@ server.listen(port, host, () => {
     `ScreenDeck screenshot demo listening on http://${host}:${port}\n`,
   );
 });
-
