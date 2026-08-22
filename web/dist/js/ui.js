@@ -17,7 +17,11 @@ export function topbar(action) {
   const bar = el("header", "topbar");
   const brand = el("a", "brand");
   brand.href = "/";
-  brand.append(el("span", "mark", "S"), el("span", "", "ScreenDeck"));
+  const mark = el("img", "brand-mark");
+  mark.src = "/favicon.svg";
+  mark.alt = "";
+  mark.setAttribute("aria-hidden", "true");
+  brand.append(mark, el("span", "", "ScreenDeck"));
   bar.append(brand);
   if (action) bar.append(action);
   return bar;

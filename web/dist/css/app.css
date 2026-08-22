@@ -56,20 +56,11 @@ button {
   text-align: center;
   color: var(--muted);
 }
-.mark {
-  display: inline-grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
+.loading-mark {
+  display: block;
+  width: 64px;
+  height: 64px;
   margin: 0 auto;
-  border-radius: 16px;
-  background: var(--red);
-  color: white;
-  font:
-    800 28px/1 Georgia,
-    serif;
-  transform: rotate(-5deg);
-  box-shadow: 0 10px 40px #ff5a5f44;
 }
 .topbar {
   display: flex;
@@ -88,12 +79,11 @@ button {
   letter-spacing: -0.03em;
   font-size: 20px;
 }
-.brand .mark {
+.brand-mark {
+  display: block;
   width: 38px;
   height: 38px;
-  border-radius: 11px;
-  font-size: 21px;
-  margin: 0;
+  flex: 0 0 38px;
 }
 .eyebrow {
   color: var(--red);
@@ -1346,3 +1336,4 @@ select option {
   gap: 10px;
   margin-top: 22px;
 }
+
