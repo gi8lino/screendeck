@@ -21,7 +21,12 @@ export function topbar(action) {
   mark.src = "/favicon.svg";
   mark.alt = "";
   mark.setAttribute("aria-hidden", "true");
-  brand.append(mark, el("span", "", "ScreenDeck"));
+  const name = el("span", "brand-name");
+  name.append(
+    el("span", "brand-screen", "Screen"),
+    el("span", "brand-deck", "Deck"),
+  );
+  brand.append(mark, name);
   bar.append(brand);
   if (action) bar.append(action);
   return bar;

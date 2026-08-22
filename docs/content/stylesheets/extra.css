@@ -3,6 +3,7 @@
   --screendeck-surface-soft: #1b191e;
   --screendeck-coral: #ff5a5f;
   --screendeck-coral-dark: #e34d52;
+  --screendeck-on-dark: #f7f3ed;
 }
 
 [data-md-color-scheme="default"] {
@@ -62,4 +63,32 @@
 
 .md-header__button.md-logo + .md-header__title {
   margin-left: 0.15rem;
+}
+
+/*
+ * Brand wordmark
+ *
+ * The primary ScreenDeck wordmark is black/coral on light surfaces.
+ * The documentation header is dark, so it uses the inverse
+ * off-white/coral variant while preserving the same coral Deck accent.
+ */
+.md-header__topic:first-child .md-ellipsis {
+  font-size: 0;
+}
+
+.md-header__topic:first-child .md-ellipsis::before,
+.md-header__topic:first-child .md-ellipsis::after {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.md-header__topic:first-child .md-ellipsis::before {
+  content: "Screen";
+  color: var(--screendeck-on-dark);
+}
+
+.md-header__topic:first-child .md-ellipsis::after {
+  content: "Deck";
+  color: var(--screendeck-coral);
 }
