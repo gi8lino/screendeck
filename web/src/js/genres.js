@@ -1,4 +1,4 @@
-import { el } from "./ui.js";
+import { templateElement } from "./ui.js";
 
 // selectedGenres returns checked genre values from a genre chip container.
 export function selectedGenres(container) {
@@ -12,12 +12,10 @@ export function renderGenreChoices(container, genres, selected = []) {
   const selectedSet = new Set(selected);
   container.replaceChildren();
   genres.forEach((genre) => {
-    const label = el("label", "genre-chip");
-    const input = el("input");
-    input.type = "checkbox";
-    input.value = genre;
-    input.checked = selectedSet.has(genre);
-    label.append(input, el("span", "", genre));
+    const { element: label, refs } = templateElement("genre-chip-template");
+    refs.input.value = genre;
+    refs.input.checked = selectedSet.has(genre);
+    refs.label.textContent = genre;
     container.append(label);
   });
 }

@@ -1,0 +1,223 @@
+<template id="room-topbar-actions-template">
+  <div class="topbar-actions">
+    <button class="btn ghost" type="button" data-ref="rooms">My rooms</button>
+    <button class="btn ghost" type="button" data-ref="leave">Leave</button>
+  </div>
+</template>
+
+<template id="participant-template">
+  <div class="person">
+    <span class="person-label" data-ref="label"></span>
+    <button class="person-remove" type="button" data-ref="remove" hidden>
+      ×
+    </button>
+  </div>
+</template>
+
+<template id="swipe-view-template">
+  <div class="deck" data-ref="deck"></div>
+  <div class="swipe-actions">
+    <button class="btn icon no" type="button" title="Pass" data-ref="no">
+      ×
+    </button>
+    <button
+      class="btn icon info"
+      type="button"
+      title="View details"
+      aria-label="View title details"
+      data-ref="details"
+    >
+      i
+    </button>
+    <button class="btn icon yes" type="button" title="Like" data-ref="yes">
+      ♥
+    </button>
+  </div>
+</template>
+
+<template id="item-card-template">
+  <article class="card" tabindex="0" role="button">
+    <img class="poster" data-ref="poster" />
+    <div class="stamp nope">NOPE</div>
+    <div class="stamp like">LIKE</div>
+    <div class="card-body">
+      <h2 class="item-title" data-ref="title"></h2>
+      <div class="meta" data-ref="meta"></div>
+      <p class="summary" data-ref="summary"></p>
+    </div>
+  </article>
+</template>
+
+<template id="match-pile-template">
+  <button class="match-pile" type="button">
+    <span class="match-pile-stack" data-ref="stack">
+      <span class="match-pile-count" data-ref="count"></span>
+    </span>
+    <span class="match-pile-label">
+      <strong data-ref="label"></strong>
+      <small>Click to open the pile</small>
+    </span>
+  </button>
+</template>
+
+<template id="match-pile-poster-template">
+  <img class="match-pile-poster" alt="" data-ref="poster" />
+</template>
+
+<template id="matches-dialog-template">
+  <dialog class="matches-dialog">
+    <button
+      class="dialog-close"
+      type="button"
+      aria-label="Close matches"
+      data-ref="close"
+    >
+      ×
+    </button>
+    <div class="matches-dialog-head">
+      <div class="eyebrow" data-ref="round"></div>
+      <h2 data-ref="heading"></h2>
+      <p class="muted">These are the titles everyone has liked so far.</p>
+    </div>
+    <div class="matches-dialog-grid" data-ref="list"></div>
+  </dialog>
+</template>
+
+<template id="match-grid-item-template">
+  <button class="match-grid-item" type="button">
+    <img data-ref="poster" />
+    <span data-ref="title"></span>
+  </button>
+</template>
+
+<template id="more-titles-panel-template">
+  <section class="more-titles-panel">
+    <h3>Need more options?</h3>
+    <p class="muted" data-ref="description"></p>
+    <p class="muted" data-ref="hostOnly" hidden>
+      The room host can add more titles.
+    </p>
+    <div class="more-titles-actions" data-ref="actions"></div>
+  </section>
+</template>
+
+<template id="more-titles-button-template">
+  <button class="btn ghost compact-button" type="button"></button>
+</template>
+
+<template id="next-round-panel-template">
+  <section class="next-round-panel">
+    <h3>Next round</h3>
+    <p class="muted" data-ref="initialMessage" hidden>
+      Ask everyone to narrow the deck to the matches you have right now.
+      Readiness resets if the group changes or fewer than two matches remain.
+    </p>
+    <p class="next-round-status" data-ref="requestStatus" hidden></p>
+    <p class="muted" data-ref="readiness" hidden></p>
+    <div class="next-round-roster" data-ref="roster" hidden></div>
+    <p class="muted" data-ref="shortage" hidden>
+      There are fewer than two matches now. Withdraw your readiness or keep
+      swiping until another match appears.
+    </p>
+    <button
+      class="next-round-button"
+      type="button"
+      data-ref="action"
+      hidden
+    ></button>
+  </section>
+</template>
+
+<template id="next-round-person-template">
+  <div class="next-round-person" data-ref="person"></div>
+</template>
+
+<template id="winner-card-template">
+  <section class="winner-card">
+    <img class="winner-poster" data-ref="poster" />
+    <div class="winner-content">
+      <div class="eyebrow">Tonight, decided.</div>
+      <h2 data-ref="title"></h2>
+      <p class="winner-meta" data-ref="meta"></p>
+      <p class="dialog-genres" data-ref="genres" hidden></p>
+      <p class="winner-summary" data-ref="summary" hidden></p>
+      <p class="winner-liked-by" data-ref="likedBy"></p>
+      <div class="winner-actions">
+        <button class="btn ghost" type="button" data-ref="details">
+          View details
+        </button>
+        <button class="btn primary" type="button" data-ref="restart">
+          Start new room
+        </button>
+      </div>
+    </div>
+  </section>
+</template>
+
+<template id="finished-card-template">
+  <div class="finished" data-ref="card">
+    <div class="eyebrow" data-ref="eyebrow"></div>
+    <h2 data-ref="heading"></h2>
+    <p class="lede" data-ref="message"></p>
+  </div>
+</template>
+
+<template id="item-dialog-template">
+  <dialog class="item-dialog">
+    <button
+      class="dialog-close"
+      type="button"
+      aria-label="Close details"
+      data-ref="close"
+    >
+      ×
+    </button>
+    <img class="dialog-poster" data-ref="poster" />
+    <div class="dialog-content">
+      <div class="eyebrow" data-ref="type"></div>
+      <h2 data-ref="title"></h2>
+      <div class="meta" data-ref="meta"></div>
+      <p class="dialog-summary" data-ref="summary"></p>
+      <p class="dialog-genres" data-ref="genres" hidden></p>
+    </div>
+  </dialog>
+</template>
+
+<template id="match-dialog-template">
+  <dialog class="match-dialog">
+    <div class="match-burst" aria-hidden="true">
+      <span class="match-heart" style="--i: 0">♥</span>
+      <span class="match-heart" style="--i: 1">♥</span>
+      <span class="match-heart" style="--i: 2">♥</span>
+      <span class="match-heart" style="--i: 3">♥</span>
+      <span class="match-heart" style="--i: 4">♥</span>
+      <span class="match-heart" style="--i: 5">♥</span>
+    </div>
+    <button
+      class="dialog-close"
+      type="button"
+      aria-label="Close match"
+      data-ref="close"
+    >
+      ×
+    </button>
+    <div class="match-dialog-layout">
+      <img class="match-dialog-poster" data-ref="poster" />
+      <div class="match-dialog-content">
+        <p class="eyebrow match-eyebrow">Everyone said yes</p>
+        <h2>It’s a match!</h2>
+        <p class="match-dialog-title" data-ref="title"></p>
+        <p class="muted" data-ref="meta" hidden></p>
+        <p class="match-dialog-genres" data-ref="genres" hidden></p>
+        <p class="match-dialog-summary" data-ref="summary" hidden></p>
+        <button
+          class="btn primary match-continue"
+          type="button"
+          data-ref="continue"
+        >
+          Continue swiping
+        </button>
+      </div>
+    </div>
+  </dialog>
+</template>

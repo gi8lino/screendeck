@@ -1,0 +1,27 @@
+<template id="room-template">
+  <section class="room-head">
+    <div>
+      <div class="eyebrow" data-ref="roomEyebrow"></div>
+      <h2 data-ref="roomHeading"></h2>
+      <div class="people" data-ref="participants"></div>
+    </div>
+    <button
+      class="room-code"
+      type="button"
+      title="Copy room link"
+      data-ref="roomCode"
+    ></button>
+  </section>
+
+  <section class="room-grid">
+    <div>
+      <div data-ref="roomContent"></div>
+      <div class="progress" data-ref="progress"></div>
+    </div>
+    <aside class="side">
+      <h3 data-ref="matchesHeading"></h3>
+      <div data-ref="matchSummary"></div>
+      <div data-ref="roomControls"></div>
+    </aside>
+  </section>
+</template>

@@ -1,7 +1,13 @@
 import { api } from "./api.js";
 import { renderGenreChoices, selectedGenres } from "./genres.js";
 import { saveSession } from "./state.js";
-import { backButton, el, root, showError, topbar } from "./ui.js";
+import {
+  backButton,
+  instantiateTemplate,
+  root,
+  showError,
+  topbar,
+} from "./ui.js";
 
 // renderJoinRoom displays the form for joining an existing room.
 export function renderJoinRoom(navigation, initialCode = "") {
@@ -53,89 +59,15 @@ async function submitJoinRoom(event, navigation, view, state, loadGenres) {
   }
 }
 
-// createJoinRoomView builds the static join form and returns its interactive controls.
+// createJoinRoomView clones the static join form and returns its controls.
 function createJoinRoomView(navigation, initialCode) {
-  root.replaceChildren();
-  root.append(topbar(backButton(navigation.renderHome)));
+  const { fragment, refs } = instantiateTemplate("join-room-template");
+  refs.code.value = initialCode;
 
-  const panel = el("section", "panel");
-  panel.append(
-    el("div", "eyebrow", "Join friends"),
-    el("h2", "", "Enter the room."),
-  );
+  root.replaceChildren(topbar(backButton(navigation.renderHome)), fragment);
 
-  const form = el("form");
-  const codeRow = el("div", "form-row");
-  codeRow.append(el("label", "", "Room code"));
-  const code = el("input", "code-input");
-  code.type = "text";
-  code.maxLength = 6;
-  code.required = true;
-  code.placeholder = "ABC123";
-  code.autocapitalize = "characters";
-  code.value = initialCode;
-  codeRow.append(code);
-
-  const nameRow = el("div", "form-row");
-  nameRow.append(el("label", "", "Your name"));
-  const name = el("input");
-  name.type = "text";
-  name.maxLength = 30;
-  name.required = true;
-  name.placeholder = "Deckard";
-  name.autocomplete = "nickname";
-  nameRow.append(name);
-
-  const genreFields = createJoinGenreFields();
-  const error = el("p", "error");
-  const submit = el("button", "btn primary", "Join room");
-  submit.type = "submit";
-  form.append(codeRow, nameRow, genreFields.box, error, submit);
-  panel.append(form);
-  root.append(panel);
-
-  if (initialCode) name.focus();
-  return {
-    form,
-    code,
-    name,
-    genreMode: genreFields.genreMode,
-    genreStatus: genreFields.status,
-    genres: genreFields.genres,
-    error,
-    submit,
-  };
-}
-
-// createJoinGenreFields creates personal genre controls for a joining participant.
-function createJoinGenreFields() {
-  const box = el("section", "filter-box preference-box");
-  box.append(
-    el("div", "label", "Your genres"),
-    el(
-      "p",
-      "muted",
-      "Optional · pick what you personally want to swipe. Leave empty to see every title in the room.",
-    ),
-  );
-
-  const genreMode = el("select");
-  const anyMode = el("option", "", "Match any selected genre");
-  anyMode.value = "any";
-  const allMode = el("option", "", "Match all selected genres");
-  allMode.value = "all";
-  genreMode.append(anyMode, allMode);
-
-  const status = el(
-    "p",
-    "muted",
-    "Enter a valid room code to load genre choices.",
-  );
-  const genres = el("div", "genre-chips");
-  genres.setAttribute("role", "group");
-  genres.setAttribute("aria-label", "Your genres");
-  box.append(genreMode, status, genres);
-  return { box, genreMode, status, genres };
+  if (initialCode) refs.name.focus();
+  return refs;
 }
 
 // loadJoinRoomGenres refreshes genre choices for the current room code.

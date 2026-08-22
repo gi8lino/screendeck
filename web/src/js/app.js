@@ -4,7 +4,15 @@ import { renderJoinRoom } from "./join-room.js";
 import { renderPlexSetup } from "./plex.js";
 import { renderRoom, stopRoomEvents } from "./room.js";
 import { getConfig, getSession, saveSession, setConfig } from "./state.js";
-import { el, root, showToast, topbar, updateFooter } from "./ui.js";
+import {
+  instantiateTemplate,
+  messageElement,
+  root,
+  showToast,
+  templateElement,
+  topbar,
+  updateFooter,
+} from "./ui.js";
 
 const navigation = {
   renderHome,
@@ -18,75 +26,25 @@ const savedRoomsPreviewLimit = 5;
 // renderHome displays the ScreenDeck landing page and persistent room memberships.
 function renderHome() {
   stopRoomEvents();
-  root.replaceChildren();
-  root.append(topbar(), homeHero());
-
-  const rooms = savedRoomsSection();
-  root.append(rooms);
-  void loadSavedRooms(rooms);
-}
-
-// homeHero creates the landing-page copy and primary actions.
-function homeHero() {
   const config = getConfig();
-  const hero = el("section", "hero home-hero");
-  hero.append(
-    el("div", "eyebrow", "Tonight, decided."),
-    el("h1", "", "Stop scrolling. Start watching."),
-    el(
-      "p",
-      "lede",
-      "Invite your people, swipe through movies and TV shows from Plex, and find what everyone actually wants to watch.",
-    ),
-  );
+  const { fragment, refs } = instantiateTemplate("home-template");
 
-  if (!config.plexConfigured) {
-    hero.append(
-      el(
-        "div",
-        "notice",
-        "Connect a Plex account to choose a server and load its movie and TV libraries. Credentials stay encrypted on this server.",
-      ),
-    );
-  }
-
-  const actions = el("div", "actions");
-  const create = el(
-    "button",
-    "btn primary",
-    config.plexConfigured ? "Create a room" : "Connect Plex",
-  );
-  create.onclick = config.plexConfigured
+  refs.plexNotice.hidden = config.plexConfigured;
+  refs.primaryAction.textContent = config.plexConfigured
+    ? "Create a room"
+    : "Connect Plex";
+  refs.primaryAction.onclick = config.plexConfigured
     ? () => renderCreateRoom(navigation)
     : () => renderPlexSetup(navigation);
+  refs.joinAction.onclick = () => navigation.renderJoinRoom();
 
-  const join = el("button", "btn ghost", "Join friends");
-  join.onclick = () => navigation.renderJoinRoom();
-  actions.append(create, join);
-  hero.append(actions);
-  return hero;
+  root.replaceChildren(topbar(), fragment);
+  void loadSavedRooms(refs.savedRooms);
 }
 
-// savedRoomsSection creates the persistent-room container in its loading state.
-function savedRoomsSection() {
-  const rooms = el("section", "saved-rooms");
-  rooms.append(
-    savedRoomsHeader(),
-    el("div", "empty saved-rooms-loading", "Loading your rooms…"),
-  );
-  return rooms;
-}
-
-// savedRoomsHeader creates the heading shown above persistent room memberships.
+// savedRoomsHeader clones the shared static heading for persistent room memberships.
 function savedRoomsHeader() {
-  const header = el("div", "saved-rooms-head");
-  const copy = el("div");
-  copy.append(
-    el("div", "eyebrow", "Your rooms"),
-    el("h2", "", "Pick up where you left off."),
-  );
-  header.append(copy);
-  return header;
+  return instantiateTemplate("saved-rooms-header-template").fragment;
 }
 
 // loadSavedRooms fetches and renders room memberships for the current browser identity.
@@ -95,14 +53,12 @@ async function loadSavedRooms(section) {
     const result = await api("/api/me/rooms");
     const rooms = Array.isArray(result) ? result : [];
     if (rooms.length === 0) {
-      section.replaceChildren(
-        savedRoomsHeader(),
-        el(
-          "div",
-          "empty saved-rooms-empty",
-          "Rooms you create or join on this browser will appear here.",
-        ),
+      const empty = messageElement(
+        "empty-template",
+        "Rooms you create or join on this browser will appear here.",
       );
+      empty.classList.add("saved-rooms-empty");
+      section.replaceChildren(savedRoomsHeader(), empty);
       return;
     }
 
@@ -110,7 +66,10 @@ async function loadSavedRooms(section) {
   } catch (error) {
     section.replaceChildren(
       savedRoomsHeader(),
-      el("div", "notice", `Could not load your rooms: ${error.message}`),
+      messageElement(
+        "notice-template",
+        `Could not load your rooms: ${error.message}`,
+      ),
     );
   }
 }
@@ -122,18 +81,16 @@ function renderSavedRooms(section, rooms, expanded = false) {
   const visibleRooms = expanded
     ? rooms
     : rooms.slice(0, savedRoomsPreviewLimit);
-  const list = el("div", "saved-room-list");
+  const { element: list } = templateElement("saved-room-list-template");
   visibleRooms.forEach((room) => list.append(savedRoomCard(room)));
   section.append(list);
 
   if (rooms.length <= savedRoomsPreviewLimit) return;
 
-  const toggle = el(
-    "button",
-    "saved-rooms-toggle",
-    expanded ? "Show fewer rooms ↑" : `Show all rooms (${rooms.length}) ↓`,
-  );
-  toggle.type = "button";
+  const { element: toggle } = templateElement("saved-rooms-toggle-template");
+  toggle.textContent = expanded
+    ? "Show fewer rooms ↑"
+    : `Show all rooms (${rooms.length}) ↓`;
   toggle.setAttribute("aria-expanded", String(expanded));
   toggle.onclick = () => renderSavedRooms(section, rooms, !expanded);
   section.append(toggle);
@@ -141,31 +98,11 @@ function renderSavedRooms(section, rooms, expanded = false) {
 
 // savedRoomCard creates one resumable room membership card.
 function savedRoomCard(room) {
-  const card = el("button", "saved-room");
-  card.type = "button";
+  const { element: card, refs } = templateElement("saved-room-template");
   card.setAttribute("aria-label", `Open room ${room.code}`);
-
-  const main = el("span", "saved-room-main");
-  const heading = el("span", "saved-room-heading");
-  heading.append(
-    el("strong", "saved-room-code", room.code),
-    el(
-      "span",
-      "saved-room-role",
-      room.isHost ? `${room.name} · host` : room.name,
-    ),
-  );
-  main.append(
-    heading,
-    el(
-      "span",
-      "saved-room-meta",
-      `${roomPhaseLabel(room.phase)} · Round ${room.round} · ${participantLabel(room.participantCount)}`,
-    ),
-  );
-
-  const open = el("span", "saved-room-open", "Open →");
-  card.append(main, open);
+  refs.code.textContent = room.code;
+  refs.role.textContent = room.isHost ? `${room.name} · host` : room.name;
+  refs.meta.textContent = `${roomPhaseLabel(room.phase)} · Round ${room.round} · ${participantLabel(room.participantCount)}`;
   card.onclick = () => openSavedRoom(card, room.code);
   return card;
 }
@@ -256,7 +193,10 @@ async function boot() {
   } catch (error) {
     updateFooter();
     root.replaceChildren(
-      el("div", "notice", `ScreenDeck could not start: ${error.message}`),
+      messageElement(
+        "notice-template",
+        `ScreenDeck could not start: ${error.message}`,
+      ),
     );
   }
 }

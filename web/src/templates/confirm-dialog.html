@@ -1,0 +1,30 @@
+<template id="confirm-dialog-template">
+  <dialog class="confirm-dialog">
+    <form class="confirm-dialog-panel" method="dialog">
+      <h2 id="confirm-dialog-title" data-ref="title"></h2>
+      <p
+        id="confirm-dialog-message"
+        class="confirm-dialog-message"
+        data-ref="message"
+      ></p>
+      <div class="confirm-dialog-actions">
+        <button
+          class="btn ghost"
+          type="submit"
+          value="cancel"
+          data-ref="cancel"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn primary"
+          type="submit"
+          value="confirm"
+          data-ref="confirm"
+        >
+          Confirm
+        </button>
+      </div>
+    </form>
+  </dialog>
+</template>

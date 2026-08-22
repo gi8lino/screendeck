@@ -4,30 +4,34 @@ const toast = document.querySelector("#toast");
 const footer = document.querySelector("#page-footer");
 let toastTimer;
 
-// el creates a DOM element with optional class and text content.
-export function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
+// instantiateTemplate clones a native HTML template and returns its named references.
+export function instantiateTemplate(id) {
+  const template = document.querySelector(`#${id}`);
+  if (!(template instanceof HTMLTemplateElement)) {
+    throw new Error(`missing HTML template: ${id}`);
+  }
+
+  const fragment = template.content.cloneNode(true);
+  const refs = {};
+  fragment.querySelectorAll("[data-ref]").forEach((node) => {
+    refs[node.dataset.ref] = node;
+  });
+  return { fragment, refs };
 }
 
-// topbar creates the shared ScreenDeck navigation header.
+// templateElement clones a template that has exactly one top-level element.
+export function templateElement(id) {
+  const { fragment, refs } = instantiateTemplate(id);
+  const element = fragment.firstElementChild;
+  if (!(element instanceof Element) || element.nextElementSibling) {
+    throw new Error(`template must contain exactly one root element: ${id}`);
+  }
+  return { element, refs };
+}
+
+// topbar creates the shared ScreenDeck navigation header from static HTML.
 export function topbar(action) {
-  const bar = el("header", "topbar");
-  const brand = el("a", "brand");
-  brand.href = "/";
-  const mark = el("img", "brand-mark");
-  mark.src = "/favicon.svg";
-  mark.alt = "";
-  mark.setAttribute("aria-hidden", "true");
-  const name = el("span", "brand-name");
-  name.append(
-    el("span", "brand-screen", "Screen"),
-    el("span", "brand-deck", "Deck"),
-  );
-  brand.append(mark, name);
-  bar.append(brand);
+  const { element: bar } = templateElement("topbar-template");
   if (action) bar.append(action);
   return bar;
 }
@@ -44,11 +48,18 @@ export function updateFooter(config = {}) {
   footer.textContent = `© ${year} ScreenDeck · Version ${version}`;
 }
 
-// backButton creates a button that returns to the home screen.
+// backButton creates a button that returns to the previous application view.
 export function backButton(onBack) {
-  const button = el("button", "btn ghost", "Back");
+  const { element: button } = templateElement("back-button-template");
   button.onclick = onBack;
   return button;
+}
+
+// messageElement creates one styled message from static markup.
+export function messageElement(templateID, message) {
+  const { element, refs } = templateElement(templateID);
+  refs.message.textContent = message;
+  return element;
 }
 
 // confirmAction displays a ScreenDeck-styled confirmation dialog and resolves with the user's choice.
@@ -60,31 +71,17 @@ export function confirmAction({
   destructive = false,
 }) {
   return new Promise((resolve) => {
-    const dialog = el("dialog", "confirm-dialog");
+    const { element: dialog, refs } = templateElement(
+      "confirm-dialog-template",
+    );
     dialog.setAttribute("aria-labelledby", "confirm-dialog-title");
     dialog.setAttribute("aria-describedby", "confirm-dialog-message");
 
-    const form = el("form", "confirm-dialog-panel");
-    form.method = "dialog";
-    const titleNode = el("h2", "", title);
-    titleNode.id = "confirm-dialog-title";
-    const messageNode = el("p", "confirm-dialog-message", message);
-    messageNode.id = "confirm-dialog-message";
-
-    const actions = el("div", "confirm-dialog-actions");
-    const cancel = el("button", "btn ghost", cancelLabel);
-    cancel.type = "submit";
-    cancel.value = "cancel";
-    const confirm = el(
-      "button",
-      destructive ? "btn danger" : "btn primary",
-      confirmLabel,
-    );
-    confirm.type = "submit";
-    confirm.value = "confirm";
-    actions.append(cancel, confirm);
-    form.append(titleNode, messageNode, actions);
-    dialog.append(form);
+    refs.title.textContent = title;
+    refs.message.textContent = message;
+    refs.cancel.textContent = cancelLabel;
+    refs.confirm.textContent = confirmLabel;
+    refs.confirm.className = destructive ? "btn danger" : "btn primary";
 
     dialog.addEventListener(
       "close",
@@ -101,7 +98,7 @@ export function confirmAction({
 
     document.body.append(dialog);
     dialog.showModal();
-    cancel.focus();
+    refs.cancel.focus();
   });
 }
 

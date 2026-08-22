@@ -4,6 +4,7 @@ version: 2
 
 before:
   hooks:
+    - make web
     - go mod tidy
 
 builds:

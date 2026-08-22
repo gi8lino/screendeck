@@ -1,0 +1,61 @@
+<template id="join-room-template">
+  <section class="panel">
+    <div class="eyebrow">Join friends</div>
+    <h2>Enter the room.</h2>
+
+    <form data-ref="form">
+      <div class="form-row">
+        <label for="join-room-code">Room code</label>
+        <input
+          id="join-room-code"
+          class="code-input"
+          data-ref="code"
+          type="text"
+          maxlength="6"
+          placeholder="ABC123"
+          autocapitalize="characters"
+          required
+        />
+      </div>
+
+      <div class="form-row">
+        <label for="join-room-name">Your name</label>
+        <input
+          id="join-room-name"
+          data-ref="name"
+          type="text"
+          maxlength="30"
+          placeholder="Deckard"
+          autocomplete="nickname"
+          required
+        />
+      </div>
+
+      <section class="filter-box preference-box">
+        <div class="label">Your genres</div>
+        <p class="muted">
+          Optional · pick what you personally want to swipe. Leave empty to see
+          every title in the room.
+        </p>
+        <select data-ref="genreMode" aria-label="Personal genre matching">
+          <option value="any">Match any selected genre</option>
+          <option value="all">Match all selected genres</option>
+        </select>
+        <p class="muted" data-ref="genreStatus">
+          Enter a valid room code to load genre choices.
+        </p>
+        <div
+          class="genre-chips"
+          data-ref="genres"
+          role="group"
+          aria-label="Your genres"
+        ></div>
+      </section>
+
+      <p class="error" data-ref="error"></p>
+      <button class="btn primary" type="submit" data-ref="submit">
+        Join room
+      </button>
+    </form>
+  </section>
+</template>

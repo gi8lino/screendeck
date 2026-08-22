@@ -1,6 +1,13 @@
 import { api } from "./api.js";
 import { getConfig, setConfig } from "./state.js";
-import { backButton, el, root, showToast, topbar } from "./ui.js";
+import {
+  backButton,
+  instantiateTemplate,
+  root,
+  showToast,
+  templateElement,
+  topbar,
+} from "./ui.js";
 
 // renderPlexSetup displays Plex authentication and server selection.
 export function renderPlexSetup(navigation) {
@@ -9,36 +16,17 @@ export function renderPlexSetup(navigation) {
 
   view.standardButton.onclick = () => start("standard");
   if (getConfig().experimental) {
-    const jwtButton = el("button", "btn ghost", "Use JWT (experimental)");
+    const { element: jwtButton } = templateElement("plex-jwt-button-template");
     jwtButton.onclick = () => start("jwt");
     view.authActions.append(jwtButton);
   }
 }
 
-// createPlexSetupView builds the static Plex authorization panel.
+// createPlexSetupView clones the static Plex authorization panel.
 function createPlexSetupView(navigation) {
-  root.replaceChildren();
-  root.append(topbar(backButton(navigation.renderHome)));
-
-  const panel = el("section", "panel");
-  panel.append(
-    el("div", "eyebrow", "Plex connection"),
-    el("h2", "", "Authorize this device."),
-    el(
-      "p",
-      "lede",
-      "Plex opens in a separate window. Sign in there, then return here to select the media server you want to use.",
-    ),
-  );
-
-  const status = el("p", "notice", "Ready to connect.");
-  const servers = el("div", "server-list");
-  const authActions = el("div", "actions");
-  const standardButton = el("button", "btn primary", "Sign in with Plex");
-  authActions.append(standardButton);
-  panel.append(status, servers, authActions);
-  root.append(panel);
-  return { status, servers, authActions, standardButton };
+  const { fragment, refs } = instantiateTemplate("plex-setup-template");
+  root.replaceChildren(topbar(backButton(navigation.renderHome)), fragment);
+  return refs;
 }
 
 // startAuthorization runs one Plex authorization flow.
@@ -89,10 +77,8 @@ function openAuthorization(authURL, popup, servers) {
     popup.location = authURL;
     return;
   }
-  const authLink = el("a", "btn ghost", "Open Plex authorization");
+  const { element: authLink } = templateElement("plex-auth-link-template");
   authLink.href = authURL;
-  authLink.target = "_blank";
-  authLink.rel = "noopener";
   servers.before(authLink);
 }
 
@@ -120,23 +106,15 @@ async function waitForAuthorization(setupToken) {
 function renderServers(available, setupToken, servers, status, navigation) {
   servers.replaceChildren();
   available.forEach((server) => {
-    const choice = el("button", "server-choice");
-    const details = el("span");
-    details.append(
-      el("strong", "", server.name),
-      el(
-        "small",
-        "",
-        [
-          server.platform,
-          server.local ? "Local connection" : "Remote connection",
-          server.owned ? "Owned" : "Shared",
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      ),
-    );
-    choice.append(details, el("span", "", "Connect →"));
+    const { element: choice, refs } = templateElement("plex-server-template");
+    refs.name.textContent = server.name;
+    refs.details.textContent = [
+      server.platform,
+      server.local ? "Local connection" : "Remote connection",
+      server.owned ? "Owned" : "Shared",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     choice.onclick = () =>
       selectServer(server, setupToken, servers, status, navigation);
     servers.append(choice);

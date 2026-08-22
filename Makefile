@@ -14,6 +14,10 @@ DOCS_PYTHON := $(DOCS_VENV)/bin/python
 DOCS_DEPENDENCIES_STAMP := $(DOCS_VENV)/.requirements-installed
 DOCS_SITE := $(DOCS_DIR)/.site
 
+## Frontend
+WEB_BUILD := scripts/web/build.sh
+NODE ?= node
+
 ## Node.js Tooling
 NPM ?= npm
 NODE_MODULES := $(DOCS_DIR)/node_modules
@@ -101,23 +105,31 @@ push: ## Push tags to the configured remote.
 
 ##@ Development
 
+.PHONY: web
+web: ## Build the frontend distribution from web/src.
+	@$(WEB_BUILD)
+
+.PHONY: check-web
+check-web: web ## Build the frontend and verify JavaScript parses.
+	@for file in web/src/js/*.js; do $(NODE) --check "$$file"; done
+
 .PHONY: download
 download: node-dependencies ## Download Go and Node.js dependencies.
 	go mod download
 
 .PHONY: run
-run: ## Run ScreenDeck locally.
+run: web ## Run ScreenDeck locally.
 	go run $(COMMAND) \
     --plex-url-override http://127.0.0.1:32400 \
     --debug \
     --log-format text
 
 .PHONY: build
-build: ## Build the ScreenDeck binary.
+build: web ## Build the ScreenDeck binary.
 	go build -ldflags="$(LDFLAGS)" -o $(BINARY) $(COMMAND)
 
 .PHONY: vet
-vet: ## Run Go static analysis.
+vet: web ## Run Go static analysis.
 	go vet ./...
 
 .PHONY: test
@@ -129,14 +141,14 @@ test-race: vet ## Run backend unit tests with the race detector.
 	go test -race -count=1 -parallel=4 -timeout=5m ./...
 
 .PHONY: cover
-cover: ## Display test coverage.
+cover: web ## Display test coverage.
 	go test -coverprofile=coverage.out -covermode=atomic -count=1 -parallel=4 -timeout=5m ./...
 	go tool cover -html=coverage.out
 
 .PHONY: clean
 clean: ## Clean up generated application and documentation files.
 	rm -f $(BINARY) coverage.out coverage.html
-	rm -rf $(DOCS_SITE)
+	rm -rf $(DOCS_SITE) web/dist
 
 ##@ Formatting
 
@@ -144,7 +156,7 @@ clean: ## Clean up generated application and documentation files.
 fmt: fmt-go fmt-md fmt-yaml fmt-json ## Format all supported files.
 
 .PHONY: fmt-go
-fmt-go: ## Format Go code.
+fmt-go: web ## Format Go code.
 	go fmt ./...
 
 .PHONY: fmt-md
@@ -160,14 +172,14 @@ fmt-json: node-dependencies ## Format JSON configuration files with Prettier.
 	@$(PRETTIER) --write $(PRETTIER_JSON_SOURCES)
 
 .PHONY: lint
-lint: lint-go lint-md lint-yaml lint-json ## Run all linters and formatting checks.
+lint: check-web lint-go lint-md lint-yaml lint-json ## Run all linters and formatting checks.
 
 .PHONY: lint-go
-lint-go: golangci-lint ## Run golangci-lint.
+lint-go: web golangci-lint ## Run golangci-lint.
 	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
-lint-fix: golangci-lint ## Run golangci-lint and apply fixes.
+lint-fix: web golangci-lint ## Run golangci-lint and apply fixes.
 	$(GOLANGCI_LINT) run --fix
 
 .PHONY: lint-md
@@ -193,7 +205,7 @@ docs-build: $(DOCS_DEPENDENCIES_STAMP) ## Build the MkDocs site with strict vali
 	$(DOCS_PYTHON) -m mkdocs build --strict -f $(DOCS_CONFIG)
 
 .PHONY: capture-screenshots
-capture-screenshots: playwright-browser ## Capture raw demo screenshots with Playwright.
+capture-screenshots: web playwright-browser ## Capture raw demo screenshots with Playwright.
 	@PLAYWRIGHT="$(abspath $(PLAYWRIGHT))" \
 	PLAYWRIGHT_BROWSERS_PATH="$(abspath $(PLAYWRIGHT_BROWSERS_PATH))" \
 	SCREENSHOT_RAW_DIR="$(abspath $(SCREENSHOT_RAW_DIR))" \

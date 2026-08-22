@@ -48,10 +48,29 @@ internal/plex        Plex authorization and catalog client
 internal/room        room orchestration and live notifications
 internal/routes      route table and middleware wiring
 internal/store       SQLite schema and persistence
-web                  embedded browser application
+web/src              canonical frontend source: HTML, templates, CSS, JavaScript, and favicon
+web/dist             generated, ignored browser assets embedded by Go
 deploy               deployment examples
 docs                 documentation project, sources, assets, and tooling dependencies
-scripts/screenshots  documentation screenshot capture and normalization helpers
+scripts/web           frontend distribution build
+scripts/screenshots   documentation screenshot capture and normalization helpers
+```
+
+## Frontend rendering
+
+The browser frontend stays dependency-free. Everything developers edit lives under `web/src/`: the page shell, native HTML `<template>` partials, CSS, JavaScript modules, and favicon. `make web` assembles the templates into `web/dist/index.html` and copies the remaining assets into `web/dist/`.
+
+Treat `web/dist/` as generated output and do not edit or commit it. The directory is ignored by Git and recreated whenever a supported build, test, lint, or run target needs the files consumed by `go:embed`. CI builds the frontend before Go analysis, the Dockerfile generates it inside the builder image, and GoReleaser runs `make web` before compiling release binaries.
+
+JavaScript clones native templates through `instantiateTemplate` and `templateElement` in `web/src/js/ui.js`, then binds API data and event handlers to elements marked with `data-ref`. Static and repeated UI structure belongs in HTML templates; JavaScript updates values with `textContent`, attributes, classes, and event handlers. The old generic `el()` DOM-construction helper is no longer used.
+
+Use the Makefile targets rather than invoking Go commands directly from a fresh checkout, because the generated `web/dist/` tree must exist before packages containing the embedded frontend are loaded:
+
+```sh
+make web
+make check-web
+make test
+make build
 ```
 
 ## Formatting and checks

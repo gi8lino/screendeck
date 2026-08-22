@@ -12,6 +12,7 @@ on:
       - "go.mod"
       - "go.sum"
       - "web/**"
+      - "scripts/web/**"
       - "Makefile"
       - ".github/workflows/**"
   workflow_dispatch:
@@ -39,6 +40,9 @@ jobs:
 
       - name: Download dependencies
         run: make download
+
+      - name: Build and check frontend
+        run: make check-web
 
       - name: Check formatting and static analysis
         run: |

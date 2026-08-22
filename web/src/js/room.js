@@ -1,6 +1,14 @@
 import { api } from "./api.js";
 import { getConfig, getSession, saveSession } from "./state.js";
-import { confirmAction, el, root, showToast, topbar } from "./ui.js";
+import {
+  confirmAction,
+  instantiateTemplate,
+  messageElement,
+  root,
+  showToast,
+  templateElement,
+  topbar,
+} from "./ui.js";
 
 let eventSource;
 let voting = false;
@@ -40,32 +48,41 @@ export function stopRoomEvents() {
   eventSource = null;
 }
 
-// drawRoom renders participants, the current candidate, matches, and next-round readiness.
+// drawRoom fills the static room shell with live room state.
 function drawRoom(state) {
   const session = getSession();
-  root.replaceChildren();
-  root.append(roomTopbar(session), roomHeader(state));
+  const { fragment, refs } = instantiateTemplate("room-template");
 
-  const grid = el("section", "room-grid");
-  grid.append(roomMain(state), roomSidebar(state));
-  root.append(grid);
+  refs.roomEyebrow.textContent = `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`;
+  refs.roomHeading.textContent = `Good hunting, ${state.me.name}.`;
+  renderParticipants(refs.participants, state);
+  configureRoomCode(refs.roomCode, state.room.code);
+  renderRoomMain(refs.roomContent, state);
+  refs.progress.textContent = roomProgressText(state).join(" · ");
+
+  refs.matchesHeading.textContent = `Round ${state.room.round} matches · ${(state.matches || []).length}`;
+  refs.matchSummary.replaceChildren(matchSummary(state));
+
+  const moreTitles = moreTitlesPanel(state);
+  if (moreTitles) refs.roomControls.append(moreTitles);
+  const nextRound = nextRoundPanel(state);
+  if (nextRound) refs.roomControls.append(nextRound);
+
+  root.replaceChildren(roomTopbar(session), fragment);
 }
 
 // roomTopbar creates navigation actions for the active room.
 function roomTopbar(session) {
-  const rooms = el("button", "btn ghost", "My rooms");
-  rooms.onclick = () => {
+  const { element: actions, refs } = templateElement(
+    "room-topbar-actions-template",
+  );
+  refs.rooms.onclick = () => {
     stopRoomEvents();
     resetMatchTracking();
     saveSession(null);
     navigation.renderHome();
   };
-
-  const leave = el("button", "btn ghost", "Leave");
-  leave.onclick = () => leaveCurrentRoom(leave, session);
-
-  const actions = el("div", "topbar-actions");
-  actions.append(rooms, leave);
+  refs.leave.onclick = () => leaveCurrentRoom(refs.leave, session);
   return topbar(actions);
 }
 
@@ -100,27 +117,8 @@ async function leaveCurrentRoom(button, session) {
   navigation.renderHome();
 }
 
-// roomHeader renders the round summary, participants, and share code.
-function roomHeader(state) {
-  const head = el("section", "room-head");
-  const intro = el("div");
-  intro.append(
-    el(
-      "div",
-      "eyebrow",
-      `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`,
-    ),
-    el("h2", "", `Good hunting, ${state.me.name}.`),
-    participantList(state),
-  );
-
-  head.append(intro, roomCodeButton(state.room.code));
-  return head;
-}
-
-// participantList renders room participants and host removal controls.
-function participantList(state) {
-  const people = el("div", "people");
+// renderParticipants fills the room participant list and host removal controls.
+function renderParticipants(container, state) {
   const canRemoveParticipants =
     state.me.isHost && state.participants.length > 1;
 
@@ -130,40 +128,34 @@ function participantList(state) {
     if (participant.isHost) labels.push("host");
     if (participant.readyForNextRound) labels.push("next round ✓");
 
-    const person = el(
-      "div",
-      `person${participant.id === state.me.id ? " me" : ""}${participant.readyForNextRound ? " ready" : ""}`,
-    );
+    const { element: person, refs } = templateElement("participant-template");
+    if (participant.id === state.me.id) person.classList.add("me");
+    if (participant.readyForNextRound) person.classList.add("ready");
     person.title = participant.genres?.length
       ? `Genres (${participant.genreMode === "all" ? "all" : "any"}): ${participant.genres.join(", ")}`
       : "Genres: everything";
-    person.append(el("span", "person-label", labels.join(" · ")));
+    refs.label.textContent = labels.join(" · ");
 
     if (canRemoveParticipants && participant.id !== state.me.id) {
-      const remove = el("button", "person-remove", "×");
-      remove.type = "button";
-      remove.title = `Remove ${participant.name}`;
-      remove.setAttribute(
+      refs.remove.hidden = false;
+      refs.remove.title = `Remove ${participant.name}`;
+      refs.remove.setAttribute(
         "aria-label",
         `Remove ${participant.name} from the room`,
       );
-      remove.onclick = (event) => {
+      refs.remove.onclick = (event) => {
         event.stopPropagation();
-        removeParticipant(participant, remove);
+        removeParticipant(participant, refs.remove);
       };
-      person.append(remove);
     }
-    people.append(person);
+    container.append(person);
   });
-
-  return people;
 }
 
-// roomCodeButton creates the share control for the current room.
-function roomCodeButton(roomCode) {
-  const code = el("button", "room-code", roomCode);
-  code.title = "Copy room link";
-  code.onclick = async () => {
+// configureRoomCode wires the static room-code button to the share action.
+function configureRoomCode(button, roomCode) {
+  button.textContent = roomCode;
+  button.onclick = async () => {
     try {
       await navigator.clipboard.writeText(roomURL(roomCode));
       showToast("Room link copied");
@@ -171,47 +163,29 @@ function roomCodeButton(roomCode) {
       showToast("Could not copy room link");
     }
   };
-  return code;
 }
 
-// roomMain renders the active card, terminal room state, and personal progress.
-function roomMain(state) {
-  const main = el("div");
+// renderRoomMain fills the active-card area with the current room state.
+function renderRoomMain(container, state) {
   if (state.room.phase === "finished" && state.winner) {
-    main.append(winnerCard(state));
+    container.append(winnerCard(state));
   } else if (state.candidate) {
-    appendSwipeCandidate(main, state.candidate);
+    appendSwipeCandidate(container, state.candidate);
   } else {
-    main.append(finishedCard(state));
+    container.append(finishedCard(state));
   }
-
-  main.append(el("div", "progress", roomProgressText(state).join(" · ")));
-  return main;
 }
 
 // appendSwipeCandidate adds the active card and swipe controls to the room view.
 function appendSwipeCandidate(container, item) {
   const showDetails = () => showItemDetails(item);
-  const deck = el("div", "deck");
+  const { fragment, refs } = instantiateTemplate("swipe-view-template");
   const card = itemCard(item, showDetails);
-  deck.append(card);
-  container.append(deck);
-
-  const actions = el("div", "swipe-actions");
-  const no = el("button", "btn icon no", "×");
-  no.title = "Pass";
-  no.onclick = () => vote(item, false, card);
-
-  const details = el("button", "btn icon info", "i");
-  details.title = "View details";
-  details.setAttribute("aria-label", "View title details");
-  details.onclick = showDetails;
-
-  const yes = el("button", "btn icon yes", "♥");
-  yes.title = "Like";
-  yes.onclick = () => vote(item, true, card);
-  actions.append(no, details, yes);
-  container.append(actions);
+  refs.deck.append(card);
+  refs.no.onclick = () => vote(item, false, card);
+  refs.details.onclick = showDetails;
+  refs.yes.onclick = () => vote(item, true, card);
+  container.append(fragment);
   enableSwipe(card, item);
 }
 
@@ -227,25 +201,6 @@ function roomProgressText(state) {
     );
   }
   return labels;
-}
-
-// roomSidebar renders matches and room-wide round controls.
-function roomSidebar(state) {
-  const side = el("aside", "side");
-  side.append(
-    el(
-      "h3",
-      "",
-      `Round ${state.room.round} matches · ${(state.matches || []).length}`,
-    ),
-    matchSummary(state),
-  );
-
-  const moreTitles = moreTitlesPanel(state);
-  if (moreTitles) side.append(moreTitles);
-  const nextRound = nextRoundPanel(state);
-  if (nextRound) side.append(nextRound);
-  return side;
 }
 
 // phaseLabel converts the persisted room state machine phase into UI copy.
@@ -266,83 +221,56 @@ function phaseLabel(phase) {
 function matchSummary(state) {
   const matches = state.matches || [];
   if (!matches.length) {
-    return el(
-      "div",
-      "empty",
+    return messageElement(
+      "empty-template",
       state.participants.length < 2
         ? "Invite someone with the room code. Matches need at least two people."
         : "A shared yes will appear here.",
     );
   }
 
-  const pile = el("button", "match-pile");
-  pile.type = "button";
+  const { element: pile, refs } = templateElement("match-pile-template");
   pile.setAttribute(
     "aria-label",
     `Show ${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
   );
   pile.onclick = () => showMatches(matches, state.room.round);
 
-  const stack = el("span", "match-pile-stack");
   matches.slice(0, 3).forEach((item) => {
-    const image = el("img", "match-pile-poster");
-    image.src = `/api/posters/${encodeURIComponent(item.id)}`;
-    image.alt = "";
-    stack.append(image);
+    const { element: image, refs: imageRefs } = templateElement(
+      "match-pile-poster-template",
+    );
+    imageRefs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+    refs.count.before(image);
   });
-  const count = el("span", "match-pile-count", String(matches.length));
-  stack.append(count);
-
-  const label = el("span", "match-pile-label");
-  label.append(
-    el(
-      "strong",
-      "",
-      `${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
-    ),
-    el("small", "", "Click to open the pile"),
-  );
-  pile.append(stack, label);
+  refs.count.textContent = String(matches.length);
+  refs.label.textContent = `${matches.length} ${matches.length === 1 ? "match" : "matches"}`;
   return pile;
 }
 
 // showMatches expands the current match pile in a scrollable dialog.
 function showMatches(matches, round) {
   document.querySelector(".matches-dialog")?.remove();
-  const dialog = el("dialog", "matches-dialog");
-  const close = el("button", "dialog-close", "×");
-  close.type = "button";
-  close.setAttribute("aria-label", "Close matches");
-  close.onclick = () => dialog.close();
+  const { element: dialog, refs } = templateElement("matches-dialog-template");
+  refs.close.onclick = () => dialog.close();
+  refs.round.textContent = `Round ${round}`;
+  refs.heading.textContent = `${matches.length} ${matches.length === 1 ? "match" : "matches"}`;
 
-  const header = el("div", "matches-dialog-head");
-  header.append(
-    el("div", "eyebrow", `Round ${round}`),
-    el(
-      "h2",
-      "",
-      `${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
-    ),
-    el("p", "muted", "These are the titles everyone has liked so far."),
-  );
-
-  const list = el("div", "matches-dialog-grid");
   matches.forEach((item) => {
-    const button = el("button", "match-grid-item");
-    button.type = "button";
+    const { element: button, refs: itemRefs } = templateElement(
+      "match-grid-item-template",
+    );
     button.title = `View details for ${item.title}`;
-    const image = el("img");
-    image.src = `/api/posters/${encodeURIComponent(item.id)}`;
-    image.alt = `Poster for ${item.title}`;
-    button.append(image, el("span", "", item.title));
+    itemRefs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+    itemRefs.poster.alt = `Poster for ${item.title}`;
+    itemRefs.title.textContent = item.title;
     button.onclick = () => {
       dialog.close();
       showItemDetails(item);
     };
-    list.append(button);
+    refs.list.append(button);
   });
 
-  dialog.append(close, header, list);
   showModalDialog(dialog, showNextMatch);
 }
 
@@ -351,29 +279,24 @@ function moreTitlesPanel(state) {
   const available = state.moreTitles?.available || 0;
   if (state.room.round !== 1 || available <= 0) return null;
 
-  const panel = el("section", "more-titles-panel");
-  panel.append(
-    el("h3", "", "Need more options?"),
-    el(
-      "p",
-      "muted",
-      `${available} unused titles remain from the original filtered pool.`,
-    ),
+  const { element: panel, refs } = templateElement(
+    "more-titles-panel-template",
   );
+  refs.description.textContent = `${available} unused titles remain from the original filtered pool.`;
   if (!state.me.isHost) {
-    panel.append(el("p", "muted", "The room host can add more titles."));
+    refs.hostOnly.hidden = false;
+    refs.actions.remove();
     return panel;
   }
-  const actions = el("div", "more-titles-actions");
+
   [50, 100, 250].forEach((count) => {
     const amount = Math.min(count, available);
     if (amount <= 0) return;
-    const button = el("button", "btn ghost compact-button", `+${amount}`);
-    button.type = "button";
+    const { element: button } = templateElement("more-titles-button-template");
+    button.textContent = `+${amount}`;
     button.onclick = () => addMoreTitles(amount, button);
-    actions.append(button);
+    refs.actions.append(button);
   });
-  panel.append(actions);
   return panel;
 }
 
@@ -407,81 +330,58 @@ function nextRoundPanel(state) {
   };
   if (matches.length < 2 && readiness.ready === 0) return null;
 
-  const panel = el("section", "next-round-panel");
-  panel.append(el("h3", "", "Next round"));
-  appendNextRoundStatus(panel, state, readiness);
+  const { element: panel, refs } = templateElement("next-round-panel-template");
+  configureNextRoundStatus(refs, state, readiness);
 
   if (matches.length < 2 && state.me.readyForNextRound) {
-    panel.append(
-      el(
-        "p",
-        "muted",
-        "There are fewer than two matches now. Withdraw your readiness or keep swiping until another match appears.",
-      ),
-    );
+    refs.shortage.hidden = false;
   }
 
-  appendNextRoundAction(panel, state, matches, readiness);
+  configureNextRoundAction(refs.action, state, matches, readiness);
   return panel;
 }
 
-// appendNextRoundStatus adds the current request state and participant readiness.
-function appendNextRoundStatus(panel, state, readiness) {
+// configureNextRoundStatus fills the current request state and participant readiness.
+function configureNextRoundStatus(refs, state, readiness) {
   if (readiness.ready === 0) {
-    panel.append(
-      el(
-        "p",
-        "muted",
-        "Ask everyone to narrow the deck to the matches you have right now. Readiness resets if the group changes or fewer than two matches remain.",
-      ),
-    );
+    refs.initialMessage.hidden = false;
     return;
   }
 
   const requester = readiness.requestedBy;
-  panel.append(
-    el(
-      "p",
-      "next-round-status",
-      requester
-        ? `${requester.id === state.me.id ? "You" : requester.name} asked for the next round.`
-        : "A next round was requested.",
-    ),
-    el("p", "muted", `${readiness.ready} of ${readiness.required} ready`),
-  );
+  refs.requestStatus.hidden = false;
+  refs.requestStatus.textContent = requester
+    ? `${requester.id === state.me.id ? "You" : requester.name} asked for the next round.`
+    : "A next round was requested.";
+  refs.readiness.hidden = false;
+  refs.readiness.textContent = `${readiness.ready} of ${readiness.required} ready`;
+  refs.roster.hidden = false;
 
-  const roster = el("div", "next-round-roster");
   state.participants.forEach((participant) => {
     const ready = participant.readyForNextRound;
-    roster.append(
-      el(
-        "div",
-        `next-round-person${ready ? " ready" : ""}`,
-        `${ready ? "✓" : "○"} ${participant.name}${participant.id === state.me.id ? " · you" : ""}`,
-      ),
+    const { element: person, refs: personRefs } = templateElement(
+      "next-round-person-template",
     );
+    if (ready) person.classList.add("ready");
+    personRefs.person.textContent = `${ready ? "✓" : "○"} ${participant.name}${participant.id === state.me.id ? " · you" : ""}`;
+    refs.roster.append(person);
   });
-  panel.append(roster);
 }
 
-// appendNextRoundAction adds the current participant's readiness action when available.
-function appendNextRoundAction(panel, state, matches, readiness) {
+// configureNextRoundAction configures this participant's readiness action when available.
+function configureNextRoundAction(button, state, matches, readiness) {
   if (matches.length < 2 && !state.me.readyForNextRound) return;
 
-  const button = el(
-    "button",
-    state.me.readyForNextRound
-      ? "btn ghost next-round-button"
-      : "btn primary next-round-button",
-    state.me.readyForNextRound
-      ? "Withdraw readiness"
-      : readiness.ready > 0
-        ? "Ready for next round"
-        : "Ask for next round",
-  );
-  button.type = "button";
+  button.hidden = false;
+  button.className = state.me.readyForNextRound
+    ? "btn ghost next-round-button"
+    : "btn primary next-round-button";
+  button.textContent = state.me.readyForNextRound
+    ? "Withdraw readiness"
+    : readiness.ready > 0
+      ? "Ready for next round"
+      : "Ask for next round";
   button.onclick = () => toggleNextRoundReady(state, button);
-  panel.append(button);
 }
 
 // toggleNextRoundReady records or withdraws this participant's agreement.
@@ -520,46 +420,29 @@ async function toggleNextRoundReady(state, button) {
 function winnerCard(state) {
   const winner = state.winner;
   const item = winner.item;
-  const card = el("section", "winner-card");
-  const poster = el("img", "winner-poster");
-  poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  poster.alt = `Poster for ${item.title}`;
+  const { element: card, refs } = templateElement("winner-card-template");
+  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  refs.poster.alt = `Poster for ${item.title}`;
+  refs.title.textContent = item.title;
+  refs.meta.textContent = itemMetadata(item);
 
-  const content = el("div", "winner-content");
-  content.append(
-    el("div", "eyebrow", "Tonight, decided."),
-    el("h2", "", item.title),
-    el("p", "winner-meta", itemMetadata(item)),
-  );
   if (item.genres?.length) {
-    content.append(el("p", "dialog-genres", item.genres.join(" · ")));
+    refs.genres.hidden = false;
+    refs.genres.textContent = item.genres.join(" · ");
   }
   if (item.summary) {
-    content.append(el("p", "winner-summary", item.summary));
+    refs.summary.hidden = false;
+    refs.summary.textContent = item.summary;
   }
+
   const supporters = (winner.likedBy || []).map(
     (participant) => participant.name,
   );
-  content.append(
-    el(
-      "p",
-      "winner-liked-by",
-      supporters.length
-        ? `Liked by ${supporters.join(", ")}`
-        : "The final shared match.",
-    ),
-  );
-
-  const actions = el("div", "winner-actions");
-  const details = el("button", "btn ghost", "View details");
-  details.type = "button";
-  details.onclick = () => showItemDetails(item);
-  const restart = el("button", "btn primary", "Start new room");
-  restart.type = "button";
-  restart.onclick = startNewRoom;
-  actions.append(details, restart);
-  content.append(actions);
-  card.append(poster, content);
+  refs.likedBy.textContent = supporters.length
+    ? `Liked by ${supporters.join(", ")}`
+    : "The final shared match.";
+  refs.details.onclick = () => showItemDetails(item);
+  refs.restart.onclick = startNewRoom;
   return card;
 }
 
@@ -574,69 +457,45 @@ async function startNewRoom() {
 
 // finishedCard renders the state shown after this participant exhausts their personal deck.
 function finishedCard(state) {
-  const done = el("div", "finished");
+  const { element: done, refs } = templateElement("finished-card-template");
   const matches = state.matches || [];
 
   if (state.progress.total === 0 && state.progress.filteredOut > 0) {
-    done.append(
-      el("div", "eyebrow", "Personal deck"),
-      el("h2", "", "No titles match your genres."),
-      el(
-        "p",
-        "lede",
-        `${state.progress.filteredOut} round titles were excluded by your ${state.me.genreMode === "all" ? "match-all" : "match-any"} genre preference.`,
-      ),
-    );
+    refs.eyebrow.textContent = "Personal deck";
+    refs.heading.textContent = "No titles match your genres.";
+    refs.message.textContent = `${state.progress.filteredOut} round titles were excluded by your ${state.me.genreMode === "all" ? "match-all" : "match-any"} genre preference.`;
     return done;
   }
 
   if (state.roundComplete && matches.length === 1) {
     done.classList.add("winner");
-    done.append(
-      el("div", "eyebrow", "Decision made"),
-      el("h2", "", "One title remains."),
-      el("p", "lede", `${matches[0].title} survived the complete round.`),
-    );
+    refs.eyebrow.textContent = "Decision made";
+    refs.heading.textContent = "One title remains.";
+    refs.message.textContent = `${matches[0].title} survived the complete round.`;
     return done;
   }
 
   if (state.roundComplete && matches.length === 0) {
-    done.append(
-      el("div", "eyebrow", "Round complete"),
-      el("h2", "", "No shared pick survived."),
-      el(
-        "p",
-        "lede",
-        "Start a new room with a wider deck or different filters to try again.",
-      ),
-    );
+    refs.eyebrow.textContent = "Round complete";
+    refs.heading.textContent = "No shared pick survived.";
+    refs.message.textContent =
+      "Start a new room with a wider deck or different filters to try again.";
     return done;
   }
 
   if (matches.length > 1) {
-    done.append(
-      el("div", "eyebrow", "Your deck is complete"),
-      el("h2", "", `${matches.length} matches so far.`),
-      el(
-        "p",
-        "lede",
-        "You can wait for more matches or use the next-round request to narrow the group now.",
-      ),
-    );
+    refs.eyebrow.textContent = "Your deck is complete";
+    refs.heading.textContent = `${matches.length} matches so far.`;
+    refs.message.textContent =
+      "You can wait for more matches or use the next-round request to narrow the group now.";
     return done;
   }
 
-  done.append(
-    el("div", "eyebrow", "You’re done for now"),
-    el("h2", "", "You’ve seen your whole deck."),
-    el(
-      "p",
-      "lede",
-      state.roundComplete
-        ? "The group has finished this deck."
-        : "Other participants can keep swiping; new matches will appear live.",
-    ),
-  );
+  refs.eyebrow.textContent = "You’re done for now";
+  refs.heading.textContent = "You’ve seen your whole deck.";
+  refs.message.textContent = state.roundComplete
+    ? "The group has finished this deck."
+    : "Other participants can keep swiping; new matches will appear live.";
   return done;
 }
 
@@ -680,9 +539,7 @@ function roomURL(roomCode) {
 
 // itemCard builds a swipeable card for one media item.
 function itemCard(item, showDetails) {
-  const card = el("article", "card");
-  card.tabIndex = 0;
-  card.setAttribute("role", "button");
+  const { element: card, refs } = templateElement("item-card-template");
   card.setAttribute("aria-label", `View details for ${item.title}`);
   card.title = "View details";
   card.onclick = showDetails;
@@ -691,57 +548,39 @@ function itemCard(item, showDetails) {
     event.preventDefault();
     showDetails();
   };
-  const image = el("img", "poster");
-  image.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  image.alt = `Poster for ${item.title}`;
-  const nope = el("div", "stamp nope", "NOPE");
-  const like = el("div", "stamp like", "LIKE");
-  const body = el("div", "card-body");
-  body.append(el("h2", "item-title", item.title));
-  const meta = el("div", "meta");
-  const bits = [
+  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  refs.poster.alt = `Poster for ${item.title}`;
+  refs.title.textContent = item.title;
+  refs.meta.textContent = [
     item.type === "show" ? "TV series" : "Movie",
     item.year || null,
     item.type === "movie" && item.duration
       ? `${Math.round(item.duration / 60000)} min`
       : null,
     item.rating ? `★ ${item.rating.toFixed(1)}` : null,
-  ].filter(Boolean);
-  meta.textContent = bits.join("  ·  ");
-  body.append(
-    meta,
-    el(
-      "p",
-      "summary",
-      item.summary || item.genres?.join(" · ") || "No synopsis available.",
-    ),
-  );
-  card.append(image, nope, like, body);
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
+  refs.summary.textContent =
+    item.summary || item.genres?.join(" · ") || "No synopsis available.";
   return card;
 }
 
 // showItemDetails opens the complete metadata and synopsis for a title.
 function showItemDetails(item) {
   document.querySelector(".item-dialog")?.remove();
-  const dialog = el("dialog", "item-dialog");
-  const close = el("button", "dialog-close", "×");
-  close.type = "button";
-  close.setAttribute("aria-label", "Close details");
-  close.onclick = () => dialog.close();
-  const image = el("img", "dialog-poster");
-  image.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  image.alt = `Poster for ${item.title}`;
-  const content = el("div", "dialog-content");
-  content.append(
-    el("div", "eyebrow", item.type === "show" ? "TV series" : "Movie"),
-    el("h2", "", item.title),
-    el("div", "meta", itemMetadata(item).join("  ·  ")),
-    el("p", "dialog-summary", item.summary || "No synopsis available."),
-  );
+  const { element: dialog, refs } = templateElement("item-dialog-template");
+  refs.close.onclick = () => dialog.close();
+  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  refs.poster.alt = `Poster for ${item.title}`;
+  refs.type.textContent = item.type === "show" ? "TV series" : "Movie";
+  refs.title.textContent = item.title;
+  refs.meta.textContent = itemMetadata(item).join("  ·  ");
+  refs.summary.textContent = item.summary || "No synopsis available.";
   if (item.genres?.length) {
-    content.append(el("p", "dialog-genres", item.genres.join(" · ")));
+    refs.genres.hidden = false;
+    refs.genres.textContent = item.genres.join(" · ");
   }
-  dialog.append(close, image, content);
   showModalDialog(dialog, showNextMatch);
 }
 
@@ -810,50 +649,28 @@ function showNextMatch() {
 
   matchDialogOpen = true;
   const item = matchQueue.shift();
-  const dialog = el("dialog", "match-dialog");
+  const { element: dialog, refs } = templateElement("match-dialog-template");
   dialog.dataset.itemId = item.id;
-  const close = el("button", "dialog-close", "×");
-  close.type = "button";
-  close.setAttribute("aria-label", "Close match");
-  close.onclick = () => dialog.close();
+  refs.close.onclick = () => dialog.close();
+  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  refs.poster.alt = `Poster for ${item.title}`;
+  refs.title.textContent = item.title;
 
-  const burst = el("div", "match-burst");
-  ["♥", "♥", "♥", "♥", "♥", "♥"].forEach((heart, index) => {
-    const particle = el("span", "match-heart", heart);
-    particle.style.setProperty("--i", String(index));
-    burst.append(particle);
-  });
-
-  const poster = el("img", "match-dialog-poster");
-  poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  poster.alt = `Poster for ${item.title}`;
-
-  const content = el("div", "match-dialog-content");
-  content.append(
-    el("p", "eyebrow match-eyebrow", "Everyone said yes"),
-    el("h2", "", "It’s a match!"),
-    el("p", "match-dialog-title", item.title),
-  );
   const metadata = itemMetadata(item);
-  if (metadata.length) content.append(el("p", "muted", metadata.join("  ·  ")));
+  if (metadata.length) {
+    refs.meta.hidden = false;
+    refs.meta.textContent = metadata.join("  ·  ");
+  }
   if (item.genres?.length) {
-    content.append(el("p", "match-dialog-genres", item.genres.join(" · ")));
+    refs.genres.hidden = false;
+    refs.genres.textContent = item.genres.join(" · ");
   }
   if (item.summary) {
-    content.append(el("p", "match-dialog-summary", item.summary));
+    refs.summary.hidden = false;
+    refs.summary.textContent = item.summary;
   }
-  const continueButton = el(
-    "button",
-    "btn primary match-continue",
-    "Continue swiping",
-  );
-  continueButton.type = "button";
-  continueButton.onclick = () => dialog.close();
-  content.append(continueButton);
+  refs.continue.onclick = () => dialog.close();
 
-  const layout = el("div", "match-dialog-layout");
-  layout.append(poster, content);
-  dialog.append(burst, close, layout);
   showModalDialog(dialog, () => {
     matchDialogOpen = false;
     showNextMatch();

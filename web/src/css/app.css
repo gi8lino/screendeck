@@ -85,15 +85,6 @@ button {
   height: 38px;
   flex: 0 0 38px;
 }
-.brand-name {
-  display: inline-flex;
-}
-.brand-screen {
-  color: var(--text);
-}
-.brand-deck {
-  color: var(--red);
-}
 .eyebrow {
   color: var(--red);
   font-size: 12px;

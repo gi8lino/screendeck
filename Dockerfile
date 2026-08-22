@@ -22,10 +22,14 @@ COPY go.sum go.sum
 RUN --mount=type=cache,target=/go/pkg/mod \
   go mod download
 
-# Copy the Go source and embedded frontend.
+# Copy the Go source, frontend source, and frontend build script.
 COPY cmd/ cmd
 COPY internal/ internal
 COPY web/ web
+COPY scripts/web/ scripts/web/
+
+# Generate the frontend distribution consumed by go:embed.
+RUN ./scripts/web/build.sh
 
 # Build the binary.
 # TARGETARCH defaults to the builder architecture for regular Docker builds,

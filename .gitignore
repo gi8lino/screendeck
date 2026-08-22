@@ -12,3 +12,4 @@ coverage.out
 .envrc
 /docs/.site/
 /docs/.venv/
+/web/dist/
