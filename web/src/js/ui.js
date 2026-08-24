@@ -40,11 +40,7 @@ export function topbar(action) {
 export function updateFooter(config = {}) {
   if (!footer) return;
   const year = new Date().getFullYear();
-  const rawVersion = String(config.version || "dev").trim() || "dev";
-  const version =
-    rawVersion === "dev" || rawVersion.startsWith("v")
-      ? rawVersion
-      : `v${rawVersion}`;
+  const version = String(config.version || "dev").trim() || "dev";
   footer.textContent = `© ${year} ScreenDeck · Version ${version}`;
 }
 
