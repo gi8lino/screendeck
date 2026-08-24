@@ -27,6 +27,7 @@ COPY cmd/ cmd
 COPY internal/ internal
 COPY web/ web
 COPY scripts/web/ scripts/web/
+COPY docs/content/assets/logo.svg docs/content/assets/logo.svg
 
 # Generate the frontend distribution consumed by go:embed.
 RUN ./scripts/web/build.sh

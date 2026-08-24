@@ -10,35 +10,46 @@ import (
 )
 
 // NewRouter wires the ScreenDeck HTTP routes and middleware.
-func NewRouter(appFS fs.FS, api *handler.API, logger *slog.Logger, accessLog bool) (http.Handler, error) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", api.Health())
-	mux.HandleFunc("GET /api/config", api.Config())
-	mux.HandleFunc("POST /api/plex/auth", api.StartPlexAuth())
-	mux.HandleFunc("GET /api/plex/auth/status", api.PlexAuthStatus())
-	mux.HandleFunc("POST /api/plex/server", api.SelectPlexServer())
-	mux.HandleFunc("POST /api/jellyfin/connect", api.ConnectJellyfin())
-	mux.HandleFunc("GET /api/libraries", api.Libraries())
-	mux.HandleFunc("POST /api/catalog/options", api.CatalogOptions())
-	mux.HandleFunc("GET /api/me/rooms", api.MyRooms())
-	mux.HandleFunc("POST /api/me/rooms/{code}/session", api.ResumeRoom())
-	mux.HandleFunc("POST /api/rooms", api.CreateRoom())
-	mux.HandleFunc("POST /api/rooms/join", api.JoinRoom())
-	mux.HandleFunc("GET /api/rooms/{code}/genres", api.RoomGenres())
-	mux.HandleFunc("GET /api/rooms/{code}", api.RoomState())
-	mux.HandleFunc("DELETE /api/rooms/{code}", api.LeaveRoom())
-	mux.HandleFunc("DELETE /api/rooms/{code}/participants/{participantID}", api.RemoveParticipant())
-	mux.HandleFunc("POST /api/rooms/{code}/votes", api.Vote())
-	mux.HandleFunc("POST /api/rooms/{code}/more-titles", api.AddMoreTitles())
-	mux.HandleFunc("POST /api/rooms/{code}/round-ready", api.NextRoundReady())
-	mux.HandleFunc("GET /api/rooms/{code}/events", api.Events())
-	mux.HandleFunc("GET /api/posters/{itemID}", api.Poster())
-	mux.Handle("GET /", http.FileServer(http.FS(appFS)))
+func NewRouter(appFS fs.FS, handlers *handler.API, logger *slog.Logger, accessLog bool) (http.Handler, error) {
+	root := http.NewServeMux()
+	api := http.NewServeMux()
 
-	var routed http.Handler = mux
+	api.HandleFunc("GET /config", handlers.Config())
+
+	api.HandleFunc("POST /plex/auth", handlers.StartPlexAuth())
+	api.HandleFunc("GET /plex/auth/status", handlers.PlexAuthStatus())
+	api.HandleFunc("POST /plex/server", handlers.SelectPlexServer())
+
+	api.HandleFunc("POST /jellyfin/connect", handlers.ConnectJellyfin())
+
+	api.HandleFunc("GET /libraries", handlers.Libraries())
+
+	api.HandleFunc("POST /catalog/options", handlers.CatalogOptions())
+
+	api.HandleFunc("GET /me/rooms", handlers.MyRooms())
+	api.HandleFunc("POST /me/rooms/{code}/session", handlers.ResumeRoom())
+
+	api.HandleFunc("POST /rooms", handlers.CreateRoom())
+	api.HandleFunc("POST /rooms/join", handlers.JoinRoom())
+	api.HandleFunc("GET /rooms/{code}/genres", handlers.RoomGenres())
+	api.HandleFunc("GET /rooms/{code}", handlers.RoomState())
+	api.HandleFunc("DELETE /rooms/{code}", handlers.LeaveRoom())
+	api.HandleFunc("DELETE /rooms/{code}/participants/{participantID}", handlers.RemoveParticipant())
+	api.HandleFunc("POST /rooms/{code}/votes", handlers.Vote())
+	api.HandleFunc("POST /rooms/{code}/more-titles", handlers.AddMoreTitles())
+	api.HandleFunc("POST /rooms/{code}/round-ready", handlers.NextRoundReady())
+	api.HandleFunc("GET /rooms/{code}/events", handlers.Events())
+
+	api.HandleFunc("GET /posters/{itemID}", handlers.Poster())
+
+	root.Handle("/api/", http.StripPrefix("/api", api))
+	root.HandleFunc("GET /healthz", handlers.Health())
+	root.Handle("/", handler.Frontend(appFS))
+
+	var routed http.Handler = root
 	routed = middleware.Chain(routed, middleware.SecurityHeaders, middleware.RecoverPanics(logger))
 	if accessLog {
-		return middleware.Chain(routed, middleware.AccessLog(logger), middleware.RequestID()), nil
+		routed = middleware.Chain(routed, middleware.AccessLog(logger))
 	}
 	return middleware.Chain(routed, middleware.RequestID()), nil
 }

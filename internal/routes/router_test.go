@@ -257,7 +257,8 @@ func TestHealthAndFrontend(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	mediaServices, err := mediafactory.New(
 		database,
 		logger,
@@ -277,7 +278,7 @@ func TestHealthAndFrontend(t *testing.T) {
 		logger,
 	)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
-	router, err := NewRouter(appFS, api, logger, false)
+	router, err := NewRouter(appFS, api, logger, true)
 	require.NoError(t, err)
 
 	health := httptest.NewRecorder()
@@ -287,4 +288,9 @@ func TestHealthAndFrontend(t *testing.T) {
 	frontend := httptest.NewRecorder()
 	router.ServeHTTP(frontend, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(t.Context()))
 	assert.Equal(t, http.StatusOK, frontend.Code)
+
+	config := httptest.NewRecorder()
+	router.ServeHTTP(config, httptest.NewRequest(http.MethodGet, "/api/config", nil).WithContext(t.Context()))
+	assert.Equal(t, http.StatusOK, config.Code)
+	assert.Contains(t, logs.String(), `"path":"/api/config"`)
 }
