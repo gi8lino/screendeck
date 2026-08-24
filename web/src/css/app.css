@@ -588,6 +588,9 @@ select option {
   font-size: 17px;
   font-weight: 800;
 }
+.person-remove[hidden] {
+  display: none;
+}
 .person-remove:hover {
   background: #ff5a5f22;
 }
