@@ -103,8 +103,20 @@ capture() {
 }
 
 capture home "/demo/home"
+capture media-setup "/demo/media-setup"
+capture create-room "/demo/create"
 capture room "/demo/host"
 capture winner "/demo/winner"
+
+if cmp -s "$RAW_DIR/home.png" "$RAW_DIR/create-room.png"; then
+  echo "Screenshot regression: home.png and create-room.png are identical." >&2
+  exit 1
+fi
+
+if cmp -s "$RAW_DIR/home.png" "$RAW_DIR/media-setup.png"; then
+  echo "Screenshot regression: home.png and media-setup.png are identical." >&2
+  exit 1
+fi
 
 if cmp -s "$RAW_DIR/home.png" "$RAW_DIR/room.png"; then
   echo "Screenshot regression: home.png and room.png are identical." >&2

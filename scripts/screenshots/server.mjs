@@ -235,6 +235,28 @@ function demoPage(response, token = "") {
   );
 }
 
+// actionDemoPage loads the real frontend and opens a deterministic home action.
+async function actionDemoPage(response, buttonLabel) {
+  const index = await fs.readFile(path.join(webRoot, "index.html"), "utf8");
+  const openAction = `<script>
+    const observer = new MutationObserver(() => {
+      const button = [...document.querySelectorAll("button")]
+        .find((candidate) => candidate.textContent.trim() === ${JSON.stringify(buttonLabel)});
+      if (!button) return;
+      observer.disconnect();
+      button.click();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  </script>`;
+  const body = index.replace("</body>", `${openAction}</body>`);
+
+  response.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+  });
+  response.end(body);
+}
+
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -281,15 +303,15 @@ const demoPages = new Map([
 ]);
 
 // demoConfig returns the deterministic public configuration fixture.
-function demoConfig() {
+function demoConfig(mediaConfigured = true) {
   return {
     version: "demo",
     commit: "screenshots",
     baseUrl: `http://${host}:${port}`,
     experimental: false,
-    mediaConfigured: true,
-    mediaProvider: "plex",
-    mediaServerName: "ScreenDeck Demo Plex",
+    mediaConfigured,
+    mediaProvider: mediaConfigured ? "plex" : "",
+    mediaServerName: mediaConfigured ? "ScreenDeck Demo Plex" : "",
   };
 }
 
@@ -351,10 +373,39 @@ async function handleAPIRequest(request, response, url) {
       sendJSON(response, 200, { status: "ok" });
       return true;
     case "GET /api/config":
-      sendJSON(response, 200, demoConfig());
+      sendJSON(
+        response,
+        200,
+        demoConfig(
+          !String(request.headers.referer || "").includes(
+            "/demo/media-setup",
+          ),
+        ),
+      );
       return true;
     case "GET /api/me/rooms":
       sendJSON(response, 200, savedRoomMemberships());
+      return true;
+    case "GET /api/libraries":
+      sendJSON(response, 200, [
+        { key: "1", title: "Movies", type: "movie" },
+        { key: "2", title: "TV Shows", type: "show" },
+      ]);
+      return true;
+    case "POST /api/catalog/options":
+      sendJSON(response, 200, {
+        genres: [
+          "Adventure",
+          "Comedy",
+          "Crime",
+          "Drama",
+          "Mystery",
+          "Science Fiction",
+          "Thriller",
+        ],
+        minYear: 1985,
+        maxYear: 2024,
+      });
       return true;
     case `POST /api/me/rooms/${roomCode}/session`:
       sendJSON(response, 200, { code: roomCode, token: "demo-host" });
@@ -397,7 +448,15 @@ async function handleAPIRequest(request, response, url) {
 }
 
 // handleDemoPage initializes the requested screenshot session before loading the app.
-function handleDemoPage(request, response, url) {
+async function handleDemoPage(request, response, url) {
+  if (request.method === "GET" && url.pathname === "/demo/create") {
+    await actionDemoPage(response, "Create a room");
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/demo/media-setup") {
+    await actionDemoPage(response, "Connect media server");
+    return true;
+  }
   if (request.method !== "GET" || !demoPages.has(url.pathname)) return false;
 
   demoPage(response, demoPages.get(url.pathname));
@@ -417,7 +476,7 @@ async function handleRequest(request, response) {
   const url = requestURL(request);
 
   if (await handleAPIRequest(request, response, url)) return;
-  if (handleDemoPage(request, response, url)) return;
+  if (await handleDemoPage(request, response, url)) return;
 
   await serveStatic(url.pathname, response);
 }

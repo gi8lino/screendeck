@@ -16,6 +16,14 @@ ScreenDeck is a self-hosted Plex and Jellyfin picker that helps a group agree on
   <img src="assets/screenshots/room.png" alt="ScreenDeck demo room with Alice and Bob" width="1000" />
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/media-setup.png" alt="ScreenDeck Plex or Jellyfin selection" width="1000" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/create-room.png" alt="ScreenDeck movie and TV library selection" width="1000" />
+</p>
+
 !!! tip "New to ScreenDeck?"
 Start with [Deployment](deployment/index.md) to run ScreenDeck, then check [Configuration](configuration/index.md) for the settings you can customize.
 
