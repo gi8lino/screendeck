@@ -38,6 +38,7 @@ Saved rooms are tied to the current browser profile, not to a ScreenDeck account
 ## Documentation
 
 <!-- prettier-ignore-start -->
+
 <div class="grid cards" markdown>
 
 -   :material-cog-outline:{ .lg .middle } **Configuration**
@@ -73,4 +74,5 @@ Saved rooms are tied to the current browser profile, not to a ScreenDeck account
     [:octicons-arrow-right-24: Development guide](development/index.md)
 
 </div>
+
 <!-- prettier-ignore-end -->
