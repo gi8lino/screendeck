@@ -287,8 +287,9 @@ function demoConfig() {
     commit: "screenshots",
     baseUrl: `http://${host}:${port}`,
     experimental: false,
-    plexConfigured: true,
-    plexServerName: "ScreenDeck Demo Plex",
+    mediaConfigured: true,
+    mediaProvider: "plex",
+    mediaServerName: "ScreenDeck Demo Plex",
   };
 }
 
@@ -458,4 +459,3 @@ server.listen(port, host, () => {
     `ScreenDeck screenshot demo listening on http://${host}:${port}\n`,
   );
 });
-

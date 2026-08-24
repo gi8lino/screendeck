@@ -17,6 +17,7 @@ func NewRouter(appFS fs.FS, api *handler.API, logger *slog.Logger, debug bool) (
 	mux.HandleFunc("POST /api/plex/auth", api.StartPlexAuth())
 	mux.HandleFunc("GET /api/plex/auth/status", api.PlexAuthStatus())
 	mux.HandleFunc("POST /api/plex/server", api.SelectPlexServer())
+	mux.HandleFunc("POST /api/jellyfin/connect", api.ConnectJellyfin())
 	mux.HandleFunc("GET /api/libraries", api.Libraries())
 	mux.HandleFunc("POST /api/catalog/options", api.CatalogOptions())
 	mux.HandleFunc("GET /api/me/rooms", api.MyRooms())

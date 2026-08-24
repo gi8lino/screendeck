@@ -1,5 +1,5 @@
 site_name: ScreenDeck
-site_description: A self-hosted Plex picker that helps a group agree on a movie or TV show.
+site_description: A self-hosted Plex and Jellyfin picker that helps a group agree on a movie or TV show.
 site_url: https://gi8lino.github.io/screendeck/
 
 repo_url: https://github.com/gi8lino/screendeck

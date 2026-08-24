@@ -3,6 +3,8 @@ package handler
 import (
 	"log/slog"
 
+	"github.com/gi8lino/screendeck/internal/jellyfin"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/plex"
 	"github.com/gi8lino/screendeck/internal/room"
 )
@@ -21,8 +23,12 @@ type API struct {
 	Logger *slog.Logger
 	// Rooms provides room application operations.
 	Rooms *room.Service
-	// Auth manages Plex authentication and server access.
-	Auth *plex.AuthManager
+	// Media selects the active media provider used by room catalog operations.
+	Media *media.Manager
+	// Plex manages Plex-specific authentication and server selection.
+	Plex *plex.AuthManager
+	// Jellyfin manages Jellyfin-specific authentication and catalog access.
+	Jellyfin *jellyfin.AuthManager
 	// healthProber provides the dependency check used by the health endpoint.
 	healthProber healthProber
 }
@@ -32,7 +38,9 @@ func New(
 	version, commit, baseURL string,
 	experimental bool,
 	rooms *room.Service,
-	auth *plex.AuthManager,
+	mediaManager *media.Manager,
+	plexAuth *plex.AuthManager,
+	jellyfinAuth *jellyfin.AuthManager,
 	healthProber healthProber,
 	logger *slog.Logger,
 ) *API {
@@ -42,7 +50,9 @@ func New(
 		BaseURL:      baseURL,
 		Experimental: experimental,
 		Rooms:        rooms,
-		Auth:         auth,
+		Media:        mediaManager,
+		Plex:         plexAuth,
+		Jellyfin:     jellyfinAuth,
 		healthProber: healthProber,
 		Logger:       logger,
 	}

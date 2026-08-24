@@ -32,9 +32,11 @@ SCREENDECK__BASE_URL=http://192.168.1.10:8080 \
 
 The Compose deployment stores the database and authentication key in the `screendeck-data` volume.
 
-ScreenDeck does not require Plex credentials or other secrets through environment variables. Plex credentials are obtained during the Plex authorization flow and stored encrypted in the database.
+ScreenDeck does not require Plex or Jellyfin credentials through environment variables. Plex credentials are obtained through the Plex authorization flow. Jellyfin setup exchanges the supplied username and password for an access token and does not persist the password. Persisted provider tokens are encrypted in the database.
 
 See [Configuration](../configuration/index.md) for the available runtime settings.
+
+ScreenDeck activates one media provider per installation. Choose Plex or Jellyfin during initial setup; the selected provider is stored with the rest of the application state.
 
 ## Kubernetes
 
@@ -65,9 +67,9 @@ Keep these two files together when backing up or restoring ScreenDeck:
 - `/data/screendeck.db`
 - `/data/auth.key`
 
-The SQLite database contains application state including Plex configuration, active rooms, participants, votes, browser identity hashes, and saved room memberships.
+The SQLite database contains application state including the active media provider, Plex or Jellyfin authorization, active rooms, participants, votes, browser identity hashes, and saved room memberships.
 
-The authentication key encrypts sensitive values stored in the database, including Plex credentials and the participant session tokens used to resume saved rooms. Restoring `screendeck.db` without the matching `auth.key` prevents those encrypted values from being recovered.
+The authentication key encrypts sensitive values stored in the database, including media-provider credentials and the participant session tokens used to resume saved rooms. Restoring `screendeck.db` without the matching `auth.key` prevents those encrypted values from being recovered.
 
 Browser identity cookies remain on users' browsers and are not part of the server backup. After a server restore, a browser can rediscover its saved rooms when its existing identity cookie still matches the restored membership data.
 
@@ -82,7 +84,7 @@ SCREENDECK__DATABASE_PATH=:memory: \
 
 In this mode, the SQLite database and encryption key exist only in memory. No `screendeck.db` or `auth.key` file is created.
 
-All ScreenDeck state is lost when the application stops or restarts, including Plex authorization, rooms, participants, votes, and saved room memberships.
+All ScreenDeck state is lost when the application stops or restarts, including media-server authorization, rooms, participants, votes, and saved room memberships.
 
 Persistent storage is therefore recommended for normal deployments.
 

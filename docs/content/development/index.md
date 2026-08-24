@@ -44,7 +44,10 @@ internal/handler     HTTP, JSON, and SSE handlers
 internal/logging     structured logging and request context
 internal/maintenance background housekeeping jobs
 internal/middleware  HTTP middleware
-internal/plex        Plex authorization and catalog client
+internal/media       provider-neutral media types, provider interface, and active-provider manager
+internal/media/factory provider construction and application wiring for Plex and Jellyfin
+internal/plex        Plex authorization and catalog adapter
+internal/jellyfin    Jellyfin authorization and catalog adapter
 internal/room        room orchestration and live notifications
 internal/routes      route table and middleware wiring
 internal/store       SQLite schema and persistence
@@ -55,6 +58,18 @@ docs                 documentation project, sources, assets, and tooling depende
 scripts/web           frontend distribution build
 scripts/screenshots   documentation screenshot capture and normalization helpers
 ```
+
+## Media-provider architecture
+
+Room orchestration depends only on the provider-neutral catalog contract in `internal/media`. The shared `media.Library` and `media.Item` types contain exactly the metadata ScreenDeck needs for filtering, swiping, persistence, and posters. The room and generic catalog store layers do not import Plex or Jellyfin.
+
+`media.Provider` is the runtime interface implemented by every integration. It combines the common catalog operations with a stable provider ID and configured-state reporting. `media.Manager` accepts provider implementations through that interface, restores the active provider from SQLite, and exposes only the active catalog to `room.Service`.
+
+`internal/plex` and `internal/jellyfin` remain independent adapters. Their authentication and setup methods stay provider-specific, while their authenticated managers also implement `media.Provider`. Compile-time interface assertions in each adapter keep the runtime contract explicit.
+
+`internal/media/factory` is the composition boundary. It constructs the Plex and Jellyfin services, registers them with `media.Manager`, and returns both the provider-neutral runtime manager and the provider-specific setup services needed by the HTTP handlers. `internal/app` therefore does not construct or register individual providers itself.
+
+ScreenDeck intentionally activates one provider per installation. This keeps persisted library keys, item IDs, cached metadata, and poster references in one provider namespace. A future provider such as Emby can be added by implementing `media.Provider` and registering its constructor in the factory while keeping its authentication logic separate.
 
 ## Frontend rendering
 
@@ -92,7 +107,7 @@ ScreenDeck uses ordered, forward-only SQLite migrations stored in `internal/stor
 
 A fresh database starts at version `0` and runs every migration in order. An existing versioned database runs only migrations newer than its current version. Databases created by a newer ScreenDeck build are rejected rather than downgraded.
 
-The first migration contains the complete initial schema:
+The first migration contains the original schema and later migrations evolve it:
 
 ```text
 internal/store/
@@ -100,10 +115,11 @@ internal/store/
 ├── schema.go
 ├── migrations.go
 └── migrations/
-    └── 001_initial.sql
+    ├── 001_initial.sql
+    └── 002_media_providers.sql
 ```
 
-When the schema changes, add the next numbered migration such as `002_add_room_settings.sql`. Migration numbers must remain contiguous, and migrations that have shipped must not be changed or removed.
+Migration `002_media_providers.sql` makes the catalog schema provider-neutral, adds the active media-provider marker and Jellyfin authorization storage, and preserves existing Plex installations. When the schema changes again, add the next numbered migration such as `003_add_indexes.sql`. Migration numbers must remain contiguous, and migrations that have shipped must not be changed or removed.
 
 Pre-release databases from before the migration system are intentionally not migrated. A non-empty database with `user_version = 0` is rejected and should be recreated.
 
@@ -183,7 +199,7 @@ This browser cache belongs only to ScreenDeck and is ignored by Git. It does not
 
 The Chromium installation is tied to `docs/package-lock.json`. Updating the locked Playwright version causes the browser target to run again. Normal `make screenshots` invocations reuse the already installed browser without running `playwright install chromium` again.
 
-The target starts a local demo server that uses the real ScreenDeck frontend with deterministic fixture data. Room `DECK42` contains **Host**, **Alice**, and **Bob**. The demo server never contacts Plex and does not touch the normal ScreenDeck database.
+The target starts a local demo server that uses the real ScreenDeck frontend with deterministic fixture data. Room `DECK42` contains **Host**, **Alice**, and **Bob**. The demo server never contacts Plex or Jellyfin and does not touch the normal ScreenDeck database.
 
 Raw captures are kept in `docs/screenshots/raw/`. Crop geometry and optional padding are declared in `docs/screenshots/screenshots.manifest`. ImageMagick strips non-deterministic PNG metadata before writing the published assets.
 

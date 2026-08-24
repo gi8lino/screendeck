@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,8 +18,8 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	item := plex.Item{RatingKey: "42", Library: "1", Type: "movie", Title: "Arrival", Genres: []string{"Science Fiction"}}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+	item := media.Item{ID: "42", LibraryKey: "1", Type: "movie", Title: "Arrival", Genres: []string{"Science Fiction"}}
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ABC123", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"42"}, []string{"42"}))
@@ -39,7 +39,7 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
 	assert.Len(t, state.Matches, 1)
 	require.NotNil(t, state.Winner)
-	assert.Equal(t, "42", state.Winner.Item.RatingKey)
+	assert.Equal(t, "42", state.Winner.Item.ID)
 	assert.Len(t, state.Winner.LikedBy, 2)
 	assert.Equal(t, "One", state.Winner.LikedBy[0].Name)
 	assert.Equal(t, "Two", state.Winner.LikedBy[1].Name)
@@ -57,8 +57,8 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	item := plex.Item{RatingKey: "7", Library: "1", Type: "movie", Title: "Alien"}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+	item := media.Item{ID: "7", LibraryKey: "1", Type: "movie", Title: "Alien"}
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "LEAVE1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"7"}, []string{"7"}))
@@ -86,8 +86,8 @@ func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+	item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "HOST01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
 	require.NoError(t, database.JoinRoom(ctx, "HOST01", Participant{ID: "p2", Name: "Next"}, "hash2"))
@@ -111,8 +111,8 @@ func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+	item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "RACE01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a"}))
 	require.NoError(t, database.JoinRoom(ctx, "RACE01", Participant{ID: "p2", Name: "Two"}, "hash2"))
@@ -160,11 +160,11 @@ func TestRemoveParticipant(t *testing.T) {
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 
-		items := []plex.Item{
-			{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
-			{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+		items := []media.Item{
+			{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},
+			{ID: "b", LibraryKey: "1", Type: "movie", Title: "Beta"},
 		}
-		require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+		require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 		now := time.Now().UTC()
 		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMHOST", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
 		require.NoError(t, database.JoinRoom(ctx, "RMHOST", Participant{ID: "p2", Name: "Guest"}, "hash2"))
@@ -207,8 +207,8 @@ func TestRemoveParticipant(t *testing.T) {
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 
-		item := plex.Item{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"}
-		require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, []plex.Item{item}))
+		item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
+		require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 		now := time.Now().UTC()
 		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMNOPE", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
 		require.NoError(t, database.JoinRoom(ctx, "RMNOPE", Participant{ID: "p2", Name: "Guest"}, "hash2"))

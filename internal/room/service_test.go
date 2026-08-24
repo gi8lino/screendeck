@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,22 +14,22 @@ import (
 
 // fakeCatalog is an in-memory catalog used by room service tests.
 type fakeCatalog struct {
-	// libraries contains fake Plex libraries.
-	libraries []plex.Library
-	// items contains cached Plex items.
-	items map[string][]plex.Item
+	// libraries contains fake media libraries.
+	libraries []media.Library
+	// items contains fake media items.
+	items map[string][]media.Item
 }
 
 // Libraries returns the fake catalog libraries.
-func (f fakeCatalog) Libraries(context.Context) ([]plex.Library, error) {
+func (f fakeCatalog) Libraries(context.Context) ([]media.Library, error) {
 	return f.libraries, nil
 }
 
 // Items returns fake media for the selected library.
 func (f fakeCatalog) Items(
 	_ context.Context,
-	library plex.Library,
-) ([]plex.Item, error) {
+	library media.Library,
+) ([]media.Item, error) {
 	return f.items[library.Key], nil
 }
 
@@ -49,43 +49,43 @@ func TestLibraries(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
-		libraries: []plex.Library{
+		libraries: []media.Library{
 			{Key: "1", Title: "Films", Type: "movie"},
 			{Key: "2", Title: "Kids", Type: "movie"},
 			{Key: "3", Title: "Archive", Type: "movie"},
 			{Key: "4", Title: "Series", Type: "show"},
 		},
-		items: map[string][]plex.Item{
+		items: map[string][]media.Item{
 			"1": {
 				{
-					RatingKey: "film",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Film",
+					ID:         "film",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Film",
 				},
 			},
 			"2": {
 				{
-					RatingKey: "kids",
-					Library:   "2",
-					Type:      "movie",
-					Title:     "Kids Film",
+					ID:         "kids",
+					LibraryKey: "2",
+					Type:       "movie",
+					Title:      "Kids Film",
 				},
 			},
 			"3": {
 				{
-					RatingKey: "archive",
-					Library:   "3",
-					Type:      "movie",
-					Title:     "Archived Film",
+					ID:         "archive",
+					LibraryKey: "3",
+					Type:       "movie",
+					Title:      "Archived Film",
 				},
 			},
 			"4": {
 				{
-					RatingKey: "series",
-					Library:   "4",
-					Type:      "show",
-					Title:     "Series",
+					ID:         "series",
+					LibraryKey: "4",
+					Type:       "show",
+					Title:      "Series",
 				},
 			},
 		},
@@ -101,7 +101,7 @@ func TestLibraries(t *testing.T) {
 	libraries, err := service.Libraries(context.Background())
 	require.NoError(t, err)
 
-	assert.Equal(t, []plex.Library{
+	assert.Equal(t, []media.Library{
 		{Key: "1", Title: "Films", Type: "movie"},
 		{Key: "4", Title: "Series", Type: "show"},
 	}, libraries)
@@ -137,7 +137,7 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
-		libraries: []plex.Library{
+		libraries: []media.Library{
 			{
 				Key:   "1",
 				Title: "Films",
@@ -149,35 +149,35 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 				Type:  "show",
 			},
 		},
-		items: map[string][]plex.Item{
+		items: map[string][]media.Item{
 			"1": {
 				{
-					RatingKey: "m1",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Old Action",
-					Year:      2010,
-					Duration:  90 * 60 * 1000,
-					Genres:    []string{"Action"},
+					ID:         "m1",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Old Action",
+					Year:       2010,
+					Duration:   90 * 60 * 1000,
+					Genres:     []string{"Action"},
 				},
 				{
-					RatingKey: "m2",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Long Drama",
-					Year:      2023,
-					Duration:  200 * 60 * 1000,
-					Genres:    []string{"Drama"},
+					ID:         "m2",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Long Drama",
+					Year:       2023,
+					Duration:   200 * 60 * 1000,
+					Genres:     []string{"Drama"},
 				},
 			},
 			"2": {
 				{
-					RatingKey: "s1",
-					Library:   "2",
-					Type:      "show",
-					Title:     "TV Drama",
-					Year:      2022,
-					Genres:    []string{"Drama"},
+					ID:         "s1",
+					LibraryKey: "2",
+					Type:       "show",
+					Title:      "TV Drama",
+					Year:       2022,
+					Genres:     []string{"Drama"},
 				},
 			},
 		},
@@ -238,28 +238,28 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
-		libraries: []plex.Library{
+		libraries: []media.Library{
 			{
 				Key:   "1",
 				Title: "Films",
 				Type:  "movie",
 			},
 		},
-		items: map[string][]plex.Item{
+		items: map[string][]media.Item{
 			"1": {
 				{
-					RatingKey: "action",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Action Pick",
-					Genres:    []string{"Action"},
+					ID:         "action",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Action Pick",
+					Genres:     []string{"Action"},
 				},
 				{
-					RatingKey: "drama",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Drama Pick",
-					Genres:    []string{"Drama"},
+					ID:         "drama",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Drama Pick",
+					Genres:     []string{"Drama"},
 				},
 			},
 		},
@@ -297,7 +297,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	assert.Equal(t, 2, hostState.Progress.RoundTotal)
 	assert.Equal(t, 1, hostState.Progress.FilteredOut)
 	require.NotNil(t, hostState.Candidate)
-	assert.Equal(t, "drama", hostState.Candidate.RatingKey)
+	assert.Equal(t, "drama", hostState.Candidate.ID)
 
 	guest, err := service.join(
 		context.Background(),
@@ -320,7 +320,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	assert.Equal(t, 2, guestState.Progress.RoundTotal)
 	assert.Equal(t, 1, guestState.Progress.FilteredOut)
 	require.NotNil(t, guestState.Candidate)
-	assert.Equal(t, "action", guestState.Candidate.RatingKey)
+	assert.Equal(t, "action", guestState.Candidate.ID)
 	assert.Equal(t, []string{"Action"}, guestState.Me.Genres)
 }
 
@@ -332,38 +332,38 @@ func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
-		libraries: []plex.Library{
+		libraries: []media.Library{
 			{
 				Key:   "1",
 				Title: "Films",
 				Type:  "movie",
 			},
 		},
-		items: map[string][]plex.Item{
+		items: map[string][]media.Item{
 			"1": {
 				{
-					RatingKey: "a",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Alpha",
+					ID:         "a",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Alpha",
 				},
 				{
-					RatingKey: "b",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Beta",
+					ID:         "b",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Beta",
 				},
 				{
-					RatingKey: "c",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Gamma",
+					ID:         "c",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Gamma",
 				},
 				{
-					RatingKey: "d",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Delta",
+					ID:         "d",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Delta",
 				},
 			},
 		},
@@ -418,27 +418,27 @@ func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 func TestSelectInitialItems(t *testing.T) {
 	t.Parallel()
 
-	items := []plex.Item{
+	items := []media.Item{
 		{
-			RatingKey: "old",
-			Title:     "Old",
-			Rating:    7.0,
-			AddedAt:   100,
-			Viewed:    false,
+			ID:      "old",
+			Title:   "Old",
+			Rating:  7.0,
+			AddedAt: 100,
+			Viewed:  false,
 		},
 		{
-			RatingKey: "top",
-			Title:     "Top",
-			Rating:    9.5,
-			AddedAt:   200,
-			Viewed:    true,
+			ID:      "top",
+			Title:   "Top",
+			Rating:  9.5,
+			AddedAt: 200,
+			Viewed:  true,
 		},
 		{
-			RatingKey: "new",
-			Title:     "New",
-			Rating:    8.0,
-			AddedAt:   300,
-			Viewed:    false,
+			ID:      "new",
+			Title:   "New",
+			Rating:  8.0,
+			AddedAt: 300,
+			Viewed:  false,
 		},
 	}
 
@@ -447,7 +447,7 @@ func TestSelectInitialItems(t *testing.T) {
 
 		selected, err := selectInitialItems(items, SamplingRandom, 0)
 		require.NoError(t, err)
-		assert.ElementsMatch(t, itemRatingKeys(items), itemRatingKeys(selected))
+		assert.ElementsMatch(t, itemIDs(items), itemIDs(selected))
 	})
 
 	t.Run("highest rated with limit", func(t *testing.T) {
@@ -456,8 +456,8 @@ func TestSelectInitialItems(t *testing.T) {
 		selected, err := selectInitialItems(items, SamplingHighestRated, 2)
 		require.NoError(t, err)
 		require.Len(t, selected, 2)
-		assert.Equal(t, "top", selected[0].RatingKey)
-		assert.Equal(t, "new", selected[1].RatingKey)
+		assert.Equal(t, "top", selected[0].ID)
+		assert.Equal(t, "new", selected[1].ID)
 	})
 
 	t.Run("recently added with limit", func(t *testing.T) {
@@ -466,8 +466,8 @@ func TestSelectInitialItems(t *testing.T) {
 		selected, err := selectInitialItems(items, SamplingRecentlyAdded, 2)
 		require.NoError(t, err)
 		require.Len(t, selected, 2)
-		assert.Equal(t, "new", selected[0].RatingKey)
-		assert.Equal(t, "top", selected[1].RatingKey)
+		assert.Equal(t, "new", selected[0].ID)
+		assert.Equal(t, "top", selected[1].ID)
 	})
 
 	t.Run("random unwatched", func(t *testing.T) {
@@ -496,28 +496,28 @@ func TestParticipantGenreModeAllRequiresEveryGenre(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	catalog := fakeCatalog{
-		libraries: []plex.Library{
+		libraries: []media.Library{
 			{
 				Key:   "1",
 				Title: "Films",
 				Type:  "movie",
 			},
 		},
-		items: map[string][]plex.Item{
+		items: map[string][]media.Item{
 			"1": {
 				{
-					RatingKey: "action",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Action",
-					Genres:    []string{"Action"},
+					ID:         "action",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Action",
+					Genres:     []string{"Action"},
 				},
 				{
-					RatingKey: "combo",
-					Library:   "1",
-					Type:      "movie",
-					Title:     "Action Drama",
-					Genres:    []string{"Action", "Drama"},
+					ID:         "combo",
+					LibraryKey: "1",
+					Type:       "movie",
+					Title:      "Action Drama",
+					Genres:     []string{"Action", "Drama"},
 				},
 			},
 		},
@@ -553,7 +553,7 @@ func TestParticipantGenreModeAllRequiresEveryGenre(t *testing.T) {
 
 	assert.Equal(t, 1, state.Progress.Total)
 	require.NotNil(t, state.Candidate)
-	assert.Equal(t, "combo", state.Candidate.RatingKey)
+	assert.Equal(t, "combo", state.Candidate.ID)
 	assert.Equal(t, "all", state.Me.GenreMode)
 }
 
@@ -747,43 +747,43 @@ func TestHasReversedYearRange(t *testing.T) {
 func TestSortItemsByRating(t *testing.T) {
 	t.Parallel()
 
-	items := []plex.Item{
-		{RatingKey: "bravo", Title: "Bravo", Rating: 8.0},
-		{RatingKey: "top", Title: "Top", Rating: 9.5},
-		{RatingKey: "alpha", Title: "Alpha", Rating: 8.0},
+	items := []media.Item{
+		{ID: "bravo", Title: "Bravo", Rating: 8.0},
+		{ID: "top", Title: "Top", Rating: 9.5},
+		{ID: "alpha", Title: "Alpha", Rating: 8.0},
 	}
 
 	sortItemsByRating(items)
 
-	assert.Equal(t, []string{"top", "alpha", "bravo"}, itemRatingKeys(items))
+	assert.Equal(t, []string{"top", "alpha", "bravo"}, itemIDs(items))
 }
 
 func TestSortItemsByAddedAt(t *testing.T) {
 	t.Parallel()
 
-	items := []plex.Item{
-		{RatingKey: "bravo", Title: "Bravo", AddedAt: 200},
-		{RatingKey: "new", Title: "New", AddedAt: 300},
-		{RatingKey: "alpha", Title: "Alpha", AddedAt: 200},
+	items := []media.Item{
+		{ID: "bravo", Title: "Bravo", AddedAt: 200},
+		{ID: "new", Title: "New", AddedAt: 300},
+		{ID: "alpha", Title: "Alpha", AddedAt: 200},
 	}
 
 	sortItemsByAddedAt(items)
 
-	assert.Equal(t, []string{"new", "alpha", "bravo"}, itemRatingKeys(items))
+	assert.Equal(t, []string{"new", "alpha", "bravo"}, itemIDs(items))
 }
 
 func TestUnwatchedItems(t *testing.T) {
 	t.Parallel()
 
-	items := []plex.Item{
-		{RatingKey: "first", Viewed: false},
-		{RatingKey: "watched", Viewed: true},
-		{RatingKey: "second", Viewed: false},
+	items := []media.Item{
+		{ID: "first", Viewed: false},
+		{ID: "watched", Viewed: true},
+		{ID: "second", Viewed: false},
 	}
 
 	unwatched := unwatchedItems(items)
 
-	assert.Equal(t, []string{"first", "second"}, itemRatingKeys(unwatched))
+	assert.Equal(t, []string{"first", "second"}, itemIDs(unwatched))
 }
 
 func TestCacheEntryFresh(t *testing.T) {
@@ -815,7 +815,7 @@ func TestMatchesWatchFilter(t *testing.T) {
 	t.Run("allows watched item without unwatched filter", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesWatchFilter(
-			plex.Item{Viewed: true},
+			media.Item{Viewed: true},
 			Filters{},
 		))
 	})
@@ -823,7 +823,7 @@ func TestMatchesWatchFilter(t *testing.T) {
 	t.Run("rejects watched item when unwatched only", func(t *testing.T) {
 		t.Parallel()
 		assert.False(t, matchesWatchFilter(
-			plex.Item{Viewed: true},
+			media.Item{Viewed: true},
 			Filters{UnwatchedOnly: true},
 		))
 	})
@@ -831,7 +831,7 @@ func TestMatchesWatchFilter(t *testing.T) {
 	t.Run("allows unwatched item when unwatched only", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesWatchFilter(
-			plex.Item{Viewed: false},
+			media.Item{Viewed: false},
 			Filters{UnwatchedOnly: true},
 		))
 	})
@@ -843,7 +843,7 @@ func TestMatchesYearFilter(t *testing.T) {
 	t.Run("inside range", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesYearFilter(
-			plex.Item{Year: 2020},
+			media.Item{Year: 2020},
 			Filters{YearFrom: 2010, YearTo: 2025},
 		))
 	})
@@ -851,7 +851,7 @@ func TestMatchesYearFilter(t *testing.T) {
 	t.Run("below lower bound", func(t *testing.T) {
 		t.Parallel()
 		assert.False(t, matchesYearFilter(
-			plex.Item{Year: 2009},
+			media.Item{Year: 2009},
 			Filters{YearFrom: 2010},
 		))
 	})
@@ -859,7 +859,7 @@ func TestMatchesYearFilter(t *testing.T) {
 	t.Run("above upper bound", func(t *testing.T) {
 		t.Parallel()
 		assert.False(t, matchesYearFilter(
-			plex.Item{Year: 2026},
+			media.Item{Year: 2026},
 			Filters{YearTo: 2025},
 		))
 	})
@@ -867,7 +867,7 @@ func TestMatchesYearFilter(t *testing.T) {
 	t.Run("without bounds", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesYearFilter(
-			plex.Item{Year: 1980},
+			media.Item{Year: 1980},
 			Filters{},
 		))
 	})
@@ -879,7 +879,7 @@ func TestMatchesDurationFilter(t *testing.T) {
 	t.Run("movie inside limit", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesDurationFilter(
-			plex.Item{Type: "movie", Duration: 90 * 60 * 1000},
+			media.Item{Type: "movie", Duration: 90 * 60 * 1000},
 			Filters{MaxDurationMinutes: 120},
 		))
 	})
@@ -887,7 +887,7 @@ func TestMatchesDurationFilter(t *testing.T) {
 	t.Run("movie above limit", func(t *testing.T) {
 		t.Parallel()
 		assert.False(t, matchesDurationFilter(
-			plex.Item{Type: "movie", Duration: 121 * 60 * 1000},
+			media.Item{Type: "movie", Duration: 121 * 60 * 1000},
 			Filters{MaxDurationMinutes: 120},
 		))
 	})
@@ -895,7 +895,7 @@ func TestMatchesDurationFilter(t *testing.T) {
 	t.Run("show ignores movie duration limit", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesDurationFilter(
-			plex.Item{Type: "show", Duration: 500 * 60 * 1000},
+			media.Item{Type: "show", Duration: 500 * 60 * 1000},
 			Filters{MaxDurationMinutes: 120},
 		))
 	})
@@ -903,7 +903,7 @@ func TestMatchesDurationFilter(t *testing.T) {
 	t.Run("disabled limit", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesDurationFilter(
-			plex.Item{Type: "movie", Duration: 500 * 60 * 1000},
+			media.Item{Type: "movie", Duration: 500 * 60 * 1000},
 			Filters{},
 		))
 	})
@@ -915,7 +915,7 @@ func TestMatchesGenreFilter(t *testing.T) {
 	t.Run("without genre filter", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesGenreFilter(
-			plex.Item{Genres: []string{"Drama"}},
+			media.Item{Genres: []string{"Drama"}},
 			nil,
 		))
 	})
@@ -923,7 +923,7 @@ func TestMatchesGenreFilter(t *testing.T) {
 	t.Run("matches case-insensitively", func(t *testing.T) {
 		t.Parallel()
 		assert.True(t, matchesGenreFilter(
-			plex.Item{Genres: []string{" Action "}},
+			media.Item{Genres: []string{" Action "}},
 			map[string]struct{}{"action": {}},
 		))
 	})
@@ -931,7 +931,7 @@ func TestMatchesGenreFilter(t *testing.T) {
 	t.Run("rejects unmatched genre", func(t *testing.T) {
 		t.Parallel()
 		assert.False(t, matchesGenreFilter(
-			plex.Item{Genres: []string{"Drama"}},
+			media.Item{Genres: []string{"Drama"}},
 			map[string]struct{}{"action": {}},
 		))
 	})

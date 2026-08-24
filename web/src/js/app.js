@@ -1,7 +1,7 @@
 import { api } from "./api.js";
 import { renderCreateRoom } from "./create-room.js";
 import { renderJoinRoom } from "./join-room.js";
-import { renderPlexSetup } from "./plex.js";
+import { renderMediaSetup } from "./media-setup.js";
 import { renderRoom, stopRoomEvents } from "./room.js";
 import { getConfig, getSession, saveSession, setConfig } from "./state.js";
 import {
@@ -18,6 +18,7 @@ const navigation = {
   renderHome,
   renderCreateRoom: () => renderCreateRoom(navigation),
   renderJoinRoom: (roomCode = "") => renderJoinRoom(navigation, roomCode),
+  renderMediaSetup: () => renderMediaSetup(navigation),
   renderRoom: () => renderRoom(navigation),
 };
 
@@ -29,13 +30,13 @@ function renderHome() {
   const config = getConfig();
   const { fragment, refs } = instantiateTemplate("home-template");
 
-  refs.plexNotice.hidden = config.plexConfigured;
-  refs.primaryAction.textContent = config.plexConfigured
+  refs.mediaNotice.hidden = config.mediaConfigured;
+  refs.primaryAction.textContent = config.mediaConfigured
     ? "Create a room"
-    : "Connect Plex";
-  refs.primaryAction.onclick = config.plexConfigured
+    : "Connect media server";
+  refs.primaryAction.onclick = config.mediaConfigured
     ? () => renderCreateRoom(navigation)
-    : () => renderPlexSetup(navigation);
+    : navigation.renderMediaSetup;
   refs.joinAction.onclick = () => navigation.renderJoinRoom();
 
   root.replaceChildren(topbar(), fragment);

@@ -10,7 +10,7 @@ hide:
 
 # ScreenDeck documentation
 
-ScreenDeck is a self-hosted Plex picker that helps a group agree on a movie or TV show. Create a room, invite friends, swipe independently, and keep narrowing unanimous matches until one title wins.
+ScreenDeck is a self-hosted Plex and Jellyfin picker that helps a group agree on a movie or TV show. Create a room, invite friends, swipe independently, and keep narrowing unanimous matches until one title wins.
 
 <p align="center">
   <img src="assets/screenshots/room.png" alt="ScreenDeck demo room with Alice and Bob" width="1000" />
@@ -36,7 +36,7 @@ Saved rooms are tied to the current browser profile, not to a ScreenDeck account
 
     ---
 
-    Environment variables, command-line flags, room lifetime, saved-room behavior, logging, and Plex overrides.
+    Environment variables, command-line flags, room lifetime, saved-room behavior, logging, and media-provider settings.
 
     [:octicons-arrow-right-24: Configure ScreenDeck](configuration/index.md)
 
@@ -52,7 +52,7 @@ Saved rooms are tied to the current browser profile, not to a ScreenDeck account
 
     ---
 
-    Understand Plex credential storage, browser identities, resumable room sessions, backups, logs, and network exposure.
+    Understand media-provider credential storage, browser identities, resumable room sessions, backups, logs, and network exposure.
 
     [:octicons-arrow-right-24: Security notes](security/index.md)
 

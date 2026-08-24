@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,12 +17,12 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	items := []plex.Item{
-		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
-		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
-		{RatingKey: "c", Library: "1", Type: "movie", Title: "Gamma"},
+	items := []media.Item{
+		{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},
+		{ID: "b", LibraryKey: "1", Type: "movie", Title: "Beta"},
+		{ID: "c", LibraryKey: "1", Type: "movie", Title: "Gamma"},
 	}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ROUND1", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b", "c"}, []string{"a", "b", "c"}))
@@ -107,7 +107,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	assert.True(t, state.RoundComplete)
 	assert.Equal(t, RoomPhaseFinished, state.Room.Phase)
 	require.Len(t, state.Matches, 1)
-	assert.Equal(t, "a", state.Matches[0].RatingKey)
+	assert.Equal(t, "a", state.Matches[0].ID)
 
 	_, _, _, _, _, err = database.SetRoundReady(ctx, "ROUND1", "p1", 2, true)
 	require.Error(t, err)
@@ -121,12 +121,12 @@ func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	items := []plex.Item{
-		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
-		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
-		{RatingKey: "c", Library: "1", Type: "movie", Title: "Gamma"},
+	items := []media.Item{
+		{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},
+		{ID: "b", LibraryKey: "1", Type: "movie", Title: "Beta"},
+		{ID: "c", LibraryKey: "1", Type: "movie", Title: "Gamma"},
 	}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "MORE01", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a", "b", "c"}))
 
@@ -155,11 +155,11 @@ func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	items := []plex.Item{
-		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
-		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+	items := []media.Item{
+		{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},
+		{ID: "b", LibraryKey: "1", Type: "movie", Title: "Beta"},
 	}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "CANCEL", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
 	require.NoError(t, database.JoinRoom(ctx, "CANCEL", Participant{ID: "p2", Name: "Two"}, "hash2"))
@@ -190,11 +190,11 @@ func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	items := []plex.Item{
-		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
-		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+	items := []media.Item{
+		{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},
+		{ID: "b", LibraryKey: "1", Type: "movie", Title: "Beta"},
 	}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: "MEMBER", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
 	require.NoError(t, database.JoinRoom(ctx, "MEMBER", Participant{ID: "p2", Name: "Two"}, "hash2"))
@@ -380,11 +380,11 @@ func seedReadyConcurrencyRoom(t *testing.T, code string) *Store {
 	ctx := t.Context()
 	database, err := Open(":memory:")
 	require.NoError(t, err)
-	items := []plex.Item{
-		{RatingKey: "a", Library: "1", Type: "movie", Title: "Alpha"},
-		{RatingKey: "b", Library: "1", Type: "movie", Title: "Beta"},
+	items := []media.Item{
+		{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},
+		{ID: "b", LibraryKey: "1", Type: "movie", Title: "Beta"},
 	}
-	require.NoError(t, database.SaveLibrary(ctx, plex.Library{Key: "1", Title: "Films"}, items))
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(ctx, Room{Code: code, Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
 	require.NoError(t, database.JoinRoom(ctx, code, Participant{ID: "p2", Name: "Two"}, "hash2"))

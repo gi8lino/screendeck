@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/plex"
 )
 
@@ -21,12 +22,16 @@ type selectPlexServerRequest struct {
 // StartPlexAuth returns the handler that begins Plex authorization.
 func (a *API) StartPlexAuth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if err := a.Media.CheckProvider(media.ProviderPlex); err != nil {
+			a.fail(r, w, err)
+			return
+		}
 		input := plexAuthRequest{Method: plex.AuthMethodStandard}
 		if err := decode(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}
-		started, err := a.Auth.Start(r.Context(), input.Method)
+		started, err := a.Plex.Start(r.Context(), input.Method)
 		if err != nil {
 			a.fail(r, w, err)
 			return
@@ -38,7 +43,7 @@ func (a *API) StartPlexAuth() http.HandlerFunc {
 // PlexAuthStatus returns the handler that polls Plex authorization.
 func (a *API) PlexAuthStatus() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		status, err := a.Auth.Status(r.Context(), setupToken(r))
+		status, err := a.Plex.Status(r.Context(), setupToken(r))
 		if err != nil {
 			a.fail(r, w, err)
 			return
@@ -50,12 +55,20 @@ func (a *API) PlexAuthStatus() http.HandlerFunc {
 // SelectPlexServer returns the handler that selects an authorized Plex server.
 func (a *API) SelectPlexServer() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if err := a.Media.CheckProvider(media.ProviderPlex); err != nil {
+			a.fail(r, w, err)
+			return
+		}
 		var input selectPlexServerRequest
 		if err := decode(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}
-		if err := a.Auth.SelectServer(r.Context(), setupToken(r), input.ServerID); err != nil {
+		if err := a.Plex.SelectServer(r.Context(), setupToken(r), input.ServerID); err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		if err := a.Media.SetActive(r.Context(), media.ProviderPlex); err != nil {
 			a.fail(r, w, err)
 			return
 		}

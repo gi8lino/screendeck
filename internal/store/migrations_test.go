@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -74,6 +75,43 @@ func TestMigrate(t *testing.T) {
 		assert.Equal(t, "Films", title)
 	})
 
+	t.Run("marks migrated Plex database as active provider", func(t *testing.T) {
+		t.Parallel()
+
+		directory := t.TempDir()
+		databasePath := filepath.Join(directory, "plex-v1.db")
+		keyPath := filepath.Join(directory, "auth.key")
+		migrations, err := loadMigrations()
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(migrations), 2)
+
+		raw, err := sql.Open("sqlite", databasePath)
+		require.NoError(t, err)
+		_, err = raw.ExecContext(t.Context(), migrations[0].statement)
+		require.NoError(t, err)
+		_, err = raw.ExecContext(t.Context(), `
+INSERT INTO plex_auth (
+  id, auth_method, client_id, key_id, private_key, user_token, token_expires_at,
+  server_id, server_name, server_url, server_token, updated_at
+) VALUES (
+  1, 'standard', 'client', '', X'01', X'02', 0,
+  'server', 'Home Plex', 'http://plex.test', X'03', 1
+)
+`)
+		require.NoError(t, err)
+		_, err = raw.ExecContext(t.Context(), "PRAGMA user_version = 1")
+		require.NoError(t, err)
+		require.NoError(t, raw.Close())
+
+		database, err := Open(databasePath, keyPath)
+		require.NoError(t, err)
+		defer database.Close() // nolint:errcheck
+
+		provider, err := database.LoadMediaProvider(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, media.ProviderPlex, provider)
+	})
+
 	t.Run("rejects unversioned database", func(t *testing.T) {
 		t.Parallel()
 
@@ -108,15 +146,18 @@ func TestMigrate(t *testing.T) {
 func TestLoadMigrations(t *testing.T) {
 	t.Parallel()
 
-	t.Run("loads initial migration", func(t *testing.T) {
+	t.Run("loads ordered migrations", func(t *testing.T) {
 		t.Parallel()
 
 		migrations, err := loadMigrations()
 		require.NoError(t, err)
-		require.Len(t, migrations, 1)
+		require.Len(t, migrations, 2)
 		assert.Equal(t, 1, migrations[0].version)
 		assert.Equal(t, "migrations/001_initial.sql", migrations[0].name)
 		assert.NotEmpty(t, migrations[0].statement)
+		assert.Equal(t, 2, migrations[1].version)
+		assert.Equal(t, "migrations/002_media_providers.sql", migrations[1].name)
+		assert.NotEmpty(t, migrations[1].statement)
 	})
 }
 

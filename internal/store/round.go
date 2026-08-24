@@ -673,7 +673,7 @@ FROM participants p
 JOIN room_items rm
   ON rm.room_code = p.room_code
 JOIN media_items m
-  ON m.rating_key = rm.item_id
+  ON m.id = rm.item_id
 LEFT JOIN item_votes v
   ON v.room_code = rm.room_code
  AND v.item_id = rm.item_id

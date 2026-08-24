@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gi8lino/screendeck/internal/jellyfin"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/plex"
 	"github.com/gi8lino/screendeck/internal/store"
 	"github.com/stretchr/testify/assert"
@@ -73,7 +75,11 @@ func TestStatusForError(t *testing.T) {
 	})
 
 	t.Run("not configured", func(t *testing.T) {
-		assert.Equal(t, http.StatusServiceUnavailable, statusForError(plex.ErrNotConfigured))
+		assert.Equal(t, http.StatusServiceUnavailable, statusForError(media.ErrNotConfigured))
+	})
+
+	t.Run("provider conflict", func(t *testing.T) {
+		assert.Equal(t, http.StatusConflict, statusForError(media.ErrProviderConflict))
 	})
 
 	t.Run("upstream", func(t *testing.T) {
@@ -81,17 +87,21 @@ func TestStatusForError(t *testing.T) {
 	})
 }
 
-// TestIsPlexUpstreamError verifies Plex transport and response error classification.
-func TestIsPlexUpstreamError(t *testing.T) {
+// TestIsMediaUpstreamError verifies provider transport and response error classification.
+func TestIsMediaUpstreamError(t *testing.T) {
 	t.Run("upstream error", func(t *testing.T) {
-		assert.True(t, isPlexUpstreamError(plex.ErrCloudUnavailable))
+		assert.True(t, isMediaUpstreamError(plex.ErrCloudUnavailable))
 	})
 
-	t.Run("wrapped upstream error", func(t *testing.T) {
-		assert.True(t, isPlexUpstreamError(errors.Join(errors.New("context"), plex.ErrAuthenticationRefresh)))
+	t.Run("wrapped Plex upstream error", func(t *testing.T) {
+		assert.True(t, isMediaUpstreamError(errors.Join(errors.New("context"), plex.ErrAuthenticationRefresh)))
+	})
+
+	t.Run("Jellyfin upstream error", func(t *testing.T) {
+		assert.True(t, isMediaUpstreamError(jellyfin.ErrServerResponse))
 	})
 
 	t.Run("application error", func(t *testing.T) {
-		assert.False(t, isPlexUpstreamError(store.ErrNotFound))
+		assert.False(t, isMediaUpstreamError(store.ErrNotFound))
 	})
 }

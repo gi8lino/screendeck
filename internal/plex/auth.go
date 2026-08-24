@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gi8lino/screendeck/internal/logging"
+	"github.com/gi8lino/screendeck/internal/media"
 )
 
 // AuthMethod identifies a supported Plex authorization flow.
@@ -495,7 +496,7 @@ func plexAuthorizationURL(clientID, pinCode string) string {
 		"context[device][model]":      {"Plex OAuth"},
 		"context[device][layout]":     {"desktop"},
 	}
-	return "https://app.plex.tv/auth#?" + params.Encode()
+	return authorizationURL + "#?" + params.Encode()
 }
 
 // Status polls and reports a Plex device authorization flow.
@@ -730,7 +731,7 @@ func (m *AuthManager) persistSelectedServer(ctx context.Context, setupToken stri
 }
 
 // Libraries returns libraries from the configured Plex server.
-func (m *AuthManager) Libraries(ctx context.Context) ([]Library, error) {
+func (m *AuthManager) Libraries(ctx context.Context) ([]media.Library, error) {
 	client, err := m.client(ctx)
 	if err != nil {
 		return nil, err
@@ -739,7 +740,7 @@ func (m *AuthManager) Libraries(ctx context.Context) ([]Library, error) {
 }
 
 // Items returns media from the configured Plex server.
-func (m *AuthManager) Items(ctx context.Context, library Library) ([]Item, error) {
+func (m *AuthManager) Items(ctx context.Context, library media.Library) ([]media.Item, error) {
 	client, err := m.client(ctx)
 	if err != nil {
 		return nil, err

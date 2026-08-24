@@ -11,7 +11,7 @@ import {
   topbar,
 } from "./ui.js";
 
-// renderCreateRoom displays the room creation form and Plex filters.
+// renderCreateRoom displays the room creation form and media catalog filters.
 export async function renderCreateRoom(navigation) {
   const view = createRoomView(navigation);
   const selectedLibraries = () => selectedLibraryKeys(view.form);
@@ -49,14 +49,14 @@ function createRoomView(navigation) {
   };
 }
 
-// selectedLibraryKeys returns the checked Plex library keys from a room form.
+// selectedLibraryKeys returns the checked media library keys from a room form.
 function selectedLibraryKeys(form) {
   return [...form.querySelectorAll("input[name=library]:checked")].map(
     (input) => input.value,
   );
 }
 
-// populateRoomLibraries loads Plex libraries and keeps catalog filters synchronized.
+// populateRoomLibraries loads media libraries and keeps catalog filters synchronized.
 async function populateRoomLibraries(libraries, filters, selectedLibraries) {
   let filterTimer;
   const loadFilters = () => loadCatalogFilters(selectedLibraries(), filters);
@@ -104,7 +104,7 @@ async function submitCreateRoom(event, navigation, view, selectedLibraries) {
   }
 }
 
-// renderLibraryChoices displays selectable Plex libraries.
+// renderLibraryChoices displays selectable media libraries.
 function renderLibraryChoices(libraries, container, onChange) {
   container.replaceChildren();
   if (!libraries.length) {

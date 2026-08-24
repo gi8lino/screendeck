@@ -33,7 +33,7 @@ type Config struct {
 	Experimental bool
 	// RoomCleanupInterval controls how often expired rooms are removed.
 	RoomCleanupInterval time.Duration
-	// ExcludeLibraries contains Plex library titles or keys excluded from room creation.
+	// ExcludeLibraries contains media library titles or keys excluded from room creation.
 	ExcludeLibraries []string
 	// Overridden records configuration values explicitly overridden by flags or environment variables.
 	Overridden map[string]any
@@ -93,7 +93,7 @@ func Parse(args []string, version string) (Config, error) {
 		}).
 		Placeholder("DURATION").Value()
 
-	tf.StringSliceVar(&cfg.ExcludeLibraries, "exclude-libraries", []string{}, "Plex library titles or keys to exclude from room creation").
+	tf.StringSliceVar(&cfg.ExcludeLibraries, "exclude-libraries", []string{}, "Media library titles or keys to exclude from room creation").
 		TrimSpace().
 		Placeholder("LIBRARY").
 		Value()

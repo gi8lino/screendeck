@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/media"
 )
 
-// SaveLibrary replaces cached metadata for a Plex library.
-func (s *Store) SaveLibrary(ctx context.Context, library plex.Library, items []plex.Item) error {
+// SaveLibrary replaces cached metadata for a media library.
+func (s *Store) SaveLibrary(ctx context.Context, library media.Library, items []media.Item) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func (s *Store) SaveLibrary(ctx context.Context, library plex.Library, items []p
 }
 
 // saveLibraryTx persists the library metadata inside an existing transaction.
-func saveLibraryTx(ctx context.Context, tx *sql.Tx, library plex.Library) error {
+func saveLibraryTx(ctx context.Context, tx *sql.Tx, library media.Library) error {
 	const query = `
 INSERT INTO libraries (
   key,
@@ -51,10 +51,10 @@ ON CONFLICT (key) DO UPDATE SET
 }
 
 // saveLibraryItemsTx persists all media items inside an existing transaction.
-func saveLibraryItemsTx(ctx context.Context, tx *sql.Tx, items []plex.Item) error {
+func saveLibraryItemsTx(ctx context.Context, tx *sql.Tx, items []media.Item) error {
 	const query = `
 INSERT INTO media_items (
-  rating_key,
+  id,
   library_key,
   media_type,
   guid,
@@ -63,14 +63,14 @@ INSERT INTO media_items (
   summary,
   duration,
   rating,
-  thumb,
+  poster,
   genres,
   viewed,
   added_at
 ) VALUES (
   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
-ON CONFLICT (rating_key) DO UPDATE SET
+ON CONFLICT (id) DO UPDATE SET
   library_key = excluded.library_key,
   media_type = excluded.media_type,
   guid = excluded.guid,
@@ -79,7 +79,7 @@ ON CONFLICT (rating_key) DO UPDATE SET
   summary = excluded.summary,
   duration = excluded.duration,
   rating = excluded.rating,
-  thumb = excluded.thumb,
+  poster = excluded.poster,
   genres = excluded.genres,
   viewed = excluded.viewed,
   added_at = excluded.added_at
@@ -100,7 +100,7 @@ ON CONFLICT (rating_key) DO UPDATE SET
 }
 
 // saveLibraryItem persists one media item using a prepared statement.
-func saveLibraryItem(ctx context.Context, stmt *sql.Stmt, item plex.Item) error {
+func saveLibraryItem(ctx context.Context, stmt *sql.Stmt, item media.Item) error {
 	genres, err := json.Marshal(item.Genres)
 	if err != nil {
 		return fmt.Errorf("encode genres for item %q: %w", item.Title, err)
@@ -108,8 +108,8 @@ func saveLibraryItem(ctx context.Context, stmt *sql.Stmt, item plex.Item) error 
 
 	if _, err := stmt.ExecContext(
 		ctx,
-		item.RatingKey,
-		item.Library,
+		item.ID,
+		item.LibraryKey,
 		item.Type,
 		item.GUID,
 		item.Title,
@@ -117,7 +117,7 @@ func saveLibraryItem(ctx context.Context, stmt *sql.Stmt, item plex.Item) error 
 		item.Summary,
 		item.Duration,
 		item.Rating,
-		item.Thumb,
+		item.Poster,
 		string(genres),
 		item.Viewed,
 		item.AddedAt,
@@ -129,22 +129,22 @@ func saveLibraryItem(ctx context.Context, stmt *sql.Stmt, item plex.Item) error 
 }
 
 // ItemPoster returns the poster path for a stored media item.
-func (s *Store) ItemPoster(ctx context.Context, ratingKey string) (string, error) {
+func (s *Store) ItemPoster(ctx context.Context, itemID string) (string, error) {
 	const query = `
-SELECT thumb
+SELECT poster
 FROM media_items
-WHERE rating_key = ?
+WHERE id = ?
 `
-	var thumb string
-	if err := s.db.QueryRowContext(ctx, query, ratingKey).Scan(&thumb); err != nil {
+	var poster string
+	if err := s.db.QueryRowContext(ctx, query, itemID).Scan(&poster); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrNotFound
 		}
 		return "", err
 	}
-	if strings.TrimSpace(thumb) == "" {
+	if strings.TrimSpace(poster) == "" {
 		return "", ErrNotFound
 	}
 
-	return thumb, nil
+	return poster, nil
 }

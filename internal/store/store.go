@@ -29,7 +29,7 @@ var ErrMembershipConflict = errors.New("browser identity already linked to anoth
 type Store struct {
 	// db is the underlying SQLite connection pool.
 	db *sql.DB
-	// cipher encrypts and decrypts persisted Plex secrets.
+	// cipher encrypts and decrypts persisted media-provider and session secrets.
 	cipher cipher.AEAD
 }
 

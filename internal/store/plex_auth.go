@@ -11,6 +11,8 @@ import (
 	"github.com/gi8lino/screendeck/internal/plex"
 )
 
+var _ plex.AuthStore = (*Store)(nil) // Ensure Store implements Plex auth persistence.
+
 // storedPlexAuth contains the encrypted values read from or written to SQLite.
 type storedPlexAuth struct {
 	// method identifies the Plex authorization flow.

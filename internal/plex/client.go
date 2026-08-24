@@ -10,47 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gi8lino/screendeck/internal/media"
 )
-
-// Library describes a supported Plex library.
-type Library struct {
-	// Key identifies a Plex library section.
-	Key string `json:"key"`
-	// Title is the display title.
-	Title string `json:"title"`
-	// Type identifies the Plex media or library type.
-	Type string `json:"type"`
-}
-
-// Item contains the Plex metadata ScreenDeck needs for a movie or show.
-type Item struct {
-	// RatingKey is Plex's stable media identifier.
-	RatingKey string `json:"id"`
-	// Library identifies the Plex library containing the item.
-	Library string `json:"libraryKey"`
-	// Type identifies the Plex media or library type.
-	Type string `json:"type"`
-	// GUID is Plex's globally unique media identifier.
-	GUID string `json:"guid"`
-	// Title is the display title.
-	Title string `json:"title"`
-	// Year is the release year when available.
-	Year int `json:"year"`
-	// Summary is the Plex description text.
-	Summary string `json:"summary"`
-	// Duration is the Plex duration in milliseconds.
-	Duration int `json:"duration"`
-	// Rating is Plex's numeric rating.
-	Rating float64 `json:"rating"`
-	// Thumb is the Plex poster path.
-	Thumb string `json:"-"`
-	// Genres contains the genre names reported by Plex.
-	Genres []string `json:"genres"`
-	// Viewed reports whether the item has been watched.
-	Viewed bool `json:"viewed"`
-	// AddedAt is the Plex added-at Unix timestamp.
-	AddedAt int64 `json:"addedAt"`
-}
 
 // Client performs authenticated read-only requests against a Plex Media Server.
 type Client struct {
@@ -72,8 +34,18 @@ type librariesResponse struct {
 
 // librariesContainer contains Plex library directory entries.
 type librariesContainer struct {
-	// Directories contains library section entries.
-	Directories []Library `json:"Directory"`
+	// Directories contains raw Plex library section entries.
+	Directories []librarySection `json:"Directory"`
+}
+
+// librarySection models a Plex library section before conversion to media.Library.
+type librarySection struct {
+	// Key identifies a Plex library section.
+	Key string `json:"key"`
+	// Title is the Plex library display title.
+	Title string `json:"title"`
+	// Type identifies the Plex library type.
+	Type string `json:"type"`
 }
 
 // itemsResponse models the top-level Plex media item response.
@@ -88,17 +60,17 @@ type itemsContainer struct {
 	Metadata []metadataItem `json:"Metadata"`
 }
 
-// metadataItem models the raw Plex fields used to build an Item.
+// metadataItem models the raw Plex fields used to build a provider-neutral media item.
 type metadataItem struct {
-	// RatingKey is Plex's stable media identifier.
+	// RatingKey is Plex's stable item identifier.
 	RatingKey string `json:"ratingKey"`
-	// GUID is Plex's globally unique media identifier.
+	// GUID is Plex's item GUID.
 	GUID string `json:"guid"`
-	// Title is the display title.
+	// Title is the item display title.
 	Title string `json:"title"`
-	// Year is the release year when available.
+	// Year is the release year.
 	Year int `json:"year"`
-	// Summary is the Plex description text.
+	// Summary is the Plex item description.
 	Summary string `json:"summary"`
 	// Duration is the Plex duration in milliseconds.
 	Duration int `json:"duration"`
@@ -112,17 +84,16 @@ type metadataItem struct {
 	LeafCount int `json:"leafCount"`
 	// ViewedLeafCount is the number of watched episodes in a show.
 	ViewedLeafCount int `json:"viewedLeafCount"`
-	// Type identifies the Plex media or library type.
+	// Type identifies the Plex media type.
 	Type string `json:"type"`
 	// AddedAt is the Plex added-at Unix timestamp.
 	AddedAt int64 `json:"addedAt"`
-	// Genres contains the raw genre tags reported by Plex.
+	// Genres contains raw Plex genre tags.
 	Genres []metadataGenre `json:"Genre"`
 }
 
 // metadataGenre models one Plex genre tag.
 type metadataGenre struct {
-	// Tag is the genre text returned by Plex.
 	Tag string `json:"tag"`
 }
 
@@ -147,23 +118,23 @@ func NewWithClientID(rawURL, token, clientID string) (*Client, error) {
 }
 
 // Libraries returns the supported libraries exposed by Plex.
-func (c *Client) Libraries(ctx context.Context) ([]Library, error) {
+func (c *Client) Libraries(ctx context.Context) ([]media.Library, error) {
 	var response librariesResponse
 	if err := c.getJSON(ctx, "/library/sections", nil, &response); err != nil {
 		return nil, err
 	}
-	libraries := make([]Library, 0, len(response.MediaContainer.Directories))
+	libraries := make([]media.Library, 0, len(response.MediaContainer.Directories))
 	for _, library := range response.MediaContainer.Directories {
 		if !supportedLibraryType(library.Type) {
 			continue
 		}
-		libraries = append(libraries, library)
+		libraries = append(libraries, media.Library{Key: library.Key, Title: library.Title, Type: library.Type})
 	}
 	return libraries, nil
 }
 
-// Items returns the media items in a Plex library.
-func (c *Client) Items(ctx context.Context, library Library) ([]Item, error) {
+// Items returns media items in a Plex library.
+func (c *Client) Items(ctx context.Context, library media.Library) ([]media.Item, error) {
 	if !validLibrary(library) {
 		return nil, ErrInvalidLibrary
 	}
@@ -183,15 +154,15 @@ func (c *Client) Items(ctx context.Context, library Library) ([]Item, error) {
 		return nil, err
 	}
 
-	items := make([]Item, 0, len(response.MediaContainer.Metadata))
+	items := make([]media.Item, 0, len(response.MediaContainer.Metadata))
 	for _, metadata := range response.MediaContainer.Metadata {
 		items = append(items, itemFromMetadata(library, metadata))
 	}
 	return items, nil
 }
 
-// itemFromMetadata converts a raw Plex metadata entry into a ScreenDeck item.
-func itemFromMetadata(library Library, metadata metadataItem) Item {
+// itemFromMetadata converts raw Plex metadata into provider-neutral media metadata.
+func itemFromMetadata(library media.Library, metadata metadataItem) media.Item {
 	genres := make([]string, 0, len(metadata.Genres))
 	for _, genre := range metadata.Genres {
 		genres = append(genres, genre.Tag)
@@ -207,20 +178,20 @@ func itemFromMetadata(library Library, metadata metadataItem) Item {
 		itemType = library.Type
 	}
 
-	return Item{
-		RatingKey: metadata.RatingKey,
-		Library:   library.Key,
-		Type:      itemType,
-		GUID:      metadata.GUID,
-		Title:     metadata.Title,
-		Year:      metadata.Year,
-		Summary:   metadata.Summary,
-		Duration:  metadata.Duration,
-		Rating:    metadata.Rating,
-		Thumb:     metadata.Thumb,
-		Genres:    genres,
-		Viewed:    viewed,
-		AddedAt:   metadata.AddedAt,
+	return media.Item{
+		ID:         metadata.RatingKey,
+		LibraryKey: library.Key,
+		Type:       itemType,
+		GUID:       metadata.GUID,
+		Title:      metadata.Title,
+		Year:       metadata.Year,
+		Summary:    metadata.Summary,
+		Duration:   metadata.Duration,
+		Rating:     metadata.Rating,
+		Poster:     metadata.Thumb,
+		Genres:     genres,
+		Viewed:     viewed,
+		AddedAt:    metadata.AddedAt,
 	}
 }
 
@@ -230,7 +201,7 @@ func supportedLibraryType(libraryType string) bool {
 }
 
 // validLibrary reports whether a Plex library can be requested safely.
-func validLibrary(library Library) bool {
+func validLibrary(library media.Library) bool {
 	return library.Key != "" && !strings.ContainsAny(library.Key, "/?") && supportedLibraryType(library.Type)
 }
 
@@ -267,7 +238,9 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 func (c *Client) do(ctx context.Context, path string, query url.Values) (*http.Response, error) {
 	u := *c.baseURL
 	u.Path = strings.TrimRight(u.Path, "/") + path
-	u.RawQuery = query.Encode()
+	if query != nil {
+		u.RawQuery = query.Encode()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err

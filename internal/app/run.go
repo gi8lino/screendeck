@@ -12,7 +12,7 @@ import (
 	"github.com/gi8lino/screendeck/internal/handler"
 	"github.com/gi8lino/screendeck/internal/logging"
 	"github.com/gi8lino/screendeck/internal/maintenance"
-	"github.com/gi8lino/screendeck/internal/plex"
+	mediafactory "github.com/gi8lino/screendeck/internal/media/factory"
 	"github.com/gi8lino/screendeck/internal/room"
 	"github.com/gi8lino/screendeck/internal/routes"
 	"github.com/gi8lino/screendeck/internal/store"
@@ -55,24 +55,25 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 	}
 	defer database.Close() // nolint:errcheck
 
-	authManager, err := plex.NewAuthManager(
-		ctx,
+	mediaServices, err := mediafactory.New(
 		database,
-		logger.With("component", "plex"),
-		"https://clients.plex.tv",
-		cfg.PlexURLOverride,
-		cfg.Experimental,
-	)
+		logger,
+		mediafactory.Options{
+			Version:         version,
+			PlexURLOverride: cfg.PlexURLOverride,
+			Experimental:    cfg.Experimental,
+		},
+	).Create(ctx)
 	if err != nil {
 		setupLogger.Error("application failed",
 			"event", "app_failed",
-			"stage", "configure_plex",
+			"stage", "configure_media",
 			"error", err,
 		)
-		return fmt.Errorf("configure Plex: %w", err)
+		return err
 	}
 
-	roomService := room.NewService(database, authManager, cfg.RoomTTL, cfg.ExcludeLibraries)
+	roomService := room.NewService(database, mediaServices.Media, cfg.RoomTTL, cfg.ExcludeLibraries)
 
 	serverLogger := logger.With("component", "server")
 	api := handler.New(
@@ -81,7 +82,9 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 		cfg.BaseURL,
 		cfg.Experimental,
 		roomService,
-		authManager,
+		mediaServices.Media,
+		mediaServices.Plex,
+		mediaServices.Jellyfin,
 		database,
 		serverLogger,
 	)
@@ -101,12 +104,13 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 
 	go maintenance.RunRoomCleanup(ctx, database, cfg.RoomCleanupInterval, setupLogger)
 
-	configured, serverName := authManager.Configured()
+	mediaStatus := mediaServices.Media.Status()
 	serverLogger.Info("starting HTTP server",
 		"event", "server_starting",
 		"address", cfg.ListenAddress,
-		"plex_configured", configured,
-		"plex_server", serverName,
+		"media_configured", mediaStatus.Configured,
+		"media_provider", mediaStatus.Provider,
+		"media_server", mediaStatus.ServerName,
 	)
 	if err := server.Run(ctx, cfg.ListenAddress, router, serverLogger); err != nil {
 		setupLogger.Error("application failed",

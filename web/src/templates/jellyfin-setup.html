@@ -1,0 +1,52 @@
+<template id="jellyfin-setup-template">
+  <section class="panel">
+    <div class="eyebrow">Jellyfin connection</div>
+    <h2>Connect your server.</h2>
+    <p class="lede">
+      Enter the Jellyfin address and a user that can access the movie and TV
+      libraries you want to use. ScreenDeck stores the returned access token,
+      not the password.
+    </p>
+
+    <form data-ref="form">
+      <div class="form-row">
+        <label for="jellyfin-server-url">Server URL</label>
+        <input
+          id="jellyfin-server-url"
+          data-ref="serverUrl"
+          type="url"
+          inputmode="url"
+          placeholder="http://jellyfin.local:8096"
+          autocomplete="url"
+          required
+        />
+      </div>
+
+      <div class="form-row">
+        <label for="jellyfin-username">Username</label>
+        <input
+          id="jellyfin-username"
+          data-ref="username"
+          type="text"
+          autocomplete="username"
+          required
+        />
+      </div>
+
+      <div class="form-row">
+        <label for="jellyfin-password">Password</label>
+        <input
+          id="jellyfin-password"
+          data-ref="password"
+          type="password"
+          autocomplete="current-password"
+        />
+      </div>
+
+      <p class="error" data-ref="error"></p>
+      <button class="btn primary" type="submit" data-ref="submit">
+        Connect Jellyfin
+      </button>
+    </form>
+  </section>
+</template>

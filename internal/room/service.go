@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/store"
 )
 
@@ -30,10 +30,10 @@ type Service struct {
 	// store persists rooms and catalog metadata.
 	store *store.Store
 	// catalog provides media metadata and poster access.
-	catalog Catalog
+	catalog media.Catalog
 	// roomTTL controls expiration for newly created rooms.
 	roomTTL time.Duration
-	// excludedLibraries contains normalized Plex library titles or keys hidden from room creation.
+	// excludedLibraries contains normalized media library titles or keys hidden from room creation.
 	excludedLibraries map[string]struct{}
 	// mu protects mutable in-memory state.
 	mu sync.Mutex
@@ -41,13 +41,6 @@ type Service struct {
 	events map[string]map[chan struct{}]struct{}
 	// cache stores recently loaded library contents.
 	cache map[string]cacheEntry
-}
-
-// Catalog defines the Plex catalog operations required by the room service.
-type Catalog interface {
-	Libraries(context.Context) ([]plex.Library, error)
-	Items(context.Context, plex.Library) ([]plex.Item, error)
-	Poster(context.Context, string) (*http.Response, error)
 }
 
 // Filters contains room-wide catalog filtering criteria.
@@ -82,7 +75,7 @@ const (
 	SamplingRandom SamplingStrategy = "random"
 	// SamplingHighestRated orders eligible titles by rating before applying the round-size limit.
 	SamplingHighestRated SamplingStrategy = "highest_rated"
-	// SamplingRecentlyAdded orders eligible titles by Plex added-at time before applying the round-size limit.
+	// SamplingRecentlyAdded orders eligible titles by provider added-at time before applying the round-size limit.
 	SamplingRecentlyAdded SamplingStrategy = "recently_added"
 	// SamplingRandomUnwatched shuffles only unwatched eligible titles before applying the round-size limit.
 	SamplingRandomUnwatched SamplingStrategy = "random_unwatched"
@@ -120,10 +113,10 @@ type RoundResult struct {
 	Advanced bool `json:"advanced"`
 }
 
-// cacheEntry stores a recently loaded Plex library result.
+// cacheEntry stores a recently loaded media library result.
 type cacheEntry struct {
-	// items contains cached Plex items.
-	items []plex.Item
+	// items contains cached media items.
+	items []media.Item
 	// fetchedAt records when the cache entry was populated.
 	fetchedAt time.Time
 }
@@ -139,7 +132,7 @@ type Session struct {
 // NewService creates a room service backed by the supplied catalog and store.
 func NewService(
 	database *store.Store,
-	catalog Catalog,
+	catalog media.Catalog,
 	roomTTL time.Duration,
 	excludedLibraries []string,
 ) *Service {
@@ -153,10 +146,10 @@ func NewService(
 	}
 }
 
-// Libraries returns the Plex libraries that are available for room creation.
-func (s *Service) Libraries(ctx context.Context) ([]plex.Library, error) {
+// Libraries returns the media libraries that are available for room creation.
+func (s *Service) Libraries(ctx context.Context) ([]media.Library, error) {
 	if s.catalog == nil {
-		return nil, errors.New("Plex is not configured") // nolint:staticcheck
+		return nil, media.ErrNotConfigured
 	}
 
 	libraries, err := s.catalog.Libraries(ctx)
@@ -164,7 +157,7 @@ func (s *Service) Libraries(ctx context.Context) ([]plex.Library, error) {
 		return nil, err
 	}
 
-	visible := make([]plex.Library, 0, len(libraries))
+	visible := make([]media.Library, 0, len(libraries))
 
 	for _, library := range libraries {
 		if s.libraryExcluded(library) {
@@ -193,8 +186,8 @@ func normalizeLibraryExclusions(values []string) map[string]struct{} {
 	return excluded
 }
 
-// libraryExcluded reports whether a Plex library is excluded by title or key.
-func (s *Service) libraryExcluded(library plex.Library) bool {
+// libraryExcluded reports whether a media library is excluded by title or key.
+func (s *Service) libraryExcluded(library media.Library) bool {
 	if len(s.excludedLibraries) == 0 {
 		return false
 	}
@@ -222,7 +215,7 @@ func (s *Service) Options(
 }
 
 // catalogOptions derives available genres and year bounds from media items.
-func catalogOptions(items []plex.Item) CatalogOptions {
+func catalogOptions(items []media.Item) CatalogOptions {
 	genreSet := make(map[string]struct{})
 	options := CatalogOptions{
 		Genres: make([]string, 0),
@@ -242,7 +235,7 @@ func catalogOptions(items []plex.Item) CatalogOptions {
 	return options
 }
 
-// collectCatalogGenres adds non-empty catalog genres while preserving their Plex spelling.
+// collectCatalogGenres adds non-empty catalog genres while preserving their provider spelling.
 func collectCatalogGenres(
 	target map[string]struct{},
 	genres []string,
@@ -278,7 +271,7 @@ func updateCatalogYearBounds(
 type createRoomOptions struct {
 	// name is the host display name.
 	name string
-	// libraryKeys identifies the Plex libraries included in the room.
+	// libraryKeys identifies the media libraries included in the room.
 	libraryKeys []string
 	// filters contains room-wide catalog filters.
 	filters Filters
@@ -388,8 +381,8 @@ func (s *Service) create(
 			GenreMode: string(options.genreMode),
 		},
 		tokenHash,
-		itemRatingKeys(selected),
-		itemRatingKeys(pool),
+		itemIDs(selected),
+		itemIDs(pool),
 		membershipCredentials(options.identityToken, token)...,
 	); err != nil {
 		return Session{}, err
@@ -450,25 +443,25 @@ func validRoundSize(roundSize int) bool {
 	return roundSize >= 0 && roundSize <= maxRoundSize
 }
 
-// filterEligibleItems applies room filters and removes duplicate Plex rating keys.
+// filterEligibleItems applies room filters and removes duplicate media item identifiers.
 func filterEligibleItems(
-	items []plex.Item,
+	items []media.Item,
 	filters Filters,
-) []plex.Item {
+) []media.Item {
 	genres := normalizedGenreSet(filters.Genres)
 	seen := make(map[string]struct{}, len(items))
-	eligible := make([]plex.Item, 0, len(items))
+	eligible := make([]media.Item, 0, len(items))
 
 	for _, item := range items {
 		if !matchesFilters(item, filters, genres) {
 			continue
 		}
 
-		if _, duplicate := seen[item.RatingKey]; duplicate {
+		if _, duplicate := seen[item.ID]; duplicate {
 			continue
 		}
 
-		seen[item.RatingKey] = struct{}{}
+		seen[item.ID] = struct{}{}
 		eligible = append(eligible, item)
 	}
 
@@ -492,7 +485,7 @@ func normalizedGenreSet(genres []string) map[string]struct{} {
 }
 
 // genresFromItems returns the canonical set of genres represented by the supplied items.
-func genresFromItems(items []plex.Item) []string {
+func genresFromItems(items []media.Item) []string {
 	genres := make(map[string]string)
 
 	for _, item := range items {
@@ -504,9 +497,9 @@ func genresFromItems(items []plex.Item) []string {
 
 // limitItems returns the first limit items while preserving the original ordering.
 func limitItems(
-	items []plex.Item,
+	items []media.Item,
 	limit int,
-) []plex.Item {
+) []media.Item {
 	if limit > 0 && len(items) > limit {
 		return items[:limit]
 	}
@@ -553,10 +546,10 @@ func validSamplingStrategy(strategy SamplingStrategy) bool {
 
 // orderInitialItems orders and filters the room's original eligible pool.
 func orderInitialItems(
-	items []plex.Item,
+	items []media.Item,
 	strategy SamplingStrategy,
-) ([]plex.Item, error) {
-	selected := append([]plex.Item(nil), items...)
+) ([]media.Item, error) {
+	selected := append([]media.Item(nil), items...)
 
 	switch strategy {
 	case SamplingRandom:
@@ -588,14 +581,14 @@ func orderInitialItems(
 }
 
 // shuffleItems randomizes media items in place.
-func shuffleItems(items []plex.Item) {
+func shuffleItems(items []media.Item) {
 	mathrand.Shuffle(len(items), func(i, j int) {
 		items[i], items[j] = items[j], items[i]
 	})
 }
 
 // sortItemsByRating orders media by descending rating and then title.
-func sortItemsByRating(items []plex.Item) {
+func sortItemsByRating(items []media.Item) {
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].Rating != items[j].Rating {
 			return items[i].Rating > items[j].Rating
@@ -605,8 +598,8 @@ func sortItemsByRating(items []plex.Item) {
 	})
 }
 
-// sortItemsByAddedAt orders media by newest Plex added-at time and then title.
-func sortItemsByAddedAt(items []plex.Item) {
+// sortItemsByAddedAt orders media by newest provider added-at time and then title.
+func sortItemsByAddedAt(items []media.Item) {
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].AddedAt != items[j].AddedAt {
 			return items[i].AddedAt > items[j].AddedAt
@@ -616,9 +609,9 @@ func sortItemsByAddedAt(items []plex.Item) {
 	})
 }
 
-// unwatchedItems returns only media that Plex has not marked as viewed.
-func unwatchedItems(items []plex.Item) []plex.Item {
-	selected := make([]plex.Item, 0, len(items))
+// unwatchedItems returns only media that the provider has not marked as viewed.
+func unwatchedItems(items []media.Item) []media.Item {
+	selected := make([]media.Item, 0, len(items))
 
 	for _, item := range items {
 		if item.Viewed {
@@ -633,10 +626,10 @@ func unwatchedItems(items []plex.Item) []plex.Item {
 
 // selectInitialItems returns the first limited portion of the ordered eligible pool.
 func selectInitialItems(
-	items []plex.Item,
+	items []media.Item,
 	strategy SamplingStrategy,
 	limit int,
-) ([]plex.Item, error) {
+) ([]media.Item, error) {
 	selected, err := orderInitialItems(items, strategy)
 	if err != nil {
 		return nil, err
@@ -645,12 +638,12 @@ func selectInitialItems(
 	return limitItems(selected, limit), nil
 }
 
-// itemRatingKeys converts media items to their Plex rating keys in order.
-func itemRatingKeys(items []plex.Item) []string {
+// itemIDs converts media items to their media item identifiers in order.
+func itemIDs(items []media.Item) []string {
 	keys := make([]string, 0, len(items))
 
 	for _, item := range items {
-		keys = append(keys, item.RatingKey)
+		keys = append(keys, item.ID)
 	}
 
 	return keys
@@ -660,7 +653,7 @@ func itemRatingKeys(items []plex.Item) []string {
 func (s *Service) loadItems(
 	ctx context.Context,
 	libraryKeys []string,
-) (selected []plex.Library, items []plex.Item, err error) {
+) (selected []media.Library, items []media.Item, err error) {
 	if len(libraryKeys) == 0 {
 		return nil, nil, errors.New("select at least one library")
 	}
@@ -672,7 +665,7 @@ func (s *Service) loadItems(
 
 	available := librariesByKey(libraries)
 
-	selected = make([]plex.Library, 0, len(libraryKeys))
+	selected = make([]media.Library, 0, len(libraryKeys))
 
 	for _, key := range libraryKeys {
 		library, ok := available[key]
@@ -699,11 +692,11 @@ func (s *Service) loadItems(
 	return selected, items, nil
 }
 
-// librariesByKey indexes Plex libraries by their stable section key.
+// librariesByKey indexes media libraries by their stable provider key.
 func librariesByKey(
-	libraries []plex.Library,
-) map[string]plex.Library {
-	indexed := make(map[string]plex.Library, len(libraries))
+	libraries []media.Library,
+) map[string]media.Library {
+	indexed := make(map[string]media.Library, len(libraries))
 
 	for _, library := range libraries {
 		indexed[library.Key] = library
@@ -715,8 +708,8 @@ func librariesByKey(
 // libraryItems returns cached or freshly loaded items for a library.
 func (s *Service) libraryItems(
 	ctx context.Context,
-	library plex.Library,
-) ([]plex.Item, error) {
+	library media.Library,
+) ([]media.Item, error) {
 	s.mu.Lock()
 	cached, ok := s.cache[library.Key]
 	s.mu.Unlock()
@@ -754,7 +747,7 @@ func cacheEntryFresh(
 
 // matchesFilters reports whether a media item satisfies room filters.
 func matchesFilters(
-	item plex.Item,
+	item media.Item,
 	filters Filters,
 	genres map[string]struct{},
 ) bool {
@@ -775,7 +768,7 @@ func matchesFilters(
 
 // matchesWatchFilter reports whether an item satisfies the watched-state filter.
 func matchesWatchFilter(
-	item plex.Item,
+	item media.Item,
 	filters Filters,
 ) bool {
 	return !filters.UnwatchedOnly || !item.Viewed
@@ -783,7 +776,7 @@ func matchesWatchFilter(
 
 // matchesYearFilter reports whether an item falls inside the configured year range.
 func matchesYearFilter(
-	item plex.Item,
+	item media.Item,
 	filters Filters,
 ) bool {
 	if filters.YearFrom > 0 && item.Year < filters.YearFrom {
@@ -799,7 +792,7 @@ func matchesYearFilter(
 
 // matchesDurationFilter reports whether an item satisfies the movie duration limit.
 func matchesDurationFilter(
-	item plex.Item,
+	item media.Item,
 	filters Filters,
 ) bool {
 	if filters.MaxDurationMinutes <= 0 || item.Type != "movie" {
@@ -813,7 +806,7 @@ func matchesDurationFilter(
 
 // matchesGenreFilter reports whether an item contains one of the selected room genres.
 func matchesGenreFilter(
-	item plex.Item,
+	item media.Item,
 	genres map[string]struct{},
 ) bool {
 	if len(genres) == 0 {
@@ -1168,9 +1161,9 @@ func (s *Service) RemoveParticipant(
 func (s *Service) Poster(
 	ctx context.Context,
 	itemID string,
-) (*plexResponse, error) {
+) (*posterResponse, error) {
 	if s.catalog == nil {
-		return nil, errors.New("Plex is not configured")
+		return nil, media.ErrNotConfigured
 	}
 
 	path, err := s.store.ItemPoster(ctx, itemID)
@@ -1183,17 +1176,17 @@ func (s *Service) Poster(
 		return nil, err
 	}
 
-	return &plexResponse{
+	return &posterResponse{
 		Body:   response.Body,
 		Header: response.Header,
 	}, nil
 }
 
-// plexResponse exposes only the poster response fields required by handlers.
-type plexResponse struct {
+// posterResponse exposes only the poster response fields required by handlers.
+type posterResponse struct {
 	// Body is the proxied poster response body.
 	Body io.ReadCloser
-	// Header contains poster response headers from Plex.
+	// Header contains poster response headers from the active media provider.
 	Header http.Header
 }
 
@@ -1396,7 +1389,7 @@ func hashToken(token string) string {
 }
 
 // SortLibraries orders libraries by media type and title.
-func SortLibraries(libraries []plex.Library) {
+func SortLibraries(libraries []media.Library) {
 	sort.Slice(libraries, func(i, j int) bool {
 		if libraries[i].Type != libraries[j].Type {
 			return libraries[i].Type < libraries[j].Type

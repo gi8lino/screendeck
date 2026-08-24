@@ -2,8 +2,6 @@ package routes
 
 import (
 	"bytes"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gi8lino/screendeck/internal/handler"
+	mediafactory "github.com/gi8lino/screendeck/internal/media/factory"
 	"github.com/gi8lino/screendeck/internal/plex"
 	"github.com/gi8lino/screendeck/internal/room"
 	"github.com/gi8lino/screendeck/internal/store"
@@ -42,26 +41,33 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
-	plexClient, err := plex.New(plexServer.URL, "token")
-	require.NoError(t, err)
-	rooms := room.NewService(database, plexClient, time.Hour, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
 	require.NoError(t, database.SavePlexAuth(t.Context(), plex.AuthState{
-		Method: plex.AuthMethodJWT, ClientID: "client", KeyID: "key", PrivateKey: privateKey, UserToken: "user-token", TokenExpiresAt: time.Now().Add(time.Hour),
-		ServerID: "server", ServerName: "Test Plex", ServerURL: plexServer.URL, ServerToken: "token",
+		Method:      plex.AuthMethodStandard,
+		ClientID:    "client",
+		UserToken:   "user-token",
+		ServerID:    "server",
+		ServerName:  "Test Plex",
+		ServerURL:   plexServer.URL,
+		ServerToken: "token",
 	}))
 
-	authManager, err := plex.NewAuthManager(t.Context(), database, logger, plexServer.URL, "", false)
+	mediaServices, err := mediafactory.New(
+		database,
+		logger,
+		mediafactory.Options{Version: "test"},
+	).Create(t.Context())
 	require.NoError(t, err)
+	rooms := room.NewService(database, mediaServices.Media, time.Hour, nil)
 	api := handler.New(
 		"test",
 		"commit",
 		"http://movies.test",
 		false,
 		rooms,
-		authManager,
+		mediaServices.Media,
+		mediaServices.Plex,
+		mediaServices.Jellyfin,
 		database,
 		logger,
 	)
@@ -118,7 +124,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	hostState := getState(t, router, hostSession)
 	require.NotNil(t, hostState.Candidate)
 	require.Len(t, hostState.Participants, 2)
-	itemID := hostState.Candidate.RatingKey
+	itemID := hostState.Candidate.ID
 
 	first := postJSON(t, router, "/api/rooms/"+hostSession.Code+"/votes", fmt.Sprintf(`{"itemId":%q,"liked":true}`, itemID), hostSession.Token)
 	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
@@ -131,6 +137,86 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	state := getState(t, router, guestSession)
 	require.Len(t, state.Matches, 1)
 	assert.Equal(t, "Arrival", state.Matches[0].Title)
+}
+
+func TestJellyfinFlowThroughHTTP(t *testing.T) {
+	t.Parallel()
+
+	jellyfinServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/System/Info/Public":
+			fmt.Fprint(w, `{"ServerName":"Test Jellyfin","Id":"server-1"}`) // nolint:errcheck
+		case "/Users/AuthenticateByName":
+			fmt.Fprint(w, `{"AccessToken":"access-token","ServerId":"server-1","User":{"Id":"user-1","Name":"Host"}}`) // nolint:errcheck
+		case "/Users/user-1/Views":
+			fmt.Fprint(w, `{"Items":[{"Id":"movies","Name":"Films","CollectionType":"movies"}]}`) // nolint:errcheck
+		case "/Items":
+			fmt.Fprint(w, `{"Items":[{"Id":"item-1","Name":"Arrival","Type":"Movie","ProductionYear":2016,"ImageTags":{"Primary":"poster"}}]}`) // nolint:errcheck
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer jellyfinServer.Close()
+
+	database, err := store.Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	mediaServices, err := mediafactory.New(
+		database,
+		logger,
+		mediafactory.Options{Version: "test"},
+	).Create(t.Context())
+	require.NoError(t, err)
+	rooms := room.NewService(database, mediaServices.Media, time.Hour, nil)
+	api := handler.New(
+		"test",
+		"commit",
+		"http://movies.test",
+		false,
+		rooms,
+		mediaServices.Media,
+		mediaServices.Plex,
+		mediaServices.Jellyfin,
+		database,
+		logger,
+	)
+	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
+	router, err := NewRouter(appFS, api, logger, false)
+	require.NoError(t, err)
+
+	connected := postJSON(
+		t,
+		router,
+		"/api/jellyfin/connect",
+		fmt.Sprintf(`{"serverUrl":%q,"username":"Host","password":"secret"}`, jellyfinServer.URL),
+		"",
+	)
+	require.Equal(t, http.StatusOK, connected.Code, connected.Body.String())
+
+	config := httptest.NewRecorder()
+	router.ServeHTTP(config, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	require.Equal(t, http.StatusOK, config.Code, config.Body.String())
+	assert.Contains(t, config.Body.String(), `"mediaConfigured":true`)
+	assert.Contains(t, config.Body.String(), `"mediaProvider":"jellyfin"`)
+	assert.Contains(t, config.Body.String(), `"mediaServerName":"Test Jellyfin"`)
+
+	libraries := httptest.NewRecorder()
+	router.ServeHTTP(libraries, httptest.NewRequest(http.MethodGet, "/api/libraries", nil))
+	require.Equal(t, http.StatusOK, libraries.Code, libraries.Body.String())
+	assert.Contains(t, libraries.Body.String(), `"title":"Films"`)
+
+	host := postJSON(t, router, "/api/rooms", `{"name":"Host","libraryKeys":["movies"]}`, "")
+	require.Equal(t, http.StatusCreated, host.Code, host.Body.String())
+	var session room.Session
+	decodeResponse(t, host, &session)
+
+	state := getState(t, router, session)
+	require.NotNil(t, state.Candidate)
+	assert.Equal(t, "item-1", state.Candidate.ID)
+	assert.Equal(t, "Arrival", state.Candidate.Title)
 }
 
 // postJSON sends a JSON test request to an HTTP handler.
@@ -172,15 +258,21 @@ func TestHealthAndFrontend(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authManager, err := plex.NewAuthManager(t.Context(), database, logger, "http://plex.test", "", false)
+	mediaServices, err := mediafactory.New(
+		database,
+		logger,
+		mediafactory.Options{Version: "test"},
+	).Create(t.Context())
 	require.NoError(t, err)
 	api := handler.New(
 		"test",
 		"commit",
 		"http://movies.test",
 		false,
-		room.NewService(database, authManager, time.Hour, nil),
-		authManager,
+		room.NewService(database, mediaServices.Media, time.Hour, nil),
+		mediaServices.Media,
+		mediaServices.Plex,
+		mediaServices.Jellyfin,
 		database,
 		logger,
 	)

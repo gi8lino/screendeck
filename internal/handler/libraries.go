@@ -6,7 +6,7 @@ import (
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
-// Libraries returns the Plex library listing handler.
+// Libraries returns the media library listing handler.
 func (a *API) Libraries() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		libraries, err := a.Rooms.Libraries(r.Context())
@@ -23,7 +23,7 @@ func (a *API) Libraries() http.HandlerFunc {
 func (a *API) CatalogOptions() http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
-		// LibraryKeys identifies the Plex libraries included in the room.
+		// LibraryKeys identifies the media libraries included in the room.
 		LibraryKeys []string `json:"libraryKeys"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {

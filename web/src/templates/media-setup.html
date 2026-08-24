@@ -1,0 +1,26 @@
+<template id="media-setup-template">
+  <section class="panel">
+    <div class="eyebrow">Media server</div>
+    <h2>Choose your library source.</h2>
+    <p class="lede">
+      ScreenDeck uses one media provider per installation. Connect the server
+      that owns the movie and TV libraries you want to swipe through.
+    </p>
+    <div class="server-list provider-list">
+      <button class="server-choice" type="button" data-ref="plex">
+        <span>
+          <strong>Plex</strong>
+          <small>Authorize with your Plex account and select a server.</small>
+        </span>
+        <span>Choose →</span>
+      </button>
+      <button class="server-choice" type="button" data-ref="jellyfin">
+        <span>
+          <strong>Jellyfin</strong>
+          <small>Connect directly with your server URL and Jellyfin user.</small>
+        </span>
+        <span>Choose →</span>
+      </button>
+    </div>
+  </section>
+</template>

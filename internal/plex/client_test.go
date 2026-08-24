@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,7 +52,7 @@ func TestItems(t *testing.T) {
 
 		client, err := New(server.URL, "token")
 		require.NoError(t, err)
-		items, err := client.Items(t.Context(), Library{Key: "1", Title: "Films", Type: "movie"})
+		items, err := client.Items(t.Context(), media.Library{Key: "1", Title: "Films", Type: "movie"})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, "Arrival", items[0].Title)
@@ -73,7 +74,7 @@ func TestItems(t *testing.T) {
 
 		client, err := New(server.URL, "token")
 		require.NoError(t, err)
-		items, err := client.Items(t.Context(), Library{Key: "2", Title: "TV", Type: "show"})
+		items, err := client.Items(t.Context(), media.Library{Key: "2", Title: "TV", Type: "show"})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, "show", items[0].Type)
@@ -87,7 +88,7 @@ func TestItems(t *testing.T) {
 		client, err := New("http://plex.test", "token")
 		require.NoError(t, err)
 
-		_, err = client.Items(t.Context(), Library{Key: "../secret", Type: "movie"})
+		_, err = client.Items(t.Context(), media.Library{Key: "../secret", Type: "movie"})
 		require.ErrorIs(t, err, ErrInvalidLibrary)
 	})
 
@@ -97,7 +98,7 @@ func TestItems(t *testing.T) {
 		client, err := New("http://plex.test", "token")
 		require.NoError(t, err)
 
-		_, err = client.Items(t.Context(), Library{Key: "1", Type: "artist"})
+		_, err = client.Items(t.Context(), media.Library{Key: "1", Type: "artist"})
 		require.ErrorIs(t, err, ErrInvalidLibrary)
 	})
 }
@@ -157,7 +158,7 @@ func TestItemFromMetadata(t *testing.T) {
 		t.Parallel()
 
 		item := itemFromMetadata(
-			Library{Key: "1", Type: "movie"},
+			media.Library{Key: "1", Type: "movie"},
 			metadataItem{
 				RatingKey: "42",
 				GUID:      "plex://movie/42",
@@ -173,8 +174,8 @@ func TestItemFromMetadata(t *testing.T) {
 			},
 		)
 
-		assert.Equal(t, "42", item.RatingKey)
-		assert.Equal(t, "1", item.Library)
+		assert.Equal(t, "42", item.ID)
+		assert.Equal(t, "1", item.LibraryKey)
 		assert.Equal(t, "movie", item.Type)
 		assert.True(t, item.Viewed)
 		assert.Equal(t, []string{"Drama", "Science Fiction"}, item.Genres)
@@ -184,7 +185,7 @@ func TestItemFromMetadata(t *testing.T) {
 		t.Parallel()
 
 		item := itemFromMetadata(
-			Library{Key: "2", Type: "show"},
+			media.Library{Key: "2", Type: "show"},
 			metadataItem{
 				RatingKey:       "84",
 				Title:           "Severance",
@@ -202,7 +203,7 @@ func TestItemFromMetadata(t *testing.T) {
 		t.Parallel()
 
 		item := itemFromMetadata(
-			Library{Key: "2", Type: "show"},
+			media.Library{Key: "2", Type: "show"},
 			metadataItem{
 				RatingKey:       "84",
 				Title:           "Severance",

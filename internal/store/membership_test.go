@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,8 +102,8 @@ func newMembershipTestStore(t *testing.T, ctx context.Context) *Store {
 	require.NoError(t, err)
 	require.NoError(t, database.SaveLibrary(
 		ctx,
-		plex.Library{Key: "1", Title: "Films", Type: "movie"},
-		[]plex.Item{{RatingKey: "item", Library: "1", Type: "movie", Title: "Arrival"}},
+		media.Library{Key: "1", Title: "Films", Type: "movie"},
+		[]media.Item{{ID: "item", LibraryKey: "1", Type: "movie", Title: "Arrival"}},
 	))
 	return database
 }

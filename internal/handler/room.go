@@ -16,7 +16,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 	type request struct {
 		// Name is the display name.
 		Name string `json:"name"`
-		// LibraryKeys identifies the Plex libraries included in the room.
+		// LibraryKeys identifies the media libraries included in the room.
 		LibraryKeys []string `json:"libraryKeys"`
 		// Filters contains room-wide catalog filters.
 		Filters room.Filters `json:"filters"`

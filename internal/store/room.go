@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/media"
 )
 
 // RoomPhase identifies the current lifecycle phase of a room.
@@ -68,7 +68,7 @@ type MoreTitlesState struct {
 // WinnerState contains the final winning item and its supporters.
 type WinnerState struct {
 	// Item is the winning media item.
-	Item plex.Item `json:"item"`
+	Item media.Item `json:"item"`
 	// LikedBy contains participants whose likes support the winner.
 	LikedBy []Participant `json:"likedBy"`
 }
@@ -82,9 +82,9 @@ type RoomState struct {
 	// Participants contains all active room participants.
 	Participants []Participant `json:"participants"`
 	// Candidate is the next eligible item for the authenticated participant.
-	Candidate *plex.Item `json:"candidate,omitempty"`
+	Candidate *media.Item `json:"candidate,omitempty"`
 	// Matches contains items unanimously liked by active participants.
-	Matches []plex.Item `json:"matches"`
+	Matches []media.Item `json:"matches"`
 	// Winner contains final winner details when the room is finished.
 	Winner *WinnerState `json:"winner,omitempty"`
 	// Progress contains participant-specific swipe counts.
@@ -465,7 +465,7 @@ FROM (
   WHERE room_code = ?
 ) rp
 JOIN media_items m
-  ON m.rating_key = rp.item_id
+  ON m.id = rp.item_id
 JOIN json_each(m.genres) j
 WHERE trim(CAST(j.value AS TEXT)) <> ''
 ORDER BY CAST(j.value AS TEXT) COLLATE NOCASE
@@ -705,7 +705,7 @@ func scanParticipant(row scanner, ownerID string) (Participant, error) {
 }
 
 // loadNextRoundState returns current-round readiness and requester information.
-func (s *Store) loadNextRoundState(ctx context.Context, code string, room Room, participants []Participant, matches []plex.Item) (NextRoundState, error) {
+func (s *Store) loadNextRoundState(ctx context.Context, code string, room Room, participants []Participant, matches []media.Item) (NextRoundState, error) {
 	state := NextRoundState{Required: len(participants)}
 
 	const readyQuery = `
@@ -780,7 +780,7 @@ FROM participants p
 JOIN room_items rm
   ON rm.room_code = p.room_code
 JOIN media_items m
-  ON m.rating_key = rm.item_id
+  ON m.id = rm.item_id
 LEFT JOIN item_votes v
   ON v.room_code = rm.room_code
  AND v.item_id = rm.item_id
@@ -833,7 +833,7 @@ WHERE room_code = ?
 }
 
 // loadWinner returns final winner details when the room has converged on one match.
-func (s *Store) loadWinner(ctx context.Context, code string, room Room, matches []plex.Item) (*WinnerState, error) {
+func (s *Store) loadWinner(ctx context.Context, code string, room Room, matches []media.Item) (*WinnerState, error) {
 	if room.Phase != RoomPhaseFinished || len(matches) != 1 {
 		return nil, nil
 	}
@@ -853,7 +853,7 @@ WHERE p.room_code = ?
   AND v.liked = 1
 ORDER BY p.joined_at
 `
-	rows, err := s.db.QueryContext(ctx, query, code, matches[0].RatingKey)
+	rows, err := s.db.QueryContext(ctx, query, code, matches[0].ID)
 	if err != nil {
 		return nil, err
 	}
@@ -907,10 +907,10 @@ WHERE room_code = ?
 }
 
 // nextItem returns the next unvoted media item for a participant.
-func (s *Store) nextItem(ctx context.Context, code, participantID string) (*plex.Item, error) {
+func (s *Store) nextItem(ctx context.Context, code, participantID string) (*media.Item, error) {
 	const query = `
 SELECT
-  m.rating_key,
+  m.id,
   m.library_key,
   m.media_type,
   m.guid,
@@ -926,7 +926,7 @@ FROM participants p
 JOIN room_items rm
   ON rm.room_code = p.room_code
 JOIN media_items m
-  ON m.rating_key = rm.item_id
+  ON m.id = rm.item_id
 LEFT JOIN item_votes v
   ON v.room_code = rm.room_code
  AND v.item_id = rm.item_id
@@ -969,10 +969,10 @@ LIMIT 1
 }
 
 // matchItems returns media liked by every active participant.
-func (s *Store) matchItems(ctx context.Context, code string) ([]plex.Item, error) {
+func (s *Store) matchItems(ctx context.Context, code string) ([]media.Item, error) {
 	const query = `
 SELECT
-  m.rating_key,
+  m.id,
   m.library_key,
   m.media_type,
   m.guid,
@@ -986,7 +986,7 @@ SELECT
   m.added_at
 FROM item_matches x
 JOIN media_items m
-  ON m.rating_key = x.item_id
+  ON m.id = x.item_id
 WHERE x.room_code = ?
 ORDER BY x.matched_at DESC, m.title
 `
@@ -996,7 +996,7 @@ ORDER BY x.matched_at DESC, m.title
 	}
 	defer rows.Close() // nolint:errcheck
 
-	var items []plex.Item
+	var items []media.Item
 	for rows.Next() {
 		item, err := scanItem(rows)
 		if err != nil {
@@ -1016,12 +1016,12 @@ type scanner interface {
 }
 
 // scanItem decodes a media item from a database row.
-func scanItem(row scanner) (*plex.Item, error) {
-	var item plex.Item
+func scanItem(row scanner) (*media.Item, error) {
+	var item media.Item
 	var genres string
 	if err := row.Scan(
-		&item.RatingKey,
-		&item.Library,
+		&item.ID,
+		&item.LibraryKey,
 		&item.Type,
 		&item.GUID,
 		&item.Title,
@@ -1127,7 +1127,7 @@ WHERE EXISTS (
   SELECT 1
   FROM participants p
   JOIN media_items m
-    ON m.rating_key = ?
+    ON m.id = ?
   WHERE p.id = ?
     AND p.room_code = ?
     AND (

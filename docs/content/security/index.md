@@ -5,21 +5,23 @@ hide:
 
 # Security
 
-## Plex credentials
+## Media-server credentials
 
-Plex account/server tokens and the experimental Ed25519 private key are encrypted with AES-256-GCM before they are stored in SQLite.
+ScreenDeck supports Plex and Jellyfin while keeping provider-specific authentication separate from the common media catalog.
 
-For persistent databases, the separate `auth.key` file is created with mode `0600`. Back up the database and authentication key together; encrypted credentials cannot be recovered if the key is lost.
+Plex account/server tokens and the experimental Ed25519 private key are encrypted with AES-256-GCM before they are stored in SQLite. Jellyfin setup sends the supplied username and password to the configured Jellyfin server and persists only the returned access token, server identity, user identity, and ScreenDeck device identifier. The Jellyfin password is not stored.
+
+For persistent databases, the separate `auth.key` file is created with mode `0600`. Back up the database and authentication key together; encrypted provider credentials cannot be recovered if the key is lost.
 
 When `database-path` is set to `:memory:`, ScreenDeck generates the encryption key in memory instead. No `auth.key` file is created, and both the key and database contents are lost when the application stops.
 
-Plex credentials are kept on the ScreenDeck server and are not sent to guest browsers. Temporary Plex setup tokens only authorize the server-selection flow.
+Because Jellyfin credentials pass through ScreenDeck during initial setup, use HTTPS or a trusted private network when the ScreenDeck UI is accessed remotely.
 
 ## Browser identities and saved rooms
 
 Each browser profile receives a long-lived random identity cookie marked `HttpOnly` and `SameSite=Lax`. ScreenDeck stores only the hash of that identity token in SQLite.
 
-When the browser creates or joins a room, the participant is associated with that browser identity. The saved membership contains an encrypted copy of the participant session token, using the same local encryption key as Plex credentials. This powers the **Your rooms** list and lets the browser resume the same participant instead of creating a duplicate.
+When the browser creates or joins a room, the participant is associated with that browser identity. The saved membership contains an encrypted copy of the participant session token, using the same local encryption key as media-provider credentials. This powers the **Your rooms** list and lets the browser resume the same participant instead of creating a duplicate.
 
 The browser identity is not a ScreenDeck account. It is local to that browser profile and does not automatically synchronize between browsers, profiles, or devices. Clearing the identity cookie removes that browser's ability to discover its saved memberships through **Your rooms**.
 
@@ -37,4 +39,4 @@ The default deployment is intended for a trusted LAN or private network. For rem
 
 ## Logs
 
-Diagnostic logging includes request IDs, Plex connection metadata, HTTP status, and request duration where useful. Plex tokens, browser identity tokens, participant session tokens, PIN codes, JWTs, and private keys should never be written to logs.
+Diagnostic logging includes request IDs, media-provider connection metadata, HTTP status, and request duration where useful. Plex tokens, Jellyfin access tokens, Jellyfin passwords, browser identity tokens, participant session tokens, PIN codes, JWTs, and private keys should never be written to logs.
