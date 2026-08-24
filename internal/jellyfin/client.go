@@ -16,7 +16,7 @@ import (
 	"github.com/gi8lino/screendeck/internal/media"
 )
 
-const maxCatalogItems = 50000
+const maxCatalogItems = 50_000
 
 // Client performs authenticated read-only requests against a Jellyfin server.
 type Client struct {

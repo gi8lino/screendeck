@@ -48,7 +48,7 @@ func TestAuthManagerConnect(t *testing.T) {
 		defer server.Close()
 
 		store := &memoryAuthStore{}
-		manager, err := NewAuthManager(t.Context(), store, nil, "test")
+		manager, err := NewProvider(t.Context(), store, nil, "test")
 		require.NoError(t, err)
 		require.NoError(t, manager.Connect(t.Context(), server.URL, " alice ", "secret-password"))
 
@@ -78,7 +78,7 @@ func TestAuthManagerConfigured(t *testing.T) {
 			AccessToken: "access-token",
 			DeviceID:    "device",
 		}}
-		manager, err := NewAuthManager(t.Context(), store, nil, "test")
+		manager, err := NewProvider(t.Context(), store, nil, "test")
 		require.NoError(t, err)
 		configured, serverName := manager.Configured()
 		assert.True(t, configured)

@@ -65,7 +65,7 @@ func (f *Factory) Create(ctx context.Context) (Services, error) {
 		return Services{}, fmt.Errorf("configure Plex: %w", err)
 	}
 
-	jellyfinAuth, err := jellyfin.NewAuthManager(
+	jellyfinAuth, err := jellyfin.NewProvider(
 		ctx,
 		f.store,
 		f.logger.With("component", "jellyfin"),
