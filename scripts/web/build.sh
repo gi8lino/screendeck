@@ -7,6 +7,7 @@ ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 SOURCE_DIR="$ROOT_DIR/web/src"
 TEMPLATE_DIR="$SOURCE_DIR/templates"
 OUTPUT_DIR="$ROOT_DIR/web/dist"
+LOGO_SOURCE="$ROOT_DIR/docs/content/assets/logo.svg"
 INDEX_SOURCE="$SOURCE_DIR/index.html"
 MARKER='    <!-- SCREENDECK_TEMPLATES -->'
 
@@ -17,6 +18,7 @@ fi
 
 for required in \
   "$INDEX_SOURCE" \
+  "$LOGO_SOURCE" \
   "$SOURCE_DIR/favicon.svg" \
   "$SOURCE_DIR/css/app.css" \
   "$SOURCE_DIR/js/app.js"; do
@@ -39,6 +41,7 @@ trap cleanup EXIT INT TERM
 
 mkdir -p "$work/css" "$work/js"
 cp "$SOURCE_DIR/favicon.svg" "$work/favicon.svg"
+cp "$LOGO_SOURCE" "$work/logo.svg"
 cp "$SOURCE_DIR/css/app.css" "$work/css/app.css"
 cp "$SOURCE_DIR/js/"*.js "$work/js/"
 
