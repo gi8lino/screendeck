@@ -45,63 +45,53 @@ const participants = [
 ];
 
 const items = {
-  arrival: media(
-    "arrival",
-    "Arrival",
-    2016,
+  signal: media(
+    "signal",
+    "Signal at Perihelion",
+    2024,
     "movie",
-    7.9,
-    ["Drama", "Science Fiction", "Mystery"],
-    6960000,
+    8.1,
+    ["Science Fiction", "Mystery"],
+    7080000,
   ),
-  dune: media(
-    "dune",
-    "Dune",
+  "cold-boot": media(
+    "cold-boot",
+    "Cold Boot Horizon",
     2021,
     "movie",
-    8.0,
-    ["Adventure", "Drama", "Science Fiction"],
-    9300000,
+    7.6,
+    ["Science Fiction", "Thriller"],
+    6240000,
   ),
-  knives: media(
-    "knives",
-    "Knives Out",
-    2019,
-    "movie",
-    7.9,
-    ["Comedy", "Crime", "Mystery"],
-    7860000,
-  ),
-  severance: media(
-    "severance",
-    "Severance",
-    2022,
+  parallax: media(
+    "parallax",
+    "Parallax Station",
+    2023,
     "show",
-    8.7,
-    ["Drama", "Mystery", "Thriller"],
+    8.4,
+    ["Drama", "Mystery", "Science Fiction"],
     0,
   ),
-  expanse: media(
-    "expanse",
-    "The Expanse",
-    2015,
+  kepler: media(
+    "kepler",
+    "Night Shift at Kepler-9",
+    2022,
     "show",
-    8.5,
-    ["Drama", "Science Fiction", "Thriller"],
+    7.9,
+    ["Comedy", "Science Fiction"],
     0,
   ),
 };
 
 const summaries = {
-  arrival:
-    "A linguist works with the military to communicate with mysterious visitors whose arrival could reshape humanity.",
-  dune: "A young heir travels to a dangerous desert world where rival houses fight over its most valuable resource.",
-  knives:
-    "A detective untangles a family full of motives after a celebrated novelist dies under suspicious circumstances.",
-  severance:
-    "Office workers discover that separating work memories from personal life creates more questions than it answers.",
-  expanse:
-    "A missing-person case pulls strangers into a conspiracy that stretches across a colonized solar system.",
+  signal:
+    "At a solar observatory on the edge of survivable space, a buried transmission begins answering questions nobody has asked.",
+  "cold-boot":
+    "A systems engineer crosses a frozen colony to restart its planetary computer before the final reserve power disappears.",
+  parallax:
+    "Investigators aboard an orbital station discover that every witness remembers a different version of the same impossible crime.",
+  kepler:
+    "Four underqualified technicians keep a remote research outpost running through strange failures, bad coffee, and very long nights.",
 };
 
 for (const item of Object.values(items)) {
@@ -143,8 +133,8 @@ function activeState(token) {
     },
     me: participantFor(token),
     participants,
-    candidate: items.arrival,
-    matches: [items.dune, items.knives, items.severance, items.expanse],
+    candidate: items.signal,
+    matches: [items["cold-boot"], items.parallax, items.kepler],
     progress: {
       voted: 74,
       total: 250,
@@ -182,9 +172,9 @@ function winnerState() {
     },
     me: roster[0],
     participants: roster,
-    matches: [items.arrival],
+    matches: [items.parallax],
     winner: {
-      item: items.arrival,
+      item: items.parallax,
       likedBy: roster,
     },
     progress: {
@@ -249,6 +239,30 @@ async function actionDemoPage(response, buttonLabel) {
     observer.observe(document.documentElement, { childList: true, subtree: true });
   </script>`;
   const body = index.replace("</body>", `${openAction}</body>`);
+
+  response.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+  });
+  response.end(body);
+}
+
+// matchesDemoPage opens the real room view and expands its fictional match pile.
+async function matchesDemoPage(response) {
+  const index = await fs.readFile(path.join(webRoot, "index.html"), "utf8");
+  const session = JSON.stringify({ code: roomCode, token: "demo-host" });
+  const openMatches = `<script>
+    localStorage.setItem("screendeck.session", ${JSON.stringify(session)});
+    history.replaceState(null, "", "/?room=${roomCode}");
+    const observer = new MutationObserver(() => {
+      const pile = document.querySelector(".match-pile");
+      if (!pile) return;
+      observer.disconnect();
+      pile.click();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  </script>`;
+  const body = index.replace("</body>", `${openMatches}</body>`);
 
   response.writeHead(200, {
     "Content-Type": "text/html; charset=utf-8",
@@ -377,9 +391,7 @@ async function handleAPIRequest(request, response, url) {
         response,
         200,
         demoConfig(
-          !String(request.headers.referer || "").includes(
-            "/demo/media-setup",
-          ),
+          !String(request.headers.referer || "").includes("/demo/media-setup"),
         ),
       );
       return true;
@@ -455,6 +467,10 @@ async function handleDemoPage(request, response, url) {
   }
   if (request.method === "GET" && url.pathname === "/demo/media-setup") {
     await actionDemoPage(response, "Connect media server");
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/demo/matches") {
+    await matchesDemoPage(response);
     return true;
   }
   if (request.method !== "GET" || !demoPages.has(url.pathname)) return false;
