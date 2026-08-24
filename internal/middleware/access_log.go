@@ -29,8 +29,8 @@ func (r *responseRecorder) Flush() {
 	}
 }
 
-// RequestLogging logs the method, path, status, client, and duration of requests.
-func RequestLogging(logger *slog.Logger) Middleware {
+// AccessLog logs the method, path, status, client, and duration of requests.
+func AccessLog(logger *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			started := time.Now()

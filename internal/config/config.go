@@ -27,8 +27,10 @@ type Config struct {
 	RoomTTL time.Duration
 	// LogFormat selects structured text or JSON logging.
 	LogFormat logging.LogFormat
-	// Debug enables verbose request and diagnostic logging.
+	// Debug enables verbose diagnostic logging.
 	Debug bool
+	// AccessLog enables HTTP request access logging.
+	AccessLog bool
 	// Experimental enables experimental application features.
 	Experimental bool
 	// RoomCleanupInterval controls how often expired rooms are removed.
@@ -115,9 +117,10 @@ func Parse(args []string, version string) (Config, error) {
 		Value()
 
 	// Logging
-	tf.BoolVar(&cfg.Debug, "debug", false, "Enable debug request logging").
+	tf.BoolVar(&cfg.Debug, "debug", false, "Enable verbose diagnostic logging").
 		Short("d").
 		Value()
+	tf.BoolVar(&cfg.AccessLog, "access-log", false, "Enable HTTP request access logging").Value()
 
 	logFormat := tf.String("log-format", "json", "Log output format").
 		Choices(string(logging.LogFormatText), string(logging.LogFormatJSON)).

@@ -89,7 +89,7 @@ func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string
 		serverLogger,
 	)
 
-	router, err := routes.NewRouter(appFS, api, serverLogger, cfg.Debug)
+	router, err := routes.NewRouter(appFS, api, serverLogger, cfg.AccessLog)
 	if err != nil {
 		setupLogger.Error("application failed",
 			"event", "app_failed",

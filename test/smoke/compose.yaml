@@ -18,6 +18,7 @@ services:
       SCREENDECK__PLEX_URL_OVERRIDE: http://plex:32400
       SCREENDECK__LOG_FORMAT: text
       SCREENDECK__DEBUG: "true"
+      SCREENDECK__ACCESS_LOG: "true"
     volumes:
       - /tmp/screendeck/data:/data
 

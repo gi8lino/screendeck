@@ -22,6 +22,7 @@ func TestParse(t *testing.T) {
 			"--log-format", "text",
 			"--experimental",
 			"--debug",
+			"--access-log",
 		}, "test")
 		require.NoError(t, err)
 		assert.Equal(t, "127.0.0.1:9090", cfg.ListenAddress)
@@ -31,6 +32,7 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, 2*time.Hour, cfg.RoomTTL)
 		assert.Equal(t, "text", string(cfg.LogFormat))
 		assert.True(t, cfg.Debug)
+		assert.True(t, cfg.AccessLog)
 		assert.True(t, cfg.Experimental)
 	})
 
@@ -39,6 +41,7 @@ func TestParse(t *testing.T) {
 		t.Setenv("SCREENDECK__EXCLUDE_LIBRARIES", "Kids, Archive")
 		t.Setenv("SCREENDECK__PLEX_URL_OVERRIDE", "http://127.0.0.1:32400")
 		t.Setenv("SCREENDECK__ROOM_TTL", "30m")
+		t.Setenv("SCREENDECK__ACCESS_LOG", "true")
 
 		cfg, err := Parse(nil, "test")
 		require.NoError(t, err)
@@ -46,6 +49,7 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, []string{"Kids", "Archive"}, cfg.ExcludeLibraries)
 		assert.Equal(t, "http://127.0.0.1:32400", cfg.PlexURLOverride)
 		assert.Equal(t, 30*time.Minute, cfg.RoomTTL)
+		assert.True(t, cfg.AccessLog)
 	})
 
 	t.Run("rejects invalid Plex URL override", func(t *testing.T) {

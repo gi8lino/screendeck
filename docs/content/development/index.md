@@ -266,7 +266,7 @@ If Plex is reachable through a local port-forward, keep normal Plex authorizatio
 
 ```sh
 kubectl -n media port-forward service/plex 32400:32400
-go run ./cmd --plex-url-override http://127.0.0.1:32400 --debug --log-format text
+go run ./cmd --plex-url-override http://127.0.0.1:32400 --debug --access-log --log-format text
 ```
 
 The override is not persisted. Supply it again whenever ScreenDeck starts with the port-forward.

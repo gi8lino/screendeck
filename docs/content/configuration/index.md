@@ -18,7 +18,8 @@ ScreenDeck accepts command-line flags and environment variables. Environment var
 | `--room-ttl`              | `SCREENDECK__ROOM_TTL`              | `24h`                   | How long rooms and their saved memberships remain available.   |
 | `--room-cleanup-interval` | `SCREENDECK__ROOM_CLEANUP_INTERVAL` | `1h`                    | How often expired rooms are deleted.                           |
 | `--log-format` / `-l`     | `SCREENDECK__LOG_FORMAT`            | `json`                  | Log format: `json` or `text`.                                  |
-| `--debug` / `-d`          | `SCREENDECK__DEBUG`                 | `false`                 | Enables verbose request and diagnostic logging.                |
+| `--debug` / `-d`          | `SCREENDECK__DEBUG`                 | `false`                 | Enables verbose diagnostic logging.                            |
+| `--access-log`            | `SCREENDECK__ACCESS_LOG`            | `false`                 | Logs each HTTP request with status and duration.               |
 | `--experimental`          | `SCREENDECK__EXPERIMENTAL`          | `false`                 | Enables experimental features such as Plex JWT authentication. |
 
 Use the built-in help for the exact configuration supported by the running version:

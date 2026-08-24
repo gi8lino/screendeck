@@ -160,6 +160,7 @@ run: web ## Run ScreenDeck locally.
 	go run $(COMMAND) \
     --plex-url-override http://127.0.0.1:32400 \
     --debug \
+    --access-log \
     --log-format text
 
 .PHONY: build

@@ -10,7 +10,7 @@ import (
 )
 
 // NewRouter wires the ScreenDeck HTTP routes and middleware.
-func NewRouter(appFS fs.FS, api *handler.API, logger *slog.Logger, debug bool) (http.Handler, error) {
+func NewRouter(appFS fs.FS, api *handler.API, logger *slog.Logger, accessLog bool) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", api.Health())
 	mux.HandleFunc("GET /api/config", api.Config())
@@ -37,8 +37,8 @@ func NewRouter(appFS fs.FS, api *handler.API, logger *slog.Logger, debug bool) (
 
 	var routed http.Handler = mux
 	routed = middleware.Chain(routed, middleware.SecurityHeaders, middleware.RecoverPanics(logger))
-	if debug {
-		return middleware.Chain(routed, middleware.RequestLogging(logger), middleware.RequestID()), nil
+	if accessLog {
+		return middleware.Chain(routed, middleware.AccessLog(logger), middleware.RequestID()), nil
 	}
 	return middleware.Chain(routed, middleware.RequestID()), nil
 }
