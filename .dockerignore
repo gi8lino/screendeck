@@ -5,3 +5,4 @@ data
 screendeck
 coverage.out
 web/dist
+test/smoke/media

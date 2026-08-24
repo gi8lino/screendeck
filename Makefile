@@ -18,6 +18,17 @@ DOCS_SITE := $(DOCS_DIR)/.site
 WEB_BUILD := scripts/web/build.sh
 NODE ?= node
 
+## Local smoke environment
+SMOKE_COMPOSE := test/smoke/compose.yaml
+SMOKE_ENV := test/smoke/.env
+SMOKE_PROJECT := screendeck-smoke
+SMOKE_MEDIA_GENERATE := scripts/dev/generate-media.sh
+SMOKE_MEDIA_DIR := ./test/smoke/media/generated
+SMOKE_DATA_DIR := /tmp/screendeck/data
+SMOKE_ENV_ARG = $(if $(wildcard $(SMOKE_ENV)),--env-file $(SMOKE_ENV))
+SMOKE = docker compose $(SMOKE_ENV_ARG) -p $(SMOKE_PROJECT) -f $(SMOKE_COMPOSE)
+FFMPEG ?= ffmpeg
+
 ## Node.js Tooling
 NPM ?= npm
 NODE_MODULES := $(DOCS_DIR)/node_modules
@@ -45,10 +56,11 @@ SCREENSHOT_CAPTURE := scripts/screenshots/capture.sh
 SCREENSHOT_NORMALIZE := scripts/screenshots/normalize.sh
 
 ## Formatting Sources
-PRETTIER_MD_SOURCES := README.md "docs/content/**/*.md"
+PRETTIER_MD_SOURCES := README.md "docs/content/**/*.md" "test/**/*.md"
 PRETTIER_YAML_SOURCES := \
 	".github/**/*.{yml,yaml}" \
 	"deploy/**/*.{yml,yaml}" \
+	"test/**/*.{yml,yaml}" \
 	"docs/mkdocs.yml" \
 	"docs/content/.nav.yml" \
 	"docs/content/**/.nav.yml"
@@ -104,6 +116,32 @@ push: ## Push tags to the configured remote.
 	git push --tags
 
 ##@ Development
+
+.PHONY: smoke-media
+smoke-media: ## Generate deterministic synthetic media for local provider smoke tests.
+	@FFMPEG="$(FFMPEG)" $(SMOKE_MEDIA_GENERATE) "$(SMOKE_MEDIA_DIR)"
+
+.PHONY: smoke-media-clean
+smoke-media-clean: ## Remove only the generated synthetic smoke media.
+	rm -rf $(SMOKE_MEDIA_DIR)
+
+.PHONY: smoke-up
+smoke-up: ## Start the local ScreenDeck, Jellyfin, and Plex smoke stack.
+	mkdir -p $(SMOKE_DATA_DIR)
+	chmod 1777 $(SMOKE_DATA_DIR)
+	$(SMOKE) up -d --build
+
+.PHONY: smoke-down
+smoke-down: ## Stop the local smoke stack while preserving its volumes.
+	$(SMOKE) down --remove-orphans
+
+.PHONY: smoke-reset
+smoke-reset: ## Remove the local smoke stack and all provider/application state.
+	$(SMOKE) down --volumes --remove-orphans
+
+.PHONY: smoke-logs
+smoke-logs: ## Follow logs from the local smoke stack.
+	$(SMOKE) logs --follow screendeck jellyfin plex
 
 .PHONY: web
 web: ## Build the frontend distribution from web/src.

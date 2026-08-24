@@ -57,6 +57,7 @@ deploy               deployment examples
 docs                 documentation project, sources, assets, and tooling dependencies
 scripts/web           frontend distribution build
 scripts/screenshots   documentation screenshot capture and normalization helpers
+test/smoke            local ScreenDeck, Jellyfin, and Plex smoke environment
 ```
 
 ## Media-provider architecture
@@ -70,6 +71,35 @@ Room orchestration depends only on the provider-neutral catalog contract in `int
 `internal/media/factory` is the composition boundary. It constructs the Plex and Jellyfin services, registers them with `media.Manager`, and returns both the provider-neutral runtime manager and the provider-specific setup services needed by the HTTP handlers. `internal/app` therefore does not construct or register individual providers itself.
 
 ScreenDeck intentionally activates one provider per installation. This keeps persisted library keys, item IDs, cached metadata, and poster references in one provider namespace. A future provider such as Emby can be added by implementing `media.Provider` and registering its constructor in the factory while keeping its authentication logic separate.
+
+## Local provider smoke tests
+
+The local smoke environment under `test/smoke/` runs ScreenDeck with real Jellyfin and Plex containers. It is intended for manual end-to-end validation and is deliberately not part of the GitHub Actions test workflow. Normal CI continues to use deterministic unit and HTTP test servers instead of external media-server containers.
+
+Generate a deterministic local media library with FFmpeg, then start the stack:
+
+```sh
+make smoke-media
+make smoke-up
+```
+
+The generated fixtures live under `test/smoke/media/generated/` and include six synthetic movies plus a two-episode TV show. They use valid MP4 containers, local posters, and lightweight sidecar metadata without committing binary media to Git. `make smoke-media-clean` removes only the generated fixtures, leaving any manually supplied test media untouched.
+
+ScreenDeck is exposed on port `8080`, Jellyfin on `8096`, and Plex on `32400`. The smoke Compose network lets ScreenDeck contact Jellyfin as `http://jellyfin:8096`; Plex catalog traffic uses the configured `http://plex:32400` runtime override while account authorization still follows the normal Plex flow.
+
+Stop the stack without losing provider configuration or the ScreenDeck database:
+
+```sh
+make smoke-down
+```
+
+To remove all smoke-state volumes and return Jellyfin, Plex, and ScreenDeck to a fresh state while preserving the media files:
+
+```sh
+make smoke-reset
+```
+
+Use `make smoke-logs` to follow all three services. See `test/smoke/README.md` for first-run Jellyfin and Plex setup details and the smoke checklist.
 
 ## Frontend rendering
 

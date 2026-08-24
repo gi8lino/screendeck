@@ -1,0 +1,50 @@
+name: screendeck-smoke
+
+services:
+  screendeck:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: screendeck:smoke
+    depends_on:
+      - jellyfin
+      - plex
+    ports:
+      - "8080:8080"
+    environment:
+      SCREENDECK__BASE_URL: http://localhost:8080
+      SCREENDECK__DATABASE_PATH: /data/screendeck.db
+      SCREENDECK__AUTH_KEY_PATH: /data/auth.key
+      SCREENDECK__PLEX_URL_OVERRIDE: http://plex:32400
+      SCREENDECK__LOG_FORMAT: text
+      SCREENDECK__DEBUG: "true"
+    volumes:
+      - /tmp/screendeck/data:/data
+
+  jellyfin:
+    image: ${JELLYFIN_IMAGE:-jellyfin/jellyfin:latest}
+    ports:
+      - "8096:8096"
+    environment:
+      JELLYFIN_PublishedServerUrl: http://localhost:8096
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - ./media:/media:ro
+
+  plex:
+    image: ${PLEX_IMAGE:-plexinc/pms-docker:latest}
+    ports:
+      - "32400:32400"
+    environment:
+      TZ: ${TZ:-UTC}
+      PLEX_CLAIM: ${PLEX_CLAIM:-}
+      ADVERTISE_IP: http://localhost:32400/
+    volumes:
+      - plex-config:/config
+      - ./media:/media:ro
+
+volumes:
+  jellyfin-config:
+  jellyfin-cache:
+  plex-config:

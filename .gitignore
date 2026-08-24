@@ -13,3 +13,5 @@ coverage.out
 /docs/.site/
 /docs/.venv/
 /web/dist/
+/test/smoke/media/*
+!/test/smoke/media/.gitkeep
