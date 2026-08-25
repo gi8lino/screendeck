@@ -58,6 +58,24 @@ export function messageElement(templateID, message) {
   return element;
 }
 
+// loadingElement creates a branded loading state with an accessible message.
+export function loadingElement(message) {
+  const loading = document.createElement("div");
+  loading.className = "loading";
+  loading.setAttribute("role", "status");
+
+  const mark = document.createElement("img");
+  mark.className = "loading-mark";
+  mark.src = "/favicon.svg";
+  mark.alt = "";
+  mark.setAttribute("aria-hidden", "true");
+
+  const label = document.createElement("p");
+  label.textContent = message;
+  loading.append(mark, label);
+  return loading;
+}
+
 // confirmAction displays a ScreenDeck-styled confirmation dialog and resolves with the user's choice.
 export function confirmAction({
   title,

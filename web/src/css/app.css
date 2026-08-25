@@ -62,6 +62,22 @@ button {
   height: 64px;
   margin: 0 auto;
 }
+.room-connection {
+  width: fit-content;
+  margin: 8px 0 12px;
+  padding: 6px 10px;
+  border: 1px solid #f7c85d55;
+  border-radius: 999px;
+  background: #2a2418;
+  color: #f5d98f;
+  font-size: 12px;
+  font-weight: 750;
+}
+.poster-fallback {
+  padding: 22%;
+  background: linear-gradient(145deg, #27242c, #17151a);
+  object-fit: contain !important;
+}
 .topbar {
   display: flex;
   align-items: center;

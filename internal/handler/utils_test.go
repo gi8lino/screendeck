@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -152,5 +153,22 @@ func TestIsMediaUpstreamError(t *testing.T) {
 
 	t.Run("application error", func(t *testing.T) {
 		assert.False(t, isMediaUpstreamError(store.ErrNotFound))
+	})
+}
+
+// TestPublicErrorMessage verifies upstream details are replaced with actionable public copy.
+func TestPublicErrorMessage(t *testing.T) {
+	t.Run("upstream error", func(t *testing.T) {
+		err := fmt.Errorf("GET http://plex:32400: %w", plex.ErrServerContact)
+		assert.Equal(
+			t,
+			"media server unavailable; check that Plex or Jellyfin is running and reachable",
+			publicErrorMessage(err),
+		)
+	})
+
+	t.Run("application error", func(t *testing.T) {
+		err := errors.New("room is full")
+		assert.Equal(t, "room is full", publicErrorMessage(err))
 	})
 }

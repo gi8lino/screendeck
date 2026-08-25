@@ -3,6 +3,7 @@ import { getConfig, getSession, saveSession } from "./state.js";
 import {
   confirmAction,
   instantiateTemplate,
+  loadingElement,
   messageElement,
   root,
   showToast,
@@ -20,6 +21,7 @@ let matchQueue = [];
 let matchDialogOpen = false;
 let roomViewGeneration = 0;
 let posterPreloads = new Map();
+let roomConnectionState = "connecting";
 
 // renderRoom loads and displays the current room.
 export async function renderRoom(nextNavigation) {
@@ -27,6 +29,9 @@ export async function renderRoom(nextNavigation) {
   const session = getSession();
   if (!session) return navigation.renderHome();
   const generation = roomViewGeneration;
+  if (!root.querySelector(".room-head")) {
+    root.replaceChildren(topbar(), loadingElement("Loading your room…"));
+  }
   try {
     const state = await api(`/api/rooms/${encodeURIComponent(session.code)}`);
     if (generation !== roomViewGeneration) return;
@@ -49,6 +54,7 @@ export function stopRoomEvents() {
   eventSource?.close();
   eventSource = null;
   posterPreloads = new Map();
+  roomConnectionState = "connecting";
 }
 
 // preloadRoomPosters keeps the current and upcoming poster requests warm.
@@ -77,6 +83,7 @@ function drawRoom(state) {
 
   refs.roomEyebrow.textContent = `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`;
   refs.roomHeading.textContent = `Good hunting, ${state.me.name}.`;
+  renderConnectionState(refs.connection);
   renderParticipants(refs.participants, state);
   configureRoomCode(refs.roomCode, state.room.code);
   renderRoomMain(refs.roomContent, state);
@@ -91,6 +98,22 @@ function drawRoom(state) {
   if (nextRound) refs.roomControls.append(nextRound);
 
   root.replaceChildren(roomTopbar(session), fragment);
+}
+
+// renderConnectionState displays connection progress only while live updates are unavailable.
+function renderConnectionState(node) {
+  node.hidden = roomConnectionState === "connected";
+  node.textContent =
+    roomConnectionState === "reconnecting"
+      ? "Live updates interrupted · reconnecting…"
+      : "Connecting live updates…";
+}
+
+// setRoomConnectionState updates the connection indicator in the active room.
+function setRoomConnectionState(state) {
+  roomConnectionState = state;
+  const node = root.querySelector('[data-ref="connection"]');
+  if (node) renderConnectionState(node);
 }
 
 // roomTopbar creates navigation actions for the active room.
@@ -262,7 +285,7 @@ function matchSummary(state) {
     const { element: image, refs: imageRefs } = templateElement(
       "match-pile-poster-template",
     );
-    imageRefs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
+    setPoster(imageRefs.poster, item, true);
     refs.count.before(image);
   });
   refs.count.textContent = String(matches.length);
@@ -283,8 +306,7 @@ function showMatches(matches, round) {
       "match-grid-item-template",
     );
     button.title = `View details for ${item.title}`;
-    itemRefs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
-    itemRefs.poster.alt = `Poster for ${item.title}`;
+    setPoster(itemRefs.poster, item);
     itemRefs.title.textContent = item.title;
     button.onclick = () => {
       dialog.close();
@@ -443,8 +465,7 @@ function winnerCard(state) {
   const winner = state.winner;
   const item = winner.item;
   const { element: card, refs } = templateElement("winner-card-template");
-  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  refs.poster.alt = `Poster for ${item.title}`;
+  setPoster(refs.poster, item);
   refs.title.textContent = item.title;
   refs.meta.textContent = itemMetadata(item);
 
@@ -570,8 +591,7 @@ function itemCard(item, showDetails) {
     event.preventDefault();
     showDetails();
   };
-  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  refs.poster.alt = `Poster for ${item.title}`;
+  setPoster(refs.poster, item);
   refs.title.textContent = item.title;
   refs.meta.textContent = [
     item.type === "show" ? "TV series" : "Movie",
@@ -593,8 +613,7 @@ function showItemDetails(item) {
   document.querySelector(".item-dialog")?.remove();
   const { element: dialog, refs } = templateElement("item-dialog-template");
   refs.close.onclick = () => dialog.close();
-  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  refs.poster.alt = `Poster for ${item.title}`;
+  setPoster(refs.poster, item);
   refs.type.textContent = item.type === "show" ? "TV series" : "Movie";
   refs.title.textContent = item.title;
   refs.meta.textContent = itemMetadata(item).join("  ·  ");
@@ -674,8 +693,7 @@ function showNextMatch() {
   const { element: dialog, refs } = templateElement("match-dialog-template");
   dialog.dataset.itemId = item.id;
   refs.close.onclick = () => dialog.close();
-  refs.poster.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  refs.poster.alt = `Poster for ${item.title}`;
+  setPoster(refs.poster, item);
   refs.title.textContent = item.title;
 
   const metadata = itemMetadata(item);
@@ -815,6 +833,11 @@ function connectEvents() {
     `/api/rooms/${encodeURIComponent(session.code)}/events?token=${encodeURIComponent(session.token)}`,
   );
   eventSource = source;
+  setRoomConnectionState("connecting");
+  source.onopen = () => {
+    if (generation !== roomViewGeneration || source !== eventSource) return;
+    setRoomConnectionState("connected");
+  };
   source.addEventListener("update", (event) => {
     if (generation !== roomViewGeneration || source !== eventSource) return;
     if ((event.data === "changed" || event.data === "connected") && !voting) {
@@ -823,7 +846,23 @@ function connectEvents() {
   });
   source.onerror = () => {
     if (generation !== roomViewGeneration || source !== eventSource) return;
-    stopRoomEvents();
-    setTimeout(connectEvents, 3000);
+    source.close();
+    eventSource = null;
+    setRoomConnectionState("reconnecting");
+    setTimeout(() => {
+      if (generation === roomViewGeneration) connectEvents();
+    }, 3000);
   };
+}
+
+// setPoster loads an item poster and substitutes the ScreenDeck mark after failures.
+function setPoster(image, item, decorative = false) {
+  image.onerror = () => {
+    image.onerror = null;
+    image.classList.add("poster-fallback");
+    image.src = "/favicon.svg";
+    if (!decorative) image.alt = `Poster unavailable for ${item.title}`;
+  };
+  image.src = `/api/posters/${encodeURIComponent(item.id)}`;
+  image.alt = decorative ? "" : `Poster for ${item.title}`;
 }

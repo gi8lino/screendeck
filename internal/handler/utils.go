@@ -98,6 +98,14 @@ func isMediaUpstreamError(err error) bool {
 		errors.Is(err, jellyfin.ErrServerDecode)
 }
 
+// publicErrorMessage returns a safe, actionable message for an API error.
+func publicErrorMessage(err error) string {
+	if isMediaUpstreamError(err) {
+		return "media server unavailable; check that Plex or Jellyfin is running and reachable"
+	}
+	return err.Error()
+}
+
 // fail logs and writes an API error response.
 func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
 	status := statusForError(err)
@@ -108,7 +116,7 @@ func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
 		"status", status,
 		"error", err,
 	)
-	payload := map[string]any{"error": err.Error()}
+	payload := map[string]any{"error": publicErrorMessage(err)}
 	var validation validationError
 	if errors.As(err, &validation) {
 		payload["problems"] = validation.Problems
