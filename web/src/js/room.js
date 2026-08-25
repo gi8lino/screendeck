@@ -99,7 +99,6 @@ function drawRoom(state) {
     .join(" · ");
   refs.roomHeading.textContent = `Good hunting, ${state.me.name}.`;
   renderParticipants(refs.participants, state);
-  configureRoomCode(refs.roomCode, state.room.code);
   renderRoomMain(refs.roomContent, state);
   refs.progress.textContent = roomProgressText(state).join(" · ");
 
@@ -281,12 +280,6 @@ function renderParticipants(container, state) {
     }
     container.append(person);
   });
-}
-
-// configureRoomCode wires the static room-code button to the share action.
-function configureRoomCode(button, roomCode) {
-  button.textContent = roomCode;
-  button.onclick = () => showInviteDialog(roomCode);
 }
 
 // showInviteDialog presents the room code and every supported sharing action.

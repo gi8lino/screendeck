@@ -622,20 +622,7 @@ select option {
 }
 
 .room-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
   margin-bottom: 18px;
-}
-.room-code {
-  border: 1px solid #ffffff20;
-  background: transparent;
-  color: var(--text);
-  padding: 8px 13px;
-  border-radius: 12px;
-  letter-spacing: 0.16em;
-  font-weight: 850;
 }
 .people {
   display: flex;
