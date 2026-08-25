@@ -202,6 +202,15 @@ p {
   background: #1b191fe8;
   box-shadow: 0 28px 80px #0008;
 }
+.create-room-panel {
+  margin-top: 3vh;
+}
+.create-room-panel .form-row {
+  margin: 16px 0;
+}
+.create-room-panel .filter-box {
+  margin: 16px 0;
+}
 .form-row {
   margin: 22px 0;
 }
@@ -282,8 +291,49 @@ select option {
   border-color: #5de2a52e;
   background: #131a17;
 }
-.preference-box > .label {
+.filter-box summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.filter-box summary::-webkit-details-marker {
+  display: none;
+}
+.filter-box summary::before {
+  content: "›";
+  color: var(--red);
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.filter-box[open] summary::before {
+  transform: rotate(90deg);
+}
+.preference-box summary::before {
   color: var(--green);
+}
+.filter-summary {
+  max-width: 55%;
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+.filter-content {
+  padding-top: 14px;
+  border-top: 1px solid #ffffff10;
+  margin-top: 14px;
+}
+.filter-content > .muted:first-child {
+  margin-top: 0;
 }
 
 .form-row.compact {

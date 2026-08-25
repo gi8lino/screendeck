@@ -17,6 +17,7 @@ import {
 export async function renderCreateRoom(navigation) {
   const view = createRoomView(navigation);
   const selectedLibraries = () => selectedLibraryKeys(view.form);
+  wireFilterSummaries(view.filters);
 
   await populateRoomLibraries(view.libraries, view.filters, selectedLibraries);
   view.form.onsubmit = (event) =>
@@ -39,8 +40,12 @@ function createRoomView(navigation) {
     lifetimeHours: refs.lifetimeHours,
     filters: {
       personalGenres: refs.personalGenres,
+      personalDetails: refs.personalDetails,
+      personalSummary: refs.personalSummary,
       genreMode: refs.genreMode,
       status: refs.filterStatus,
+      roomDetails: refs.roomDetails,
+      roomSummary: refs.roomSummary,
       roundSize: refs.roundSize,
       samplingStrategy: refs.samplingStrategy,
       genres: refs.roomGenres,
@@ -115,6 +120,16 @@ async function submitCreateRoom(event, navigation, view, selectedLibraries) {
       "filters.maxDurationMinutes": view.filters.duration,
     });
     if (rendered) {
+      if (requestError.problems?.genreMode) {
+        view.filters.personalDetails.open = true;
+      }
+      if (
+        Object.keys(requestError.problems || {}).some((field) =>
+          field.startsWith("filters."),
+        )
+      ) {
+        view.filters.roomDetails.open = true;
+      }
       view.error.textContent = "Please fix the highlighted fields.";
     } else {
       showError(view.error, requestError);
@@ -162,11 +177,14 @@ async function loadCatalogFilters(libraryKeys, filters) {
       method: "POST",
       body: JSON.stringify({ libraryKeys }),
     });
-    renderGenreChoices(filters.genres, options.genres, selectedRoomGenres);
+    renderGenreChoices(filters.genres, options.genres, selectedRoomGenres, () =>
+      updateFilterSummaries(filters),
+    );
     renderGenreChoices(
       filters.personalGenres,
       options.genres,
       selectedPersonalGenres,
+      () => updateFilterSummaries(filters),
     );
     filters.yearFrom.placeholder = options.minYear
       ? String(options.minYear)
@@ -175,9 +193,44 @@ async function loadCatalogFilters(libraryKeys, filters) {
       ? String(options.maxYear)
       : "To";
     filters.status.textContent = `${options.genres.length} genres available · leave room filters empty to include everything.`;
+    updateFilterSummaries(filters);
   } catch (error) {
     filters.status.textContent = error.message;
   }
+}
+
+// wireFilterSummaries keeps collapsed filter labels synchronized with their controls.
+function wireFilterSummaries(filters) {
+  for (const control of [
+    filters.genreMode,
+    filters.yearFrom,
+    filters.yearTo,
+    filters.duration,
+    filters.watchedBox,
+  ]) {
+    control.addEventListener("input", () => updateFilterSummaries(filters));
+    control.addEventListener("change", () => updateFilterSummaries(filters));
+  }
+  updateFilterSummaries(filters);
+}
+
+// updateFilterSummaries describes active personal and room filters while collapsed.
+function updateFilterSummaries(filters) {
+  const personalCount = selectedGenres(filters.personalGenres).length;
+  filters.personalSummary.textContent = personalCount
+    ? `${personalCount} selected`
+    : "Optional";
+
+  const roomGenres = selectedGenres(filters.genres).length;
+  const summary = [];
+  if (roomGenres) summary.push(`${roomGenres} genres`);
+  if (filters.yearFrom.value) summary.push(`from ${filters.yearFrom.value}`);
+  if (filters.yearTo.value) summary.push(`through ${filters.yearTo.value}`);
+  if (filters.duration.value) summary.push(`≤ ${filters.duration.value} min`);
+  if (filters.watchedBox.checked) summary.push("unwatched");
+  filters.roomSummary.textContent = summary.length
+    ? summary.join(" · ")
+    : "None set";
 }
 
 // filterValues returns normalized room filter values.

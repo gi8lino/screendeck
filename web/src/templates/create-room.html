@@ -1,5 +1,5 @@
 <template id="create-room-template">
-  <section class="panel">
+  <section class="panel create-room-panel">
     <div class="eyebrow">Host a room</div>
     <h2>Shape the watchlist.</h2>
 
@@ -24,101 +24,105 @@
         </div>
       </div>
 
-      <section class="filter-box preference-box">
-        <div class="label">Your genres</div>
-        <p class="muted">
-          Optional · these only filter your own swipe deck. Leave empty to see
-          every room title.
-        </p>
-        <select data-ref="genreMode" aria-label="Personal genre matching">
-          <option value="any">Match any selected genre</option>
-          <option value="all">Match all selected genres</option>
+      <div class="form-row">
+        <label for="sampling-strategy">First-round selection</label>
+        <select id="sampling-strategy" data-ref="samplingStrategy">
+          <option value="random">Random</option>
+          <option value="highest_rated">Highest rated</option>
+          <option value="recently_added">Recently added</option>
+          <option value="random_unwatched">Random unwatched</option>
         </select>
-        <div
-          class="genre-chips"
-          data-ref="personalGenres"
-          role="group"
-          aria-label="Your genres"
-        ></div>
-      </section>
+      </div>
 
-      <section class="filter-box">
-        <div class="label">Room filters</div>
-        <p class="muted" data-ref="filterStatus">
-          Choose at least one library to load its filters.
-        </p>
+      <div class="form-row">
+        <label for="round-size">Maximum titles in the first round</label>
+        <select id="round-size" data-ref="roundSize">
+          <option value="50">50 titles</option>
+          <option value="100">100 titles</option>
+          <option value="250" selected>250 titles · recommended</option>
+          <option value="500">500 titles</option>
+          <option value="0">All matching titles</option>
+        </select>
+      </div>
 
-        <div class="form-row compact">
-          <label for="sampling-strategy">First-round selection</label>
-          <select id="sampling-strategy" data-ref="samplingStrategy">
-            <option value="random">Random</option>
-            <option value="highest_rated">Highest rated</option>
-            <option value="recently_added">Recently added</option>
-            <option value="random_unwatched">Random unwatched</option>
-          </select>
+      <details class="filter-box preference-box" data-ref="personalDetails">
+        <summary>
+          <span>Your genre preferences</span>
+          <span class="filter-summary" data-ref="personalSummary"
+            >Optional</span
+          >
+        </summary>
+        <div class="filter-content">
           <p class="muted">
-            Choose how ScreenDeck picks and orders titles before applying the
-            first-round limit.
+            These only filter your own swipe deck. Leave empty to see every room
+            title.
           </p>
-        </div>
-
-        <div class="form-row compact">
-          <label for="round-size">Maximum titles in the first round</label>
-          <select id="round-size" data-ref="roundSize">
-            <option value="50">50 titles</option>
-            <option value="100">100 titles</option>
-            <option value="250" selected>250 titles · recommended</option>
-            <option value="500">500 titles</option>
-            <option value="0">All matching titles</option>
+          <select data-ref="genreMode" aria-label="Personal genre matching">
+            <option value="any">Match any selected genre</option>
+            <option value="all">Match all selected genres</option>
           </select>
-          <p class="muted">
-            Applied after room filters and shuffling. You can ask the group to
-            narrow to the current matches at any time.
-          </p>
-        </div>
-
-        <div class="form-row compact">
-          <div class="label">Room genres · select any that fit</div>
           <div
             class="genre-chips"
-            data-ref="roomGenres"
+            data-ref="personalGenres"
             role="group"
-            aria-label="Room genres"
+            aria-label="Your genres"
           ></div>
         </div>
+      </details>
 
-        <div class="range-grid">
-          <div class="mini-field">
-            <label for="year-from">From year</label>
-            <input
-              id="year-from"
-              data-ref="yearFrom"
-              type="number"
-              min="0"
-              placeholder="1900"
-            />
+      <details class="filter-box" data-ref="roomDetails">
+        <summary>
+          <span>Advanced room filters</span>
+          <span class="filter-summary" data-ref="roomSummary">None set</span>
+        </summary>
+        <div class="filter-content">
+          <p class="muted" data-ref="filterStatus">
+            Choose at least one library to load its filters.
+          </p>
+
+          <div class="form-row compact">
+            <div class="label">Room genres · select any that fit</div>
+            <div
+              class="genre-chips"
+              data-ref="roomGenres"
+              role="group"
+              aria-label="Room genres"
+            ></div>
           </div>
-          <div class="mini-field">
-            <label for="year-to">To year</label>
-            <input id="year-to" data-ref="yearTo" type="number" min="0" />
+
+          <div class="range-grid">
+            <div class="mini-field">
+              <label for="year-from">From year</label>
+              <input
+                id="year-from"
+                data-ref="yearFrom"
+                type="number"
+                min="0"
+                placeholder="1900"
+              />
+            </div>
+            <div class="mini-field">
+              <label for="year-to">To year</label>
+              <input id="year-to" data-ref="yearTo" type="number" min="0" />
+            </div>
+            <div class="mini-field">
+              <label for="max-duration">Maximum movie length</label>
+              <input
+                id="max-duration"
+                data-ref="duration"
+                type="number"
+                min="0"
+                placeholder="Minutes"
+              />
+            </div>
           </div>
-          <div class="mini-field">
-            <label for="max-duration">Maximum movie length</label>
-            <input
-              id="max-duration"
-              data-ref="duration"
-              type="number"
-              min="0"
-              placeholder="Minutes"
-            />
-          </div>
+
+          <label class="check">
+            <input data-ref="unwatchedOnly" type="checkbox" />
+            <span>Only include fully unwatched titles</span>
+          </label>
         </div>
-
-        <label class="check">
-          <input data-ref="unwatchedOnly" type="checkbox" />
-          <span>Only include fully unwatched titles</span>
-        </label>
-      </section>
+      </details>
 
       <div class="form-row">
         <label for="room-lifetime">Room lifetime</label>

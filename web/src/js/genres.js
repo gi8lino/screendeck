@@ -8,13 +8,14 @@ export function selectedGenres(container) {
 }
 
 // renderGenreChoices replaces a container with selectable genre chips.
-export function renderGenreChoices(container, genres, selected = []) {
+export function renderGenreChoices(container, genres, selected = [], onChange) {
   const selectedSet = new Set(selected);
   container.replaceChildren();
   genres.forEach((genre) => {
     const { element: label, refs } = templateElement("genre-chip-template");
     refs.input.value = genre;
     refs.input.checked = selectedSet.has(genre);
+    refs.input.onchange = onChange;
     refs.label.textContent = genre;
     container.append(label);
   });
