@@ -1,4 +1,4 @@
-package logging
+package requestid
 
 import (
 	"context"
@@ -8,13 +8,13 @@ import (
 	"log/slog"
 )
 
-const RequestIDHeader = "X-Request-Id"
+const Header = "X-Request-Id"
 
 // requestIDKey is the private context key used for request identifiers.
 type requestIDKey struct{}
 
-// NewRequestID creates a random request identifier.
-func NewRequestID() string {
+// New creates a random request identifier.
+func New() string {
 	var value [16]byte
 	if _, err := io.ReadFull(rand.Reader, value[:]); err != nil {
 		return ""
@@ -22,13 +22,13 @@ func NewRequestID() string {
 	return hex.EncodeToString(value[:])
 }
 
-// WithRequestID stores a request identifier in a context.
-func WithRequestID(ctx context.Context, requestID string) context.Context {
+// WithContext stores a request identifier in a context.
+func WithContext(ctx context.Context, requestID string) context.Context {
 	return context.WithValue(ctx, requestIDKey{}, requestID)
 }
 
-// RequestID returns the request identifier stored in a context.
-func RequestID(ctx context.Context) string {
+// FromContext returns the request identifier stored in a context.
+func FromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
@@ -36,12 +36,12 @@ func RequestID(ctx context.Context) string {
 	return requestID
 }
 
-// WithRequestIDLogger enriches a logger with a context request identifier.
-func WithRequestIDLogger(logger *slog.Logger, ctx context.Context) *slog.Logger {
+// WithLogger enriches a logger with a context request identifier.
+func WithLogger(logger *slog.Logger, ctx context.Context) *slog.Logger {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if requestID := RequestID(ctx); requestID != "" {
+	if requestID := FromContext(ctx); requestID != "" {
 		return logger.With("request_id", requestID)
 	}
 	return logger

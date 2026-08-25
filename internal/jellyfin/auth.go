@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gi8lino/screendeck/internal/logging"
 	"github.com/gi8lino/screendeck/internal/media"
+	"github.com/gi8lino/screendeck/internal/requestid"
 )
 
 // AuthState contains persisted Jellyfin server and user authorization state.
@@ -230,5 +230,5 @@ func safeURL(rawURL string) string {
 
 // requestLogger returns a logger enriched with the current request identifier.
 func (m *AuthManager) requestLogger(ctx context.Context) *slog.Logger {
-	return logging.WithRequestIDLogger(m.logger, ctx)
+	return requestid.WithLogger(m.logger, ctx)
 }

@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/gi8lino/screendeck/internal/jellyfin"
-	"github.com/gi8lino/screendeck/internal/logging"
 	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/requestid"
 	"github.com/gi8lino/screendeck/internal/store"
 )
 
@@ -73,7 +73,7 @@ func isMediaUpstreamError(err error) bool {
 // fail logs and writes an API error response.
 func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
 	status := statusForError(err)
-	logging.WithRequestIDLogger(a.Logger, r.Context()).Error("API request failed",
+	requestid.WithLogger(a.Logger, r.Context()).Error("API request failed",
 		"event", "api_request_failed",
 		"method", r.Method,
 		"path", r.URL.Path,
@@ -88,7 +88,7 @@ func (a *API) respond(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(value); err != nil {
-		logging.WithRequestIDLogger(a.Logger, nil).Error("encode response",
+		requestid.WithLogger(a.Logger, nil).Error("encode response",
 			"event", "encode_response_failed",
 			"error", err,
 		)

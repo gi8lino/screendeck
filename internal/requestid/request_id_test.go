@@ -1,4 +1,4 @@
-package logging
+package requestid
 
 import (
 	"bytes"
@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewRequestID(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Parallel()
 
 	t.Run("contains sixteen random bytes encoded as hexadecimal", func(t *testing.T) {
 		t.Parallel()
 
-		requestID := NewRequestID()
+		requestID := New()
 		require.Len(t, requestID, 32)
 
 		decoded, err := hex.DecodeString(requestID)
@@ -25,36 +25,36 @@ func TestNewRequestID(t *testing.T) {
 	})
 }
 
-func TestWithRequestID(t *testing.T) {
+func TestWithContext(t *testing.T) {
 	t.Parallel()
 
 	t.Run("stores identifier", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := WithRequestID(t.Context(), "request-123")
-		assert.Equal(t, "request-123", RequestID(ctx))
+		ctx := WithContext(t.Context(), "request-123")
+		assert.Equal(t, "request-123", FromContext(ctx))
 	})
 }
 
-func TestRequestID(t *testing.T) {
+func TestFromContext(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns stored identifier", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := WithRequestID(t.Context(), "request-123")
-		assert.Equal(t, "request-123", RequestID(ctx))
+		ctx := WithContext(t.Context(), "request-123")
+		assert.Equal(t, "request-123", FromContext(ctx))
 	})
 
 	t.Run("returns empty for nil context", func(t *testing.T) {
 		t.Parallel()
-		//lint:ignore SA1012 RequestID intentionally receives nil to verify defensive behavior.
-		assert.Empty(t, RequestID(nil))
+		//lint:ignore SA1012 FromContext intentionally receives nil to verify defensive behavior.
+		assert.Empty(t, FromContext(nil))
 	})
 }
 
-// TestWithRequestIDLogger verifies request-aware loggers include request identifiers.
-func TestWithRequestIDLogger(t *testing.T) {
+// TestWithLogger verifies request-aware loggers include request identifiers.
+func TestWithLogger(t *testing.T) {
 	t.Parallel()
 
 	t.Run("adds context request identifier", func(t *testing.T) {
@@ -62,9 +62,9 @@ func TestWithRequestIDLogger(t *testing.T) {
 
 		var output bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&output, nil))
-		ctx := WithRequestID(t.Context(), "request-123")
+		ctx := WithContext(t.Context(), "request-123")
 
-		WithRequestIDLogger(logger, ctx).Info("handled")
+		WithLogger(logger, ctx).Info("handled")
 
 		assert.Contains(t, output.String(), `"request_id":"request-123"`)
 	})
