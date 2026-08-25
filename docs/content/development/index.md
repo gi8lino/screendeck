@@ -252,8 +252,6 @@ To verify that the normalized screenshots still match their raw captures:
 make check-screenshots
 ```
 
-`make printscreens` remains an alias for `make screenshots`.
-
 By default the normalization target expects the ImageMagick 7 `magick` command. On systems that expose ImageMagick as `convert`, override it:
 
 ```sh

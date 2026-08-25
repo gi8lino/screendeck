@@ -255,9 +255,6 @@ screenshots: capture-screenshots ## Capture and normalize documentation screensh
 	@$(SCREENSHOT_NORMALIZE) "$(IMAGE_CONVERT)" \
 		"$(SCREENSHOT_MANIFEST)" "$(SCREENSHOT_RAW_DIR)" "$(SCREENSHOT_OUTPUT_DIR)"
 
-.PHONY: printscreens
-printscreens: screenshots ## Alias for screenshots.
-
 .PHONY: check-screenshots
 check-screenshots: ## Verify normalized screenshots match the committed raw captures.
 	@$(SCREENSHOT_NORMALIZE) "$(IMAGE_CONVERT)" \
