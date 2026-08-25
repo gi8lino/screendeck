@@ -1,11 +1,6 @@
 import { renderJellyfinSetup } from "./jellyfin.js";
 import { renderPlexSetup } from "./plex.js";
-import {
-  backButton,
-  instantiateTemplate,
-  root,
-  topbar,
-} from "./ui.js";
+import { backButton, instantiateTemplate, root, topbar } from "./ui.js";
 
 // renderMediaSetup lets the user choose the media-server integration for this instance.
 export function renderMediaSetup(navigation) {

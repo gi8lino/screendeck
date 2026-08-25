@@ -25,7 +25,10 @@ export function renderPlexSetup(navigation) {
 // createPlexSetupView clones the static Plex authorization panel.
 function createPlexSetupView(navigation) {
   const { fragment, refs } = instantiateTemplate("plex-setup-template");
-  root.replaceChildren(topbar(backButton(navigation.renderMediaSetup || navigation.renderHome)), fragment);
+  root.replaceChildren(
+    topbar(backButton(navigation.renderMediaSetup || navigation.renderHome)),
+    fragment,
+  );
   return refs;
 }
 

@@ -112,6 +112,7 @@ func Run(
 		"media_provider", mediaStatus.Provider,
 		"media_server", mediaStatus.ServerName,
 	)
+
 	if err := server.Run(ctx, cfg.ListenAddress, router, serverLogger); err != nil {
 		setupLogger.Error("application failed",
 			"event", "app_failed",

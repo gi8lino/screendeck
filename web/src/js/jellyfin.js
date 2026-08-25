@@ -15,7 +15,10 @@ import {
 export function renderJellyfinSetup(navigation) {
   const { fragment, refs } = instantiateTemplate("jellyfin-setup-template");
   refs.form.onsubmit = (event) => connectJellyfin(event, refs, navigation);
-  root.replaceChildren(topbar(backButton(navigation.renderMediaSetup || navigation.renderHome)), fragment);
+  root.replaceChildren(
+    topbar(backButton(navigation.renderMediaSetup || navigation.renderHome)),
+    fragment,
+  );
 }
 
 // connectJellyfin authenticates ScreenDeck and persists the returned Jellyfin access token.
@@ -46,7 +49,7 @@ async function connectJellyfin(event, refs, navigation) {
       password: refs.password,
     });
     if (rendered) {
-      refs.error.textContent = "Please fix the highlighted fields."
+      refs.error.textContent = "Please fix the highlighted fields.";
     } else {
       showError(refs.error, error);
     }

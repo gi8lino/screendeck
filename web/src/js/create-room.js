@@ -112,7 +112,7 @@ async function submitCreateRoom(event, navigation, view, selectedLibraries) {
       "filters.maxDurationMinutes": view.filters.duration,
     });
     if (rendered) {
-      view.error.textContent = "Please fix the highlighted fields."
+      view.error.textContent = "Please fix the highlighted fields.";
     } else {
       showError(view.error, requestError);
     }

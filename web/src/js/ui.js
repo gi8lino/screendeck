@@ -113,9 +113,9 @@ export function showError(node, error) {
 
 // clearFieldErrors removes field-level validation feedback from a form.
 export function clearFieldErrors(form) {
-  form.querySelectorAll("[data-validation-error]").forEach((node) =>
-    node.remove(),
-  );
+  form
+    .querySelectorAll("[data-validation-error]")
+    .forEach((node) => node.remove());
   form.querySelectorAll('[aria-invalid="true"]').forEach((node) => {
     node.removeAttribute("aria-invalid");
     node.removeAttribute("aria-errormessage");

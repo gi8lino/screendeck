@@ -63,7 +63,7 @@ async function submitJoinRoom(event, navigation, view, state, loadGenres) {
       genreMode: view.genreMode,
     });
     if (rendered) {
-      view.error.textContent = "Please fix the highlighted fields."
+      view.error.textContent = "Please fix the highlighted fields.";
     } else {
       showError(view.error, requestError);
     }
