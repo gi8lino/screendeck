@@ -131,3 +131,6 @@ The full documentation is published at:
 ## License
 
 ScreenDeck is licensed under the [Apache License, Version 2.0](LICENSE).
+
+QR code generation uses `qrcode-generator` by Kazuhiko Arase, licensed under
+the [MIT License](web/src/js/vendor/qrcode-generator.LICENSE).
