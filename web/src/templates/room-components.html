@@ -1,8 +1,39 @@
 <template id="room-topbar-actions-template">
   <div class="topbar-actions">
     <button class="btn ghost" type="button" data-ref="rooms">My rooms</button>
+    <button class="btn ghost" type="button" data-ref="invite">Invite</button>
     <button class="btn ghost" type="button" data-ref="leave">Leave</button>
   </div>
+</template>
+
+<template id="invite-dialog-template">
+  <dialog class="invite-dialog">
+    <button
+      class="dialog-close"
+      type="button"
+      aria-label="Close invite dialog"
+      data-ref="close"
+    >
+      ×
+    </button>
+    <div class="eyebrow">Bring the crew</div>
+    <h2>Invite friends</h2>
+    <p class="muted">Share this room code or send the complete invite link.</p>
+    <div class="invite-code" data-ref="code"></div>
+    <label for="invite-room-link">Invite link</label>
+    <input id="invite-room-link" type="text" readonly data-ref="link" />
+    <div class="invite-actions">
+      <button class="btn ghost" type="button" data-ref="copyCode">
+        Copy code
+      </button>
+      <button class="btn primary" type="button" data-ref="copyLink">
+        Copy link
+      </button>
+      <button class="btn ghost" type="button" data-ref="share" hidden>
+        Share…
+      </button>
+    </div>
+  </dialog>
 </template>
 
 <template id="participant-template">

@@ -97,7 +97,7 @@ function drawRoom(state) {
   const nextRound = nextRoundPanel(state);
   if (nextRound) refs.roomControls.append(nextRound);
 
-  root.replaceChildren(roomTopbar(session), fragment);
+  root.replaceChildren(roomTopbar(session, state.room.code), fragment);
 }
 
 // renderConnectionState displays connection progress only while live updates are unavailable.
@@ -117,7 +117,7 @@ function setRoomConnectionState(state) {
 }
 
 // roomTopbar creates navigation actions for the active room.
-function roomTopbar(session) {
+function roomTopbar(session, roomCode) {
   const { element: actions, refs } = templateElement(
     "room-topbar-actions-template",
   );
@@ -127,6 +127,7 @@ function roomTopbar(session) {
     saveSession(null);
     navigation.renderHome();
   };
+  refs.invite.onclick = () => showInviteDialog(roomCode);
   refs.leave.onclick = () => leaveCurrentRoom(refs.leave, session);
   return topbar(actions);
 }
@@ -200,14 +201,48 @@ function renderParticipants(container, state) {
 // configureRoomCode wires the static room-code button to the share action.
 function configureRoomCode(button, roomCode) {
   button.textContent = roomCode;
-  button.onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(roomURL(roomCode));
-      showToast("Room link copied");
-    } catch {
-      showToast("Could not copy room link");
-    }
-  };
+  button.onclick = () => showInviteDialog(roomCode);
+}
+
+// showInviteDialog presents the room code and every supported sharing action.
+function showInviteDialog(roomCode) {
+  document.querySelector(".invite-dialog")?.remove();
+  const inviteURL = roomURL(roomCode);
+  const { element: dialog, refs } = templateElement("invite-dialog-template");
+  refs.close.onclick = () => dialog.close();
+  refs.code.textContent = roomCode;
+  refs.link.value = inviteURL;
+  refs.link.onclick = () => refs.link.select();
+  refs.copyCode.onclick = () => copyInviteValue(roomCode, "Room code copied");
+  refs.copyLink.onclick = () => copyInviteValue(inviteURL, "Invite link copied");
+
+  if (typeof navigator.share === "function") {
+    refs.share.hidden = false;
+    refs.share.onclick = async () => {
+      try {
+        await navigator.share({
+          title: `Join ScreenDeck room ${roomCode}`,
+          text: `Join my ScreenDeck room with code ${roomCode}.`,
+          url: inviteURL,
+        });
+      } catch (error) {
+        if (error.name !== "AbortError") showToast("Could not open sharing");
+      }
+    };
+  }
+
+  showModalDialog(dialog);
+  refs.copyLink.focus();
+}
+
+// copyInviteValue writes an invite value to the clipboard and reports the result.
+async function copyInviteValue(value, successMessage) {
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(successMessage);
+  } catch {
+    showToast("Could not copy to the clipboard");
+  }
 }
 
 // renderRoomMain fills the active-card area with the current room state.
