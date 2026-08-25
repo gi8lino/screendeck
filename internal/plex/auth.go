@@ -365,9 +365,6 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 		return AuthStart{}, ErrAlreadyConfigured
 	}
 
-	if method == "" {
-		method = AuthMethodStandard
-	}
 	if !ValidAuthMethod(method) {
 		return AuthStart{}, ErrInvalidAuthMethod
 	}
