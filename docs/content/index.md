@@ -17,6 +17,10 @@ ScreenDeck is a self-hosted Plex and Jellyfin picker that helps a group agree on
 </p>
 
 <p align="center">
+  <img src="assets/screenshots/invite.png" alt="ScreenDeck invite dialog with QR code, room code, and sharing actions" width="1000" />
+</p>
+
+<p align="center">
   <img src="assets/screenshots/media-setup.png" alt="ScreenDeck Plex or Jellyfin selection" width="1000" />
 </p>
 

@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { qrcode } from "./vendor/qrcode.mjs";
 import { getConfig, getSession, saveSession } from "./state.js";
 import {
   confirmAction,
@@ -259,6 +260,12 @@ function showInviteDialog(roomCode) {
   refs.close.onclick = () => dialog.close();
   refs.code.textContent = roomCode;
   refs.link.value = inviteURL;
+  refs.qr.setAttribute("aria-label", `QR code to join room ${roomCode}`);
+  try {
+    renderInviteQRCode(refs.qr, inviteURL);
+  } catch {
+    refs.qrWrap.hidden = true;
+  }
   refs.link.onclick = () => refs.link.select();
   refs.copyCode.onclick = () => copyInviteValue(roomCode, "Room code copied");
   refs.copyLink.onclick = () =>
@@ -281,6 +288,37 @@ function showInviteDialog(roomCode) {
 
   showModalDialog(dialog);
   refs.copyLink.focus();
+}
+
+// renderInviteQRCode draws a locally generated invite QR code with a scanner-safe border.
+function renderInviteQRCode(canvas, value) {
+  const code = qrcode(0, "M");
+  code.addData(value);
+  code.make();
+
+  const quietZone = 4;
+  const moduleCount = code.getModuleCount();
+  const totalModules = moduleCount + quietZone * 2;
+  const scale = Math.max(1, Math.floor(240 / totalModules));
+  const size = totalModules * scale;
+  const context = canvas.getContext("2d");
+  canvas.width = size;
+  canvas.height = size;
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, size, size);
+  context.fillStyle = "#111014";
+
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let column = 0; column < moduleCount; column += 1) {
+      if (!code.isDark(row, column)) continue;
+      context.fillRect(
+        (column + quietZone) * scale,
+        (row + quietZone) * scale,
+        scale,
+        scale,
+      );
+    }
+  }
 }
 
 // copyInviteValue writes an invite value to the clipboard and reports the result.

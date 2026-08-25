@@ -12,35 +12,42 @@
     <img
       src="docs/content/assets/screenshots/home.png"
       alt="ScreenDeck home page"
-      width="19%"
+      width="16%"
+    />
+  </a>
+  <a href="docs/content/assets/screenshots/invite.png">
+    <img
+      src="docs/content/assets/screenshots/invite.png"
+      alt="ScreenDeck invite dialog with QR code"
+      width="16%"
     />
   </a>
   <a href="docs/content/assets/screenshots/media-setup.png">
     <img
       src="docs/content/assets/screenshots/media-setup.png"
       alt="ScreenDeck Plex or Jellyfin selection"
-      width="19%"
+      width="16%"
     />
   </a>
   <a href="docs/content/assets/screenshots/create-room.png">
     <img
       src="docs/content/assets/screenshots/create-room.png"
       alt="ScreenDeck movie and TV library selection"
-      width="19%"
+      width="16%"
     />
   </a>
   <a href="docs/content/assets/screenshots/room.png">
     <img
       src="docs/content/assets/screenshots/room.png"
       alt="ScreenDeck room"
-      width="19%"
+      width="16%"
     />
   </a>
   <a href="docs/content/assets/screenshots/winner.png">
     <img
       src="docs/content/assets/screenshots/winner.png"
       alt="ScreenDeck winner"
-      width="19%"
+      width="16%"
     />
   </a>
 </p>

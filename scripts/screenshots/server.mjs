@@ -271,10 +271,36 @@ async function matchesDemoPage(response) {
   response.end(body);
 }
 
+// inviteDemoPage opens the real room view and displays its invite dialog.
+async function inviteDemoPage(response) {
+  const index = await fs.readFile(path.join(webRoot, "index.html"), "utf8");
+  const session = JSON.stringify({ code: roomCode, token: "demo-host" });
+  const openInvite = `<script>
+    localStorage.setItem("screendeck.session", ${JSON.stringify(session)});
+    history.replaceState(null, "", "/?room=${roomCode}");
+    const observer = new MutationObserver(() => {
+      const button = [...document.querySelectorAll("button")]
+        .find((candidate) => candidate.textContent.trim() === "Invite");
+      if (!button) return;
+      observer.disconnect();
+      button.click();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  </script>`;
+  const body = index.replace("</body>", `${openInvite}</body>`);
+
+  response.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+  });
+  response.end(body);
+}
+
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
+  [".mjs", "text/javascript; charset=utf-8"],
   [".svg", "image/svg+xml"],
 ]);
 
@@ -471,6 +497,10 @@ async function handleDemoPage(request, response, url) {
   }
   if (request.method === "GET" && url.pathname === "/demo/matches") {
     await matchesDemoPage(response);
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/demo/invite") {
+    await inviteDemoPage(response);
     return true;
   }
   if (request.method !== "GET" || !demoPages.has(url.pathname)) return false;

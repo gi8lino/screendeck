@@ -18,7 +18,11 @@
     </button>
     <div class="eyebrow">Bring the crew</div>
     <h2>Invite friends</h2>
-    <p class="muted">Share this room code or send the complete invite link.</p>
+    <p class="muted">Scan to join, or share the room code manually.</p>
+    <figure class="invite-qr" data-ref="qrWrap">
+      <canvas data-ref="qr" role="img"></canvas>
+      <figcaption>Scan to join</figcaption>
+    </figure>
     <div class="invite-code" data-ref="code"></div>
     <label for="invite-room-link">Invite link</label>
     <input id="invite-room-link" type="text" readonly data-ref="link" />
@@ -168,7 +172,11 @@
     <h3>Room access</h3>
     <p class="muted" data-ref="expiry"></p>
     <p class="room-lock-status" data-ref="status"></p>
-    <button class="btn ghost compact-button" type="button" data-ref="toggle"></button>
+    <button
+      class="btn ghost compact-button"
+      type="button"
+      data-ref="toggle"
+    ></button>
   </section>
 </template>
 

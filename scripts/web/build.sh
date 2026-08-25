@@ -43,7 +43,7 @@ mkdir -p "$work/css" "$work/js"
 cp "$SOURCE_DIR/favicon.svg" "$work/favicon.svg"
 cp "$LOGO_SOURCE" "$work/logo.svg"
 cp "$SOURCE_DIR/css/app.css" "$work/css/app.css"
-cp "$SOURCE_DIR/js/"*.js "$work/js/"
+cp -R "$SOURCE_DIR/js/". "$work/js/"
 
 marker_count=0
 while IFS= read -r line || [ -n "$line" ]; do

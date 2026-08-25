@@ -763,7 +763,9 @@ select option {
 .invite-dialog {
   position: relative;
   width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
   padding: 34px;
+  overflow-y: auto;
   border: 1px solid #ffffff24;
   border-radius: 24px;
   color: var(--text);
@@ -778,13 +780,31 @@ select option {
   margin-top: 8px;
 }
 .invite-code {
-  margin: 24px 0;
+  margin: 18px 0 24px;
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: clamp(36px, 10vw, 58px);
   font-weight: 850;
   letter-spacing: 0.14em;
   text-align: center;
+}
+.invite-qr {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  margin: 22px 0 0;
+}
+.invite-qr canvas {
+  display: block;
+  width: min(240px, 65vw);
+  height: auto;
+  border-radius: 12px;
+  image-rendering: pixelated;
+}
+.invite-qr figcaption {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 .invite-dialog label {
   display: block;

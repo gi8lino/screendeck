@@ -149,7 +149,7 @@ web: ## Build the frontend distribution from web/src.
 
 .PHONY: check-web
 check-web: web ## Build the frontend and verify JavaScript parses.
-	@for file in web/src/js/*.js; do $(NODE) --check "$$file"; done
+	@find web/src/js -type f \( -name '*.js' -o -name '*.mjs' \) -exec $(NODE) --check {} \;
 
 .PHONY: download
 download: node-dependencies ## Download Go and Node.js dependencies.
