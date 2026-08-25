@@ -36,6 +36,7 @@ function createRoomView(navigation) {
     libraries: refs.libraries,
     error: refs.error,
     submit: refs.submit,
+    lifetimeHours: refs.lifetimeHours,
     filters: {
       personalGenres: refs.personalGenres,
       genreMode: refs.genreMode,
@@ -94,6 +95,7 @@ async function submitCreateRoom(event, navigation, view, selectedLibraries) {
         genres: selectedGenres(view.filters.personalGenres),
         genreMode: view.filters.genreMode.value,
         roundSize: Number(view.filters.roundSize.value) || 0,
+        lifetimeHours: Number(view.lifetimeHours.value) || 0,
         samplingStrategy: view.filters.samplingStrategy.value,
         filters: filterValues(view.filters),
       }),
@@ -106,6 +108,7 @@ async function submitCreateRoom(event, navigation, view, selectedLibraries) {
       libraryKeys: view.libraries,
       genreMode: view.filters.genreMode,
       roundSize: view.filters.roundSize,
+      lifetimeHours: view.lifetimeHours,
       samplingStrategy: view.filters.samplingStrategy,
       "filters.yearFrom": view.filters.yearFrom,
       "filters.yearTo": view.filters.yearTo,

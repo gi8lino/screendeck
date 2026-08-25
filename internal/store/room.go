@@ -41,6 +41,8 @@ type Room struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// ExpiresAt is the time at which the room becomes inactive.
 	ExpiresAt time.Time `json:"expiresAt"`
+	// Locked reports whether the room rejects new participants.
+	Locked bool `json:"locked"`
 }
 
 // Participant contains public room participant state.
@@ -212,9 +214,10 @@ INSERT INTO rooms (
   phase,
   owner_id,
   created_at,
-  expires_at
+  expires_at,
+  locked
 ) VALUES (
-  ?, ?, ?, ?, ?, ?
+  ?, ?, ?, ?, ?, ?, ?
 )
 `
 	_, err := tx.ExecContext(
@@ -226,6 +229,7 @@ INSERT INTO rooms (
 		room.OwnerID,
 		room.CreatedAt.Unix(),
 		room.ExpiresAt.Unix(),
+		room.Locked,
 	)
 	return err
 }
@@ -407,6 +411,7 @@ SELECT
 FROM rooms
 WHERE code = ?
   AND expires_at > ?
+  AND locked = 0
 `
 	result, err := tx.ExecContext(
 		ctx,
@@ -429,9 +434,30 @@ WHERE code = ?
 		return err
 	}
 	if count == 0 {
-		return ErrNotFound
+		return joinRoomUnavailable(ctx, tx, code)
 	}
 	return nil
+}
+
+// joinRoomUnavailable distinguishes a missing room from one closed to new participants.
+func joinRoomUnavailable(ctx context.Context, tx *sql.Tx, code string) error {
+	const query = `
+SELECT locked
+FROM rooms
+WHERE code = ?
+  AND expires_at > ?
+`
+	var locked bool
+	if err := tx.QueryRowContext(ctx, query, code, time.Now().Unix()).Scan(&locked); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if locked {
+		return ErrRoomLocked
+	}
+	return ErrNotFound
 }
 
 // invalidateNonUnanimousMatchesTx removes matches invalidated by a newly joined participant.
@@ -634,7 +660,8 @@ SELECT
   phase,
   owner_id,
   created_at,
-  expires_at
+  expires_at,
+  locked
 FROM rooms
 WHERE code = ?
   AND expires_at > ?
@@ -648,6 +675,7 @@ WHERE code = ?
 		&room.OwnerID,
 		&created,
 		&expires,
+		&room.Locked,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Room{}, ErrNotFound
@@ -659,6 +687,23 @@ WHERE code = ?
 	room.CreatedAt = time.Unix(created, 0).UTC()
 	room.ExpiresAt = time.Unix(expires, 0).UTC()
 	return room, nil
+}
+
+// SetRoomLocked changes whether a room accepts new participants when requested by its host.
+func (s *Store) SetRoomLocked(ctx context.Context, code, tokenHash string, locked bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // nolint:errcheck
+
+	if _, err := authenticateRoomHostTx(ctx, tx, code, tokenHash); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE rooms SET locked = ? WHERE code = ?", locked, code); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // loadRoomParticipant returns one participant with current-round readiness and host state.

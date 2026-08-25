@@ -68,7 +68,9 @@ func statusForError(err error) int {
 	switch {
 	case errors.Is(err, errBrowserIdentityUnavailable):
 		return http.StatusInternalServerError
-	case errors.Is(err, store.ErrMembershipConflict), errors.Is(err, media.ErrProviderConflict):
+	case errors.Is(err, store.ErrMembershipConflict),
+		errors.Is(err, store.ErrRoomLocked),
+		errors.Is(err, media.ErrProviderConflict):
 		return http.StatusConflict
 	case errors.Is(err, store.ErrForbidden):
 		return http.StatusForbidden

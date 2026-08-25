@@ -26,6 +26,8 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	// ErrMembershipConflict indicates that a browser identity is already linked to another participant in a room.
 	ErrMembershipConflict = errors.New("browser identity already linked to another room participant")
+	// ErrRoomLocked indicates that a room is not accepting new participants.
+	ErrRoomLocked = errors.New("room is locked")
 )
 
 // Store owns the SQLite database and the cipher used for stored secrets.

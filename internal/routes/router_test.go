@@ -85,10 +85,34 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	assert.Equal(t, "Enter your name.", validation.Problems["name"])
 	assert.Equal(t, "Select at least one library.", validation.Problems["libraryKeys"])
 
-	host := postJSON(t, router, "/api/rooms", `{"name":"Host","libraryKeys":["1"]}`, "")
+	host := postJSON(t, router, "/api/rooms", `{"name":"Host","libraryKeys":["1"],"lifetimeHours":6}`, "")
 	require.Equal(t, http.StatusCreated, host.Code, host.Body.String())
 	var hostSession room.Session
 	decodeResponse(t, host, &hostSession)
+
+	lockRequest := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/rooms/"+hostSession.Code+"/settings",
+		bytes.NewBufferString(`{"locked":true}`),
+	)
+	lockRequest.Header.Set("X-Participant-Token", hostSession.Token)
+	lockResponse := httptest.NewRecorder()
+	router.ServeHTTP(lockResponse, lockRequest)
+	require.Equal(t, http.StatusOK, lockResponse.Code, lockResponse.Body.String())
+
+	lockedGuest := postJSON(t, router, "/api/rooms/join", fmt.Sprintf(`{"name":"Guest","code":%q}`, hostSession.Code), "")
+	require.Equal(t, http.StatusConflict, lockedGuest.Code, lockedGuest.Body.String())
+	assert.Contains(t, lockedGuest.Body.String(), "room is locked")
+
+	unlockRequest := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/rooms/"+hostSession.Code+"/settings",
+		bytes.NewBufferString(`{"locked":false}`),
+	)
+	unlockRequest.Header.Set("X-Participant-Token", hostSession.Token)
+	unlockResponse := httptest.NewRecorder()
+	router.ServeHTTP(unlockResponse, unlockRequest)
+	require.Equal(t, http.StatusOK, unlockResponse.Code, unlockResponse.Body.String())
 
 	guest := postJSON(t, router, "/api/rooms/join", fmt.Sprintf(`{"name":"Guest","code":%q}`, hostSession.Code), "")
 	require.Equal(t, http.StatusCreated, guest.Code, guest.Body.String())
@@ -134,6 +158,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	hostState := getState(t, router, hostSession)
 	require.NotNil(t, hostState.Candidate)
 	require.Len(t, hostState.Participants, 2)
+	assert.WithinDuration(t, time.Now().Add(6*time.Hour), hostState.Room.ExpiresAt, 5*time.Second)
 	itemID := hostState.Candidate.ID
 
 	first := postJSON(t, router, "/api/rooms/"+hostSession.Code+"/votes", fmt.Sprintf(`{"itemId":%q,"liked":true}`, itemID), hostSession.Token)

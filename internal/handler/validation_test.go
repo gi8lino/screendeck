@@ -16,6 +16,7 @@ func TestCreateRoomRequestValidation(t *testing.T) {
 			MaxDurationMinutes: -1,
 		},
 		RoundSize:        50_001,
+		LifetimeHours:    2,
 		GenreMode:        "invalid",
 		SamplingStrategy: "invalid",
 	}
@@ -27,6 +28,7 @@ func TestCreateRoomRequestValidation(t *testing.T) {
 	assert.Contains(t, problems, "filters.yearTo")
 	assert.Contains(t, problems, "filters.maxDurationMinutes")
 	assert.Contains(t, problems, "roundSize")
+	assert.Contains(t, problems, "lifetimeHours")
 	assert.Contains(t, problems, "genreMode")
 	assert.Contains(t, problems, "samplingStrategy")
 }

@@ -151,13 +151,16 @@ func TestLoadMigrations(t *testing.T) {
 
 		migrations, err := loadMigrations()
 		require.NoError(t, err)
-		require.Len(t, migrations, 2)
+		require.Len(t, migrations, 3)
 		assert.Equal(t, 1, migrations[0].version)
 		assert.Equal(t, "migrations/001_initial.sql", migrations[0].name)
 		assert.NotEmpty(t, migrations[0].statement)
 		assert.Equal(t, 2, migrations[1].version)
 		assert.Equal(t, "migrations/002_media_providers.sql", migrations[1].name)
 		assert.NotEmpty(t, migrations[1].statement)
+		assert.Equal(t, 3, migrations[2].version)
+		assert.Equal(t, "migrations/003_room_lock.sql", migrations[2].name)
+		assert.NotEmpty(t, migrations[2].statement)
 	})
 }
 

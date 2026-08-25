@@ -142,6 +142,41 @@ func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	assert.True(t, state.Me.IsHost)
 }
 
+// TestRoomLock verifies hosts can control admission without removing existing participants.
+func TestRoomLock(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(
+		ctx,
+		Room{Code: "LOCK01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		Participant{ID: "host", Name: "Host"},
+		"host-hash",
+		[]string{"a"},
+		[]string{"a"},
+	))
+
+	require.NoError(t, database.SetRoomLocked(ctx, "LOCK01", "host-hash", true))
+	state, err := database.RoomState(ctx, "LOCK01", "host")
+	require.NoError(t, err)
+	assert.True(t, state.Room.Locked)
+
+	err = database.JoinRoom(ctx, "LOCK01", Participant{ID: "guest", Name: "Guest"}, "guest-hash")
+	require.ErrorIs(t, err, ErrRoomLocked)
+
+	require.NoError(t, database.SetRoomLocked(ctx, "LOCK01", "host-hash", false))
+	require.NoError(t, database.JoinRoom(ctx, "LOCK01", Participant{ID: "guest", Name: "Guest"}, "guest-hash"))
+	err = database.SetRoomLocked(ctx, "LOCK01", "guest-hash", true)
+	require.ErrorIs(t, err, ErrForbidden)
+}
+
 func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	ctx := t.Context()
 	database, err := Open(":memory:")

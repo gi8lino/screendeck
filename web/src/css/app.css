@@ -1145,6 +1145,23 @@ select option {
 .next-round-panel p {
   margin: 8px 0 14px;
 }
+.room-settings-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #ffffff18;
+  border-radius: 17px;
+  background: #17151a;
+}
+.room-settings-panel h3 {
+  margin: 0 0 8px;
+}
+.room-settings-panel p {
+  margin: 7px 0 12px;
+}
+.room-lock-status {
+  color: var(--text);
+  font-size: 13px;
+}
 .next-round-status {
   color: var(--green);
   font-size: 14px;

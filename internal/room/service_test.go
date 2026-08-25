@@ -692,6 +692,18 @@ func TestValidRoundSize(t *testing.T) {
 	})
 }
 
+// TestValidRoomLifetimeHours verifies default and bounded room lifetimes.
+func TestValidRoomLifetimeHours(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, ValidRoomLifetimeHours(0))
+	assert.True(t, ValidRoomLifetimeHours(6))
+	assert.True(t, ValidRoomLifetimeHours(24))
+	assert.True(t, ValidRoomLifetimeHours(7*24))
+	assert.False(t, ValidRoomLifetimeHours(5))
+	assert.False(t, ValidRoomLifetimeHours(7*24+1))
+}
+
 func TestValidGenreMode(t *testing.T) {
 	t.Parallel()
 

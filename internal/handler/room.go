@@ -19,6 +19,7 @@ type createRoomRequest struct {
 	Genres           []string              `json:"genres"`
 	GenreMode        room.GenreMode        `json:"genreMode"`
 	RoundSize        int                   `json:"roundSize"`
+	LifetimeHours    int                   `json:"lifetimeHours"`
 	SamplingStrategy room.SamplingStrategy `json:"samplingStrategy"`
 }
 
@@ -52,6 +53,10 @@ func (input *createRoomRequest) Valid(context.Context) map[string]string {
 
 	if !room.ValidRoundSize(input.RoundSize) {
 		problems["roundSize"] = "Choose a first-round size between 0 and 50,000."
+	}
+
+	if !room.ValidRoomLifetimeHours(input.LifetimeHours) {
+		problems["lifetimeHours"] = "Choose a room lifetime between 6 hours and 7 days."
 	}
 
 	if !room.ValidGenreMode(input.GenreMode) {
@@ -130,6 +135,7 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			input.GenreMode,
 			input.SamplingStrategy,
 			input.RoundSize,
+			input.LifetimeHours,
 			identityToken,
 		)
 		if err != nil {
@@ -137,6 +143,40 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			return
 		}
 		a.respond(w, http.StatusCreated, session)
+	}
+}
+
+// roomSettingsRequest describes host-controlled room admission settings.
+type roomSettingsRequest struct {
+	Locked *bool `json:"locked"`
+}
+
+// Valid validates a room settings update.
+func (input *roomSettingsRequest) Valid(context.Context) map[string]string {
+	if input.Locked == nil {
+		return map[string]string{"locked": "Choose whether the room accepts new participants."}
+	}
+	return nil
+}
+
+// UpdateRoomSettings returns the handler that changes host-controlled room settings.
+func (a *API) UpdateRoomSettings() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var input roomSettingsRequest
+		if err := decodeValid(r, &input); err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		if err := a.Rooms.SetRoomLocked(
+			r.Context(),
+			r.PathValue("code"),
+			participantToken(r),
+			*input.Locked,
+		); err != nil {
+			a.fail(r, w, err)
+			return
+		}
+		a.respond(w, http.StatusOK, map[string]bool{"locked": *input.Locked})
 	}
 }
 

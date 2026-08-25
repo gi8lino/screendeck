@@ -81,7 +81,13 @@ function drawRoom(state) {
   const session = getSession();
   const { fragment, refs } = instantiateTemplate("room-template");
 
-  refs.roomEyebrow.textContent = `Round ${state.room.round} · ${phaseLabel(state.room.phase)}`;
+  refs.roomEyebrow.textContent = [
+    `Round ${state.room.round}`,
+    phaseLabel(state.room.phase),
+    state.room.locked ? "locked" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   refs.roomHeading.textContent = `Good hunting, ${state.me.name}.`;
   renderConnectionState(refs.connection);
   renderParticipants(refs.participants, state);
@@ -96,8 +102,49 @@ function drawRoom(state) {
   if (moreTitles) refs.roomControls.append(moreTitles);
   const nextRound = nextRoundPanel(state);
   if (nextRound) refs.roomControls.append(nextRound);
+  const settings = roomSettingsPanel(state);
+  if (settings) refs.roomControls.append(settings);
 
   root.replaceChildren(roomTopbar(session, state.room.code), fragment);
+}
+
+// roomSettingsPanel renders host controls for room lifetime and admission.
+function roomSettingsPanel(state) {
+  if (!state.me.isHost) return null;
+  const { element: panel, refs } = templateElement(
+    "room-settings-panel-template",
+  );
+  const expiresAt = new Date(state.room.expiresAt);
+  refs.expiry.textContent = Number.isNaN(expiresAt.getTime())
+    ? "Room expiry unavailable"
+    : `Expires ${expiresAt.toLocaleString()}`;
+  refs.status.textContent = state.room.locked
+    ? "Locked · only existing participants can return."
+    : "Open · anyone with the invite can join.";
+  refs.toggle.textContent = state.room.locked ? "Unlock room" : "Lock room";
+  refs.toggle.onclick = () => toggleRoomLock(state, refs.toggle);
+  return panel;
+}
+
+// toggleRoomLock changes whether the room accepts new participants.
+async function toggleRoomLock(state, button) {
+  if (button.disabled) return;
+  const session = getSession();
+  const locked = !state.room.locked;
+  button.disabled = true;
+  button.textContent = locked ? "Locking…" : "Unlocking…";
+  try {
+    await api(`/api/rooms/${encodeURIComponent(session.code)}/settings`, {
+      method: "PATCH",
+      body: JSON.stringify({ locked }),
+    });
+    showToast(locked ? "Room locked" : "Room unlocked");
+    await renderRoom();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+    button.textContent = state.room.locked ? "Unlock room" : "Lock room";
+  }
 }
 
 // renderConnectionState displays connection progress only while live updates are unavailable.
@@ -214,7 +261,8 @@ function showInviteDialog(roomCode) {
   refs.link.value = inviteURL;
   refs.link.onclick = () => refs.link.select();
   refs.copyCode.onclick = () => copyInviteValue(roomCode, "Room code copied");
-  refs.copyLink.onclick = () => copyInviteValue(inviteURL, "Invite link copied");
+  refs.copyLink.onclick = () =>
+    copyInviteValue(inviteURL, "Invite link copied");
 
   if (typeof navigator.share === "function") {
     refs.share.hidden = false;

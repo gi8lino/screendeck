@@ -39,6 +39,7 @@ func NewRouter(
 	api.HandleFunc("GET /rooms/{code}", handlers.RoomState())
 	api.HandleFunc("GET /rooms/{code}/genres", handlers.RoomGenres())
 	api.HandleFunc("DELETE /rooms/{code}", handlers.LeaveRoom())
+	api.HandleFunc("PATCH /rooms/{code}/settings", handlers.UpdateRoomSettings())
 	api.HandleFunc("DELETE /rooms/{code}/participants/{participantID}", handlers.RemoveParticipant())
 	api.HandleFunc("POST /rooms/{code}/votes", handlers.Vote())
 	api.HandleFunc("POST /rooms/{code}/more-titles", handlers.AddMoreTitles())

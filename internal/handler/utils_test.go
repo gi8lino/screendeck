@@ -114,6 +114,7 @@ func TestStatusForError(t *testing.T) {
 
 	t.Run("conflict", func(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, statusForError(store.ErrMembershipConflict))
+		assert.Equal(t, http.StatusConflict, statusForError(store.ErrRoomLocked))
 	})
 
 	t.Run("forbidden", func(t *testing.T) {

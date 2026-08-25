@@ -21,8 +21,10 @@ import (
 )
 
 const (
-	maxRoundSize    = 50000
-	libraryCacheTTL = 5 * time.Minute
+	maxRoundSize             = 50000
+	libraryCacheTTL          = 5 * time.Minute
+	minimumRoomLifetimeHours = 6
+	maximumRoomLifetimeHours = 7 * 24
 )
 
 // Service orchestrates room behavior, catalog access, caching, and live notifications.
@@ -283,6 +285,8 @@ type createRoomOptions struct {
 	sampling SamplingStrategy
 	// roundSize limits the first-round deck when non-zero.
 	roundSize int
+	// lifetimeHours overrides the configured room lifetime when non-zero.
+	lifetimeHours int
 	// identityToken optionally links the host to a persistent browser identity.
 	identityToken string
 }
@@ -297,6 +301,7 @@ func (s *Service) CreateForIdentity(
 	genreMode GenreMode,
 	sampling SamplingStrategy,
 	roundSize int,
+	lifetimeHours int,
 	identityToken string,
 ) (Session, error) {
 	if strings.TrimSpace(identityToken) == "" {
@@ -311,6 +316,7 @@ func (s *Service) CreateForIdentity(
 		genreMode:     genreMode,
 		sampling:      sampling,
 		roundSize:     roundSize,
+		lifetimeHours: lifetimeHours,
 		identityToken: identityToken,
 	})
 }
@@ -372,7 +378,7 @@ func (s *Service) create(
 			Code:      code,
 			Round:     1,
 			CreatedAt: now,
-			ExpiresAt: now.Add(s.roomTTL),
+			ExpiresAt: now.Add(s.roomLifetime(options.lifetimeHours)),
 		},
 		store.Participant{
 			ID:        participantID,
@@ -392,6 +398,14 @@ func (s *Service) create(
 		Code:  code,
 		Token: token,
 	}, nil
+}
+
+// roomLifetime returns a requested room lifetime or the configured default.
+func (s *Service) roomLifetime(hours int) time.Duration {
+	if hours == 0 {
+		return s.roomTTL
+	}
+	return time.Duration(hours) * time.Hour
 }
 
 // normalizeCreateRoomOptions validates and canonicalizes room creation input.
@@ -414,6 +428,14 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 		return createRoomOptions{}, fmt.Errorf(
 			"round size must be between 0 and %d titles",
 			maxRoundSize,
+		)
+	}
+
+	if !ValidRoomLifetimeHours(options.lifetimeHours) {
+		return createRoomOptions{}, fmt.Errorf(
+			"room lifetime must be between %d and %d hours",
+			minimumRoomLifetimeHours,
+			maximumRoomLifetimeHours,
 		)
 	}
 
@@ -441,6 +463,11 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 // ValidRoundSize reports whether the requested first-round limit is supported.
 func ValidRoundSize(roundSize int) bool {
 	return roundSize >= 0 && roundSize <= maxRoundSize
+}
+
+// ValidRoomLifetimeHours reports whether a room lifetime uses the default or supported bounds.
+func ValidRoomLifetimeHours(hours int) bool {
+	return hours == 0 || hours >= minimumRoomLifetimeHours && hours <= maximumRoomLifetimeHours
 }
 
 // ValidGenreMode reports whether a personal genre mode is supported or omitted.
@@ -1131,6 +1158,16 @@ func (s *Service) Leave(
 
 	s.Notify(code)
 
+	return nil
+}
+
+// SetRoomLocked changes whether a room accepts new participants.
+func (s *Service) SetRoomLocked(ctx context.Context, code, token string, locked bool) error {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if err := s.store.SetRoomLocked(ctx, code, hashToken(token), locked); err != nil {
+		return err
+	}
+	s.Notify(code)
 	return nil
 }
 
