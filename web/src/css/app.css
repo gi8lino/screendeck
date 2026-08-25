@@ -63,15 +63,28 @@ button {
   margin: 0 auto;
 }
 .room-connection {
-  width: fit-content;
-  margin: 8px 0 12px;
-  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
   border: 1px solid #f7c85d55;
   border-radius: 999px;
   background: #2a2418;
   color: #f5d98f;
   font-size: 12px;
   font-weight: 750;
+  white-space: nowrap;
+}
+.room-connection[hidden] {
+  display: none;
+}
+.room-connection::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px #f7c85d1f;
+  content: "";
 }
 .poster-fallback {
   padding: 22%;
@@ -1304,6 +1317,25 @@ select option {
   }
   .topbar-actions {
     gap: 6px;
+  }
+  .room-connection {
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .room-connection::before {
+    width: 8px;
+    height: 8px;
+  }
+  .room-connection-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
   .topbar-actions .btn {
     padding: 10px 13px;

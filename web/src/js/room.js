@@ -12,6 +12,9 @@ import {
   topbar,
 } from "./ui.js";
 
+const reconnectIndicatorDelay = 5000;
+const reconnectWarningDelay = 30000;
+
 let eventSource;
 let voting = false;
 let navigation;
@@ -23,6 +26,9 @@ let matchDialogOpen = false;
 let roomViewGeneration = 0;
 let posterPreloads = new Map();
 let roomConnectionState = "connecting";
+let roomConnectionIndicatorVisible = false;
+let reconnectIndicatorTimer;
+let reconnectWarningTimer;
 
 // renderRoom loads and displays the current room.
 export async function renderRoom(nextNavigation) {
@@ -55,7 +61,9 @@ export function stopRoomEvents() {
   eventSource?.close();
   eventSource = null;
   posterPreloads = new Map();
+  clearReconnectTimers();
   roomConnectionState = "connecting";
+  roomConnectionIndicatorVisible = false;
 }
 
 // preloadRoomPosters keeps the current and upcoming poster requests warm.
@@ -90,7 +98,6 @@ function drawRoom(state) {
     .filter(Boolean)
     .join(" · ");
   refs.roomHeading.textContent = `Good hunting, ${state.me.name}.`;
-  renderConnectionState(refs.connection);
   renderParticipants(refs.participants, state);
   configureRoomCode(refs.roomCode, state.room.code);
   renderRoomMain(refs.roomContent, state);
@@ -150,18 +157,47 @@ async function toggleRoomLock(state, button) {
 
 // renderConnectionState displays connection progress only while live updates are unavailable.
 function renderConnectionState(node) {
-  node.hidden = roomConnectionState === "connected";
-  node.textContent =
-    roomConnectionState === "reconnecting"
-      ? "Live updates interrupted · reconnecting…"
-      : "Connecting live updates…";
+  node.hidden =
+    roomConnectionState !== "reconnecting" || !roomConnectionIndicatorVisible;
 }
 
 // setRoomConnectionState updates the connection indicator in the active room.
 function setRoomConnectionState(state) {
+  if (state === roomConnectionState) return;
   roomConnectionState = state;
+  if (state === "reconnecting") {
+    scheduleReconnectFeedback();
+  } else {
+    clearReconnectTimers();
+    roomConnectionIndicatorVisible = false;
+  }
   const node = root.querySelector('[data-ref="connection"]');
   if (node) renderConnectionState(node);
+}
+
+// scheduleReconnectFeedback delays visible feedback for transient connection failures.
+function scheduleReconnectFeedback() {
+  reconnectIndicatorTimer = setTimeout(() => {
+    reconnectIndicatorTimer = undefined;
+    if (roomConnectionState !== "reconnecting") return;
+    roomConnectionIndicatorVisible = true;
+    const node = root.querySelector('[data-ref="connection"]');
+    if (node) renderConnectionState(node);
+  }, reconnectIndicatorDelay);
+  reconnectWarningTimer = setTimeout(() => {
+    reconnectWarningTimer = undefined;
+    if (roomConnectionState === "reconnecting") {
+      showToast("Live updates unavailable. Retrying…");
+    }
+  }, reconnectWarningDelay);
+}
+
+// clearReconnectTimers cancels pending connection feedback.
+function clearReconnectTimers() {
+  clearTimeout(reconnectIndicatorTimer);
+  clearTimeout(reconnectWarningTimer);
+  reconnectIndicatorTimer = undefined;
+  reconnectWarningTimer = undefined;
 }
 
 // roomTopbar creates navigation actions for the active room.
@@ -175,6 +211,7 @@ function roomTopbar(session, roomCode) {
     saveSession(null);
     navigation.renderHome();
   };
+  renderConnectionState(refs.connection);
   refs.invite.onclick = () => showInviteDialog(roomCode);
   refs.leave.onclick = () => leaveCurrentRoom(refs.leave, session);
   return topbar(actions);
@@ -954,7 +991,9 @@ function connectEvents() {
     `/api/rooms/${encodeURIComponent(session.code)}/events?token=${encodeURIComponent(session.token)}`,
   );
   eventSource = source;
-  setRoomConnectionState("connecting");
+  if (roomConnectionState !== "reconnecting") {
+    setRoomConnectionState("connecting");
+  }
   source.onopen = () => {
     if (generation !== roomViewGeneration || source !== eventSource) return;
     setRoomConnectionState("connected");
@@ -967,6 +1006,7 @@ function connectEvents() {
   });
   source.onerror = () => {
     if (generation !== roomViewGeneration || source !== eventSource) return;
+    console.debug("Room live updates interrupted; reconnecting.");
     source.close();
     eventSource = null;
     setRoomConnectionState("reconnecting");

@@ -1,5 +1,14 @@
 <template id="room-topbar-actions-template">
   <div class="topbar-actions">
+    <span
+      class="room-connection"
+      role="status"
+      title="Live updates interrupted"
+      data-ref="connection"
+      hidden
+    >
+      <span class="room-connection-label">Reconnecting…</span>
+    </span>
     <button class="btn ghost" type="button" data-ref="rooms">My rooms</button>
     <button class="btn ghost" type="button" data-ref="invite">Invite</button>
     <button class="btn ghost" type="button" data-ref="leave">Leave</button>
