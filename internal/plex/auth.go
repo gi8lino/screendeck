@@ -368,7 +368,7 @@ func (m *AuthManager) Start(ctx context.Context, method AuthMethod) (AuthStart, 
 	if method == "" {
 		method = AuthMethodStandard
 	}
-	if !validAuthMethod(method) {
+	if !ValidAuthMethod(method) {
 		return AuthStart{}, ErrInvalidAuthMethod
 	}
 	if method == AuthMethodJWT && !m.experimental {
@@ -1008,8 +1008,8 @@ func serverVerificationCandidates(
 	}
 }
 
-// validAuthMethod reports whether method is a supported Plex authorization flow.
-func validAuthMethod(method AuthMethod) bool {
+// ValidAuthMethod reports whether method is a supported Plex authorization flow.
+func ValidAuthMethod(method AuthMethod) bool {
 	return method == AuthMethodStandard || method == AuthMethodJWT
 }
 

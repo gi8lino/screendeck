@@ -74,6 +74,17 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	appFS := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ScreenDeck</title>")}}
 	router := NewRouter(appFS, api, logger, false)
 
+	invalid := postJSON(t, router, "/api/rooms", `{}`, "")
+	require.Equal(t, http.StatusBadRequest, invalid.Code, invalid.Body.String())
+	var validation struct {
+		Error    string            `json:"error"`
+		Problems map[string]string `json:"problems"`
+	}
+	decodeResponse(t, invalid, &validation)
+	assert.Equal(t, "request validation failed", validation.Error)
+	assert.Equal(t, "Enter your name.", validation.Problems["name"])
+	assert.Equal(t, "Select at least one library.", validation.Problems["libraryKeys"])
+
 	host := postJSON(t, router, "/api/rooms", `{"name":"Host","libraryKeys":["1"]}`, "")
 	require.Equal(t, http.StatusCreated, host.Code, host.Body.String())
 	var hostSession room.Session

@@ -168,6 +168,14 @@ func TestJWTAuthorizationRequiresExperimentalMode(t *testing.T) {
 	require.ErrorIs(t, err, plex.ErrExperimentalAuthDisabled)
 }
 
+func TestValidAuthMethod(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, plex.ValidAuthMethod(plex.AuthMethodStandard))
+	assert.True(t, plex.ValidAuthMethod(plex.AuthMethodJWT))
+	assert.False(t, plex.ValidAuthMethod(plex.AuthMethod("invalid")))
+}
+
 // TestJWTAuthorizationServerSelectionAndRefresh verifies the complete Plex authentication lifecycle.
 func TestJWTAuthorizationServerSelectionAndRefresh(t *testing.T) {
 	pms := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

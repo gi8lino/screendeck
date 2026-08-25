@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -19,10 +20,26 @@ type plexAuthRequest struct {
 	Method plex.AuthMethod `json:"method"`
 }
 
+// Valid validates a request to start Plex authorization.
+func (input plexAuthRequest) Valid(context.Context) map[string]string {
+	if !plex.ValidAuthMethod(input.Method) {
+		return map[string]string{"method": "Choose a supported Plex authentication method."}
+	}
+	return nil
+}
+
 // selectPlexServerRequest identifies the Plex server selected during setup.
 type selectPlexServerRequest struct {
 	// ServerID identifies the Plex server selected by the user.
 	ServerID string `json:"serverId"`
+}
+
+// Valid validates a Plex server selection request.
+func (input selectPlexServerRequest) Valid(context.Context) map[string]string {
+	if strings.TrimSpace(input.ServerID) == "" {
+		return map[string]string{"serverId": "Choose a Plex server."}
+	}
+	return nil
 }
 
 // StartPlexAuth returns the handler that begins Plex authorization.
@@ -33,7 +50,7 @@ func (a *API) StartPlexAuth() http.HandlerFunc {
 			return
 		}
 		input := plexAuthRequest{Method: plex.AuthMethodStandard}
-		if err := decode(r, &input); err != nil {
+		if err := decodeValid(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}
@@ -66,10 +83,11 @@ func (a *API) SelectPlexServer() http.HandlerFunc {
 			return
 		}
 		var input selectPlexServerRequest
-		if err := decode(r, &input); err != nil {
+		if err := decodeValid(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}
+		input.ServerID = strings.TrimSpace(input.ServerID)
 		if err := a.Plex.SelectServer(r.Context(), setupToken(r), input.ServerID); err != nil {
 			a.fail(r, w, err)
 			return

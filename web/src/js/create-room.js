@@ -3,10 +3,12 @@ import { renderGenreChoices, selectedGenres } from "./genres.js";
 import { saveSession } from "./state.js";
 import {
   backButton,
+  clearFieldErrors,
   instantiateTemplate,
   messageElement,
   root,
   showError,
+  showFieldErrors,
   templateElement,
   topbar,
 } from "./ui.js";
@@ -78,6 +80,7 @@ async function populateRoomLibraries(libraries, filters, selectedLibraries) {
 // submitCreateRoom creates the room from the current form values.
 async function submitCreateRoom(event, navigation, view, selectedLibraries) {
   event.preventDefault();
+  clearFieldErrors(view.form);
   view.error.textContent = "";
   view.submit.disabled = true;
   view.submit.textContent = "Building the deck…";
@@ -98,7 +101,21 @@ async function submitCreateRoom(event, navigation, view, selectedLibraries) {
     saveSession(created);
     await navigation.renderRoom();
   } catch (requestError) {
-    showError(view.error, requestError);
+    const rendered = showFieldErrors(view.form, requestError, {
+      name: view.name,
+      libraryKeys: view.libraries,
+      genreMode: view.filters.genreMode,
+      roundSize: view.filters.roundSize,
+      samplingStrategy: view.filters.samplingStrategy,
+      "filters.yearFrom": view.filters.yearFrom,
+      "filters.yearTo": view.filters.yearTo,
+      "filters.maxDurationMinutes": view.filters.duration,
+    });
+    if (rendered) {
+      view.error.textContent = "Please fix the highlighted fields."
+    } else {
+      showError(view.error, requestError);
+    }
     view.submit.disabled = false;
     view.submit.textContent = "Create room";
   }

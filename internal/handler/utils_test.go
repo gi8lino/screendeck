@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,22 @@ import (
 type decodeTestRequest struct {
 	// ItemID identifies the decoded media item.
 	ItemID string `json:"itemId"`
+}
+
+type decodeValidTestRequest struct {
+	Name string `json:"name"`
+	Code string `json:"code"`
+}
+
+func (input *decodeValidTestRequest) Valid(context.Context) map[string]string {
+	problems := make(map[string]string)
+	if input.Name == "" {
+		problems["name"] = "Enter your name."
+	}
+	if input.Code == "" {
+		problems["code"] = "Enter a room code."
+	}
+	return problems
 }
 
 // TestDecode verifies strict JSON request decoding.
@@ -64,6 +81,24 @@ func TestDecode(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exactly one JSON value")
 	})
+}
+
+func TestDecodeValidCollectsFieldProblems(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/",
+		bytes.NewBufferString(`{}`),
+	)
+	var input decodeValidTestRequest
+
+	err := decodeValid(request, &input)
+
+	var validation validationError
+	require.ErrorAs(t, err, &validation)
+	assert.Equal(t, map[string]string{
+		"code": "Enter a room code.",
+		"name": "Enter your name.",
+	}, validation.Problems)
 }
 
 // TestStatusForError verifies application errors map to stable public HTTP statuses.

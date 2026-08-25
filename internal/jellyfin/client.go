@@ -287,6 +287,7 @@ type httpStatusError struct {
 	status int
 }
 
+// Error returns the upstream HTTP status as an error message.
 func (e httpStatusError) Error() string { return fmt.Sprintf("HTTP status %d", e.status) }
 
 // errorsIsStatus reports whether an error contains the expected Jellyfin HTTP status.

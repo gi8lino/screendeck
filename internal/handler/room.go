@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -10,6 +11,98 @@ import (
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
+// createRoomRequest describes the JSON payload accepted when creating a room.
+type createRoomRequest struct {
+	Name             string                `json:"name"`
+	LibraryKeys      []string              `json:"libraryKeys"`
+	Filters          room.Filters          `json:"filters"`
+	Genres           []string              `json:"genres"`
+	GenreMode        room.GenreMode        `json:"genreMode"`
+	RoundSize        int                   `json:"roundSize"`
+	SamplingStrategy room.SamplingStrategy `json:"samplingStrategy"`
+}
+
+// Valid returns every field-level room creation problem.
+func (input *createRoomRequest) Valid(context.Context) map[string]string {
+	problems := make(map[string]string)
+
+	if strings.TrimSpace(input.Name) == "" {
+		problems["name"] = "Enter your name."
+	}
+
+	if len(input.LibraryKeys) == 0 {
+		problems["libraryKeys"] = "Select at least one library."
+	}
+
+	if input.Filters.YearFrom < 0 {
+		problems["filters.yearFrom"] = "The year must be zero or later."
+	}
+
+	if input.Filters.YearTo < 0 {
+		problems["filters.yearTo"] = "The year must be zero or later."
+	}
+
+	if room.ReversedYearRange(input.Filters) {
+		problems["filters.yearTo"] = "The final year must not be earlier than the starting year."
+	}
+
+	if input.Filters.MaxDurationMinutes < 0 {
+		problems["filters.maxDurationMinutes"] = "The duration must be zero or greater."
+	}
+
+	if !room.ValidRoundSize(input.RoundSize) {
+		problems["roundSize"] = "Choose a first-round size between 0 and 50,000."
+	}
+
+	if !room.ValidGenreMode(input.GenreMode) {
+		problems["genreMode"] = "Choose whether genres should match any or all selections."
+	}
+
+	if input.SamplingStrategy != "" && !room.ValidSamplingStrategy(input.SamplingStrategy) {
+		problems["samplingStrategy"] = "Choose a valid first-round selection strategy."
+	}
+
+	return problems
+}
+
+// joinRoomRequest describes the JSON payload accepted when joining a room.
+type joinRoomRequest struct {
+	Code      string         `json:"code"`
+	Name      string         `json:"name"`
+	Genres    []string       `json:"genres"`
+	GenreMode room.GenreMode `json:"genreMode"`
+}
+
+// Valid returns every field-level room joining problem.
+func (input *joinRoomRequest) Valid(context.Context) map[string]string {
+	problems := make(map[string]string)
+	if !validRoomCode(input.Code) {
+		problems["code"] = "Enter a valid six-character room code."
+	}
+	if strings.TrimSpace(input.Name) == "" {
+		problems["name"] = "Enter your name."
+	}
+	if !room.ValidGenreMode(input.GenreMode) {
+		problems["genreMode"] = "Choose whether genres should match any or all selections."
+	}
+	return problems
+}
+
+// validRoomCode reports whether code has the expected length and alphabet.
+func validRoomCode(code string) bool {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if len(code) != 6 {
+		return false
+	}
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	for _, character := range code {
+		if !strings.ContainsRune(alphabet, character) {
+			return false
+		}
+	}
+	return true
+}
+
 // participantToken extracts a participant token from a request.
 func participantToken(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("X-Participant-Token"))
@@ -17,26 +110,9 @@ func participantToken(r *http.Request) string {
 
 // CreateRoom returns the room creation handler.
 func (a *API) CreateRoom() http.HandlerFunc {
-	// request describes the JSON payload accepted by this handler.
-	type request struct {
-		// Name is the display name.
-		Name string `json:"name"`
-		// LibraryKeys identifies the media libraries included in the room.
-		LibraryKeys []string `json:"libraryKeys"`
-		// Filters contains room-wide catalog filters.
-		Filters room.Filters `json:"filters"`
-		// Genres contains selected genre names.
-		Genres []string `json:"genres"`
-		// GenreMode controls whether selected genres match any or all.
-		GenreMode room.GenreMode `json:"genreMode"`
-		// RoundSize limits the number of titles initially activated.
-		RoundSize int `json:"roundSize"`
-		// SamplingStrategy controls how the initial title pool is ordered.
-		SamplingStrategy room.SamplingStrategy `json:"samplingStrategy"`
-	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input request
-		if err := decode(r, &input); err != nil {
+		var input createRoomRequest
+		if err := decodeValid(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}
@@ -66,20 +142,9 @@ func (a *API) CreateRoom() http.HandlerFunc {
 
 // JoinRoom returns the room joining handler.
 func (a *API) JoinRoom() http.HandlerFunc {
-	// request describes the JSON payload accepted by this handler.
-	type request struct {
-		// Code is the six-character room identifier.
-		Code string `json:"code"`
-		// Name is the display name.
-		Name string `json:"name"`
-		// Genres contains selected genre names.
-		Genres []string `json:"genres"`
-		// GenreMode controls whether selected genres match any or all.
-		GenreMode room.GenreMode `json:"genreMode"`
-	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input request
-		if err := decode(r, &input); err != nil {
+		var input joinRoomRequest
+		if err := decodeValid(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}

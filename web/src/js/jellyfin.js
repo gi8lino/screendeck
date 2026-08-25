@@ -2,9 +2,11 @@ import { api } from "./api.js";
 import { setConfig } from "./state.js";
 import {
   backButton,
+  clearFieldErrors,
   instantiateTemplate,
   root,
   showError,
+  showFieldErrors,
   showToast,
   topbar,
 } from "./ui.js";
@@ -19,6 +21,7 @@ export function renderJellyfinSetup(navigation) {
 // connectJellyfin authenticates ScreenDeck and persists the returned Jellyfin access token.
 async function connectJellyfin(event, refs, navigation) {
   event.preventDefault();
+  clearFieldErrors(refs.form);
   refs.error.textContent = "";
   refs.submit.disabled = true;
   refs.submit.textContent = "Connecting…";
@@ -37,7 +40,16 @@ async function connectJellyfin(event, refs, navigation) {
     showToast("Jellyfin connected");
     navigation.renderHome();
   } catch (error) {
-    showError(refs.error, error);
+    const rendered = showFieldErrors(refs.form, error, {
+      serverUrl: refs.serverUrl,
+      username: refs.username,
+      password: refs.password,
+    });
+    if (rendered) {
+      refs.error.textContent = "Please fix the highlighted fields."
+    } else {
+      showError(refs.error, error);
+    }
     refs.submit.disabled = false;
     refs.submit.textContent = "Connect Jellyfin";
   }

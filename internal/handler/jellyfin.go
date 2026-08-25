@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gi8lino/screendeck/internal/media"
@@ -17,6 +19,23 @@ type jellyfinConnectRequest struct {
 	Password string `json:"password"`
 }
 
+// Valid returns every field-level Jellyfin connection problem.
+func (input *jellyfinConnectRequest) Valid(context.Context) map[string]string {
+	problems := make(map[string]string)
+
+	serverURL := strings.TrimSpace(input.ServerURL)
+	parsed, err := url.ParseRequestURI(serverURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		problems["serverUrl"] = "Enter an absolute HTTP or HTTPS server URL."
+	}
+
+	if strings.TrimSpace(input.Username) == "" {
+		problems["username"] = "Enter a Jellyfin username."
+	}
+
+	return problems
+}
+
 // ConnectJellyfin authenticates to a Jellyfin server and selects Jellyfin as the instance media provider.
 func (a *API) ConnectJellyfin() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +44,7 @@ func (a *API) ConnectJellyfin() http.HandlerFunc {
 			return
 		}
 		var input jellyfinConnectRequest
-		if err := decode(r, &input); err != nil {
+		if err := decodeValid(r, &input); err != nil {
 			a.fail(r, w, err)
 			return
 		}

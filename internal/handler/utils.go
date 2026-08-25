@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,21 @@ import (
 	"github.com/gi8lino/screendeck/internal/requestid"
 	"github.com/gi8lino/screendeck/internal/store"
 )
+
+// validRequest validates a decoded request and returns problems keyed by JSON field path.
+type validRequest interface {
+	Valid(context.Context) map[string]string
+}
+
+// validationError contains all field-level problems found in a request.
+type validationError struct {
+	Problems map[string]string
+}
+
+// Error implements error.
+func (e validationError) Error() string {
+	return "request validation failed"
+}
 
 // decode reads and validates a JSON request body.
 func decode(r *http.Request, target any) error {
@@ -33,6 +49,17 @@ func decode(r *http.Request, target any) error {
 		return fmt.Errorf("invalid request: %w", err)
 	}
 
+	return nil
+}
+
+// decodeValid decodes a request and reports all field-level validation problems.
+func decodeValid(r *http.Request, target validRequest) error {
+	if err := decode(r, target); err != nil {
+		return err
+	}
+	if problems := target.Valid(r.Context()); len(problems) > 0 {
+		return validationError{Problems: problems}
+	}
 	return nil
 }
 
@@ -81,7 +108,12 @@ func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
 		"status", status,
 		"error", err,
 	)
-	a.respond(w, status, map[string]string{"error": err.Error()})
+	payload := map[string]any{"error": err.Error()}
+	var validation validationError
+	if errors.As(err, &validation) {
+		payload["problems"] = validation.Problems
+	}
+	a.respond(w, status, payload)
 }
 
 // respond writes a JSON API response.

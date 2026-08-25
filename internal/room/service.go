@@ -410,7 +410,7 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 		return createRoomOptions{}, err
 	}
 
-	if !validRoundSize(options.roundSize) {
+	if !ValidRoundSize(options.roundSize) {
 		return createRoomOptions{}, fmt.Errorf(
 			"round size must be between 0 and %d titles",
 			maxRoundSize,
@@ -429,7 +429,7 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 		options.sampling = SamplingRandom
 	}
 
-	if !validSamplingStrategy(options.sampling) {
+	if !ValidSamplingStrategy(options.sampling) {
 		return createRoomOptions{}, errors.New(
 			"invalid first-round selection strategy",
 		)
@@ -438,9 +438,14 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 	return options, nil
 }
 
-// validRoundSize reports whether the requested first-round limit is supported.
-func validRoundSize(roundSize int) bool {
+// ValidRoundSize reports whether the requested first-round limit is supported.
+func ValidRoundSize(roundSize int) bool {
 	return roundSize >= 0 && roundSize <= maxRoundSize
+}
+
+// ValidGenreMode reports whether a personal genre mode is supported or omitted.
+func ValidGenreMode(mode GenreMode) bool {
+	return mode == "" || mode == GenreModeAny || mode == GenreModeAll
 }
 
 // filterEligibleItems applies room filters and removes duplicate media item identifiers.
@@ -509,7 +514,7 @@ func limitItems(
 
 // validateFilters verifies room-wide catalog filter bounds.
 func validateFilters(filters Filters) error {
-	if hasNegativeFilterValue(filters) || hasReversedYearRange(filters) {
+	if hasNegativeFilterValue(filters) || ReversedYearRange(filters) {
 		return errors.New("invalid catalog filters")
 	}
 
@@ -523,15 +528,15 @@ func hasNegativeFilterValue(filters Filters) bool {
 		filters.MaxDurationMinutes < 0
 }
 
-// hasReversedYearRange reports whether both year bounds are set in descending order.
-func hasReversedYearRange(filters Filters) bool {
+// ReversedYearRange reports whether both year bounds are set in descending order.
+func ReversedYearRange(filters Filters) bool {
 	return filters.YearFrom > 0 &&
 		filters.YearTo > 0 &&
 		filters.YearFrom > filters.YearTo
 }
 
-// validSamplingStrategy reports whether a first-round selection strategy is supported.
-func validSamplingStrategy(strategy SamplingStrategy) bool {
+// ValidSamplingStrategy reports whether a first-round selection strategy is supported.
+func ValidSamplingStrategy(strategy SamplingStrategy) bool {
 	switch strategy {
 	case SamplingRandom,
 		SamplingHighestRated,
@@ -1237,14 +1242,10 @@ func normalizeGenreMode(mode GenreMode) GenreMode {
 	if mode == "" {
 		return GenreModeAny
 	}
-
-	switch mode {
-	case GenreModeAny, GenreModeAll:
+	if ValidGenreMode(mode) {
 		return mode
-
-	default:
-		return ""
 	}
+	return ""
 }
 
 // canonicalGenres validates participant genres and returns their canonical room spelling.

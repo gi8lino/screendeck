@@ -3,9 +3,11 @@ import { renderGenreChoices, selectedGenres } from "./genres.js";
 import { saveSession } from "./state.js";
 import {
   backButton,
+  clearFieldErrors,
   instantiateTemplate,
   root,
   showError,
+  showFieldErrors,
   topbar,
 } from "./ui.js";
 
@@ -35,6 +37,7 @@ export function renderJoinRoom(navigation, initialCode = "") {
 // submitJoinRoom joins the requested room with the participant's current preferences.
 async function submitJoinRoom(event, navigation, view, state, loadGenres) {
   event.preventDefault();
+  clearFieldErrors(view.form);
   view.error.textContent = "";
   view.submit.disabled = true;
 
@@ -54,7 +57,16 @@ async function submitJoinRoom(event, navigation, view, state, loadGenres) {
     saveSession(joined);
     await navigation.renderRoom();
   } catch (requestError) {
-    showError(view.error, requestError);
+    const rendered = showFieldErrors(view.form, requestError, {
+      code: view.code,
+      name: view.name,
+      genreMode: view.genreMode,
+    });
+    if (rendered) {
+      view.error.textContent = "Please fix the highlighted fields."
+    } else {
+      showError(view.error, requestError);
+    }
     view.submit.disabled = false;
   }
 }

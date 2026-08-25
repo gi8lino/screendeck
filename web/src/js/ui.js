@@ -110,3 +110,43 @@ export function showToast(message) {
 export function showError(node, error) {
   node.textContent = error.message || String(error);
 }
+
+// clearFieldErrors removes field-level validation feedback from a form.
+export function clearFieldErrors(form) {
+  form.querySelectorAll("[data-validation-error]").forEach((node) =>
+    node.remove(),
+  );
+  form.querySelectorAll('[aria-invalid="true"]').forEach((node) => {
+    node.removeAttribute("aria-invalid");
+    node.removeAttribute("aria-errormessage");
+  });
+}
+
+// showFieldErrors renders API validation problems beside their form controls.
+export function showFieldErrors(form, error, fields) {
+  clearFieldErrors(form);
+  let rendered = false;
+  Object.entries(error.problems || {}).forEach(([field, message]) => {
+    const control = fields[field];
+    if (!(control instanceof Element)) return;
+
+    control.setAttribute("aria-invalid", "true");
+    const feedback = document.createElement("p");
+    feedback.className = "field-error";
+    feedback.dataset.validationError = field;
+    feedback.id = `validation-${field.replace(/[^a-z0-9]+/gi, "-")}`;
+    feedback.textContent = message;
+    control.setAttribute("aria-errormessage", feedback.id);
+    control.insertAdjacentElement("afterend", feedback);
+
+    const clear = () => {
+      control.removeAttribute("aria-invalid");
+      control.removeAttribute("aria-errormessage");
+      feedback.remove();
+    };
+    control.addEventListener("input", clear, { once: true });
+    control.addEventListener("change", clear, { once: true });
+    rendered = true;
+  });
+  return rendered;
+}

@@ -668,28 +668,37 @@ func TestValidRoundSize(t *testing.T) {
 
 	t.Run("zero is valid", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, validRoundSize(0))
+		assert.True(t, ValidRoundSize(0))
 	})
 
 	t.Run("positive value is valid", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, validRoundSize(100))
+		assert.True(t, ValidRoundSize(100))
 	})
 
 	t.Run("maximum is valid", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, validRoundSize(maxRoundSize))
+		assert.True(t, ValidRoundSize(maxRoundSize))
 	})
 
 	t.Run("negative value is invalid", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, validRoundSize(-1))
+		assert.False(t, ValidRoundSize(-1))
 	})
 
 	t.Run("above maximum is invalid", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, validRoundSize(maxRoundSize+1))
+		assert.False(t, ValidRoundSize(maxRoundSize+1))
 	})
+}
+
+func TestValidGenreMode(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, ValidGenreMode(""))
+	assert.True(t, ValidGenreMode(GenreModeAny))
+	assert.True(t, ValidGenreMode(GenreModeAll))
+	assert.False(t, ValidGenreMode(GenreMode("invalid")))
 }
 
 func TestHasNegativeFilterValue(t *testing.T) {
@@ -720,27 +729,27 @@ func TestHasNegativeFilterValue(t *testing.T) {
 	})
 }
 
-func TestHasReversedYearRange(t *testing.T) {
+func TestReversedYearRange(t *testing.T) {
 	t.Parallel()
 
 	t.Run("ascending range", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasReversedYearRange(Filters{YearFrom: 2000, YearTo: 2020}))
+		assert.False(t, ReversedYearRange(Filters{YearFrom: 2000, YearTo: 2020}))
 	})
 
 	t.Run("equal bounds", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasReversedYearRange(Filters{YearFrom: 2020, YearTo: 2020}))
+		assert.False(t, ReversedYearRange(Filters{YearFrom: 2020, YearTo: 2020}))
 	})
 
 	t.Run("open range", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasReversedYearRange(Filters{YearFrom: 2020}))
+		assert.False(t, ReversedYearRange(Filters{YearFrom: 2020}))
 	})
 
 	t.Run("reversed range", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasReversedYearRange(Filters{YearFrom: 2025, YearTo: 2020}))
+		assert.True(t, ReversedYearRange(Filters{YearFrom: 2025, YearTo: 2020}))
 	})
 }
 

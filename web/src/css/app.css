@@ -374,6 +374,15 @@ select option {
   color: #ff8a8e;
   min-height: 24px;
 }
+.field-error {
+  margin: 7px 0 0;
+  color: #ff8a8e;
+  font-size: 12px;
+}
+[aria-invalid="true"] {
+  border-color: #ff8a8e !important;
+  box-shadow: 0 0 0 3px #ff5a5f20;
+}
 
 .topbar-actions {
   display: flex;

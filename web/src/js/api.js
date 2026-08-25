@@ -20,6 +20,7 @@ export async function api(path, options = {}) {
       payload?.error || `Request failed (${response.status})`,
     );
     error.status = response.status;
+    error.problems = payload?.problems || {};
     throw error;
   }
   return payload;
