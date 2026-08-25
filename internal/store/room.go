@@ -23,6 +23,8 @@ const (
 	RoomPhaseRoundComplete RoomPhase = "round_complete"
 	// RoomPhaseFinished indicates that the room has converged on one winning item.
 	RoomPhaseFinished RoomPhase = "finished"
+	// posterLookaheadSize limits how many upcoming posters the browser preloads.
+	posterLookaheadSize = 3
 )
 
 // Room contains persisted room metadata.
@@ -83,6 +85,8 @@ type RoomState struct {
 	Participants []Participant `json:"participants"`
 	// Candidate is the next eligible item for the authenticated participant.
 	Candidate *media.Item `json:"candidate,omitempty"`
+	// PosterLookahead contains upcoming item identifiers in participant deck order.
+	PosterLookahead []string `json:"posterLookahead,omitempty"`
 	// Matches contains items unanimously liked by active participants.
 	Matches []media.Item `json:"matches"`
 	// Winner contains final winner details when the room is finished.
@@ -564,9 +568,18 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 		return RoomState{}, err
 	}
 
-	candidate, err := s.nextItem(ctx, code, participantID)
+	upcoming, err := s.nextItems(ctx, code, participantID, posterLookaheadSize+1)
 	if err != nil {
 		return RoomState{}, err
+	}
+	var candidate *media.Item
+	var posterLookahead []string
+	if len(upcoming) > 0 {
+		candidate = &upcoming[0]
+		posterLookahead = make([]string, 0, len(upcoming)-1)
+		for _, item := range upcoming[1:] {
+			posterLookahead = append(posterLookahead, item.ID)
+		}
 	}
 	matches, err := s.matchItems(ctx, code)
 	if err != nil {
@@ -598,16 +611,17 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 	}
 
 	return RoomState{
-		Room:          room,
-		Me:            me,
-		Participants:  participants,
-		Candidate:     candidate,
-		Matches:       matches,
-		Winner:        winner,
-		Progress:      progress,
-		NextRound:     nextRound,
-		RoundComplete: roundComplete,
-		MoreTitles:    moreTitles,
+		Room:            room,
+		Me:              me,
+		Participants:    participants,
+		Candidate:       candidate,
+		PosterLookahead: posterLookahead,
+		Matches:         matches,
+		Winner:          winner,
+		Progress:        progress,
+		NextRound:       nextRound,
+		RoundComplete:   roundComplete,
+		MoreTitles:      moreTitles,
 	}, nil
 }
 
@@ -974,8 +988,8 @@ WHERE room_code = ?
 	return state, nil
 }
 
-// nextItem returns the next unvoted media item for a participant.
-func (s *Store) nextItem(ctx context.Context, code, participantID string) (*media.Item, error) {
+// nextItems returns a participant's next unvoted media items in deck order.
+func (s *Store) nextItems(ctx context.Context, code, participantID string, limit int) ([]media.Item, error) {
 	const query = `
 SELECT
   m.id,
@@ -1027,13 +1041,23 @@ WHERE p.id = ?
     )
   )
 ORDER BY rm.position
-LIMIT 1
+LIMIT ?
 `
-	item, err := scanItem(s.db.QueryRowContext(ctx, query, participantID, code))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+	rows, err := s.db.QueryContext(ctx, query, participantID, code, limit)
+	if err != nil {
+		return nil, err
 	}
-	return item, err
+	defer rows.Close() // nolint:errcheck
+
+	items := make([]media.Item, 0, limit)
+	for rows.Next() {
+		item, scanErr := scanItem(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, *item)
+	}
+	return items, rows.Err()
 }
 
 // matchItems returns media liked by every active participant.

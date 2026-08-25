@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestUnanimousMatchLifecycle verifies matching across all room participants.
 func TestUnanimousMatchLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -48,7 +47,47 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	assert.Equal(t, 1, state.Progress.Voted)
 }
 
-// TestLeavingParticipantCanCompleteMatch verifies departed participants no longer block matches.
+func TestRoomStateIncludesPosterLookahead(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	database, err := Open(":memory:")
+	require.NoError(t, err)
+	defer database.Close() // nolint:errcheck
+
+	items := []media.Item{
+		{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},
+		{ID: "b", LibraryKey: "1", Type: "movie", Title: "Beta"},
+		{ID: "c", LibraryKey: "1", Type: "movie", Title: "Gamma"},
+		{ID: "d", LibraryKey: "1", Type: "movie", Title: "Delta"},
+		{ID: "e", LibraryKey: "1", Type: "movie", Title: "Epsilon"},
+	}
+	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
+	now := time.Now().UTC()
+	require.NoError(t, database.CreateRoom(
+		ctx,
+		Room{Code: "POSTER", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		Participant{ID: "p1", Name: "One"},
+		"hash1",
+		[]string{"a", "b", "c", "d", "e"},
+		[]string{"a", "b", "c", "d", "e"},
+	))
+
+	state, err := database.RoomState(ctx, "POSTER", "p1")
+	require.NoError(t, err)
+	require.NotNil(t, state.Candidate)
+	assert.Equal(t, "a", state.Candidate.ID)
+	assert.Equal(t, []string{"b", "c", "d"}, state.PosterLookahead)
+
+	_, err = database.Vote(ctx, "POSTER", "p1", "a", false)
+	require.NoError(t, err)
+	state, err = database.RoomState(ctx, "POSTER", "p1")
+	require.NoError(t, err)
+	require.NotNil(t, state.Candidate)
+	assert.Equal(t, "b", state.Candidate.ID)
+	assert.Equal(t, []string{"c", "d", "e"}, state.PosterLookahead)
+}
+
 func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 	t.Parallel()
 
@@ -77,7 +116,6 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 	assert.Len(t, state.Participants, 2)
 }
 
-// TestHostOwnershipTransfersOnLeave verifies the earliest remaining participant becomes host.
 func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	t.Parallel()
 
@@ -104,7 +142,6 @@ func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	assert.True(t, state.Me.IsHost)
 }
 
-// TestConcurrentFinalVotesCreateOneMatch verifies simultaneous likes cannot create duplicate match state.
 func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	ctx := t.Context()
 	database, err := Open(":memory:")

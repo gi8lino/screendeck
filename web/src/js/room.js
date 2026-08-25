@@ -19,6 +19,7 @@ let knownMatchIDs = new Set();
 let matchQueue = [];
 let matchDialogOpen = false;
 let roomViewGeneration = 0;
+let posterPreloads = new Map();
 
 // renderRoom loads and displays the current room.
 export async function renderRoom(nextNavigation) {
@@ -29,6 +30,7 @@ export async function renderRoom(nextNavigation) {
   try {
     const state = await api(`/api/rooms/${encodeURIComponent(session.code)}`);
     if (generation !== roomViewGeneration) return;
+    preloadRoomPosters(state);
     drawRoom(state);
     trackMatches(state);
     connectEvents();
@@ -46,6 +48,26 @@ export function stopRoomEvents() {
   roomViewGeneration += 1;
   eventSource?.close();
   eventSource = null;
+  posterPreloads = new Map();
+}
+
+// preloadRoomPosters keeps the current and upcoming poster requests warm.
+function preloadRoomPosters(state) {
+  const itemIDs = [
+    state.candidate?.id,
+    ...(state.posterLookahead || []),
+  ].filter(Boolean);
+  const wanted = new Set(itemIDs);
+
+  for (const itemID of posterPreloads.keys()) {
+    if (!wanted.has(itemID)) posterPreloads.delete(itemID);
+  }
+  for (const itemID of itemIDs) {
+    if (posterPreloads.has(itemID)) continue;
+    const image = new Image();
+    image.src = `/api/posters/${encodeURIComponent(itemID)}`;
+    posterPreloads.set(itemID, image);
+  }
 }
 
 // drawRoom fills the static room shell with live room state.
