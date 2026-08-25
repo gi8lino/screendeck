@@ -29,6 +29,11 @@ func (r *responseRecorder) Flush() {
 	}
 }
 
+// Unwrap exposes the underlying writer to http.ResponseController.
+func (r *responseRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // AccessLog logs the method, path, status, client, and duration of requests.
 func AccessLog(logger *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {

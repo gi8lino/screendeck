@@ -342,6 +342,10 @@ func (a *API) Events() http.HandlerFunc {
 			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 			return
 		}
+		if err := disableWriteDeadline(w); err != nil {
+			a.fail(r, w, err)
+			return
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Accel-Buffering", "no")
@@ -370,4 +374,13 @@ func (a *API) Events() http.HandlerFunc {
 			}
 		}
 	}
+}
+
+// disableWriteDeadline allows a server-sent event response to remain open indefinitely.
+func disableWriteDeadline(w http.ResponseWriter) error {
+	err := http.NewResponseController(w).SetWriteDeadline(time.Time{})
+	if errors.Is(err, http.ErrNotSupported) {
+		return nil
+	}
+	return err
 }
