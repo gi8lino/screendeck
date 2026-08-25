@@ -13,7 +13,7 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -51,7 +51,7 @@ func TestRoomStateIncludesPosterLookahead(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -92,7 +92,7 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -120,7 +120,7 @@ func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -147,7 +147,7 @@ func TestRoomLock(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -179,7 +179,7 @@ func TestRoomLock(t *testing.T) {
 
 func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -228,7 +228,7 @@ func TestRemoveParticipant(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		database, err := Open(":memory:")
+		database, err := Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 
@@ -275,7 +275,7 @@ func TestRemoveParticipant(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		database, err := Open(":memory:")
+		database, err := Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 

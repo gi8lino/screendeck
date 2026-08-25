@@ -15,7 +15,7 @@ import (
 
 func TestFactory(t *testing.T) {
 	t.Run("creates supported providers", func(t *testing.T) {
-		database, err := store.Open(":memory:")
+		database, err := store.Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 
@@ -33,7 +33,7 @@ func TestFactory(t *testing.T) {
 	})
 
 	t.Run("restores configured provider", func(t *testing.T) {
-		database, err := store.Open(":memory:")
+		database, err := store.Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 

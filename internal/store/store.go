@@ -44,13 +44,12 @@ func (s *Store) Ping(ctx context.Context) error {
 }
 
 // Open opens the SQLite database, prepares encryption, and applies schema migrations.
-func Open(path string, configuredKeyPath ...string) (*Store, error) {
+func Open(path, keyPath string) (*Store, error) {
 	db, err := openSQLite(path)
 	if err != nil {
 		return nil, err
 	}
 
-	keyPath := optionalKeyPath(configuredKeyPath)
 	key, err := loadEncryptionKey(path, keyPath)
 	if err != nil {
 		db.Close() // nolint:errcheck
@@ -89,14 +88,6 @@ func openSQLite(path string) (*sql.DB, error) {
 	// Keep :memory: databases coherent and serialize SQLite writes through one connection.
 	db.SetMaxOpenConns(1)
 	return db, nil
-}
-
-// optionalKeyPath returns the first optional encryption-key path.
-func optionalKeyPath(configured []string) string {
-	if len(configured) == 0 {
-		return ""
-	}
-	return configured[0]
 }
 
 // newEncryptionCipher constructs the AES-GCM cipher used for stored secrets.

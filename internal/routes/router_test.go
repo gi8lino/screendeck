@@ -37,7 +37,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	}))
 	defer plexServer.Close()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -194,7 +194,7 @@ func TestJellyfinFlowThroughHTTP(t *testing.T) {
 	}))
 	defer jellyfinServer.Close()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -293,7 +293,7 @@ func decodeResponse(t *testing.T, recorder *httptest.ResponseRecorder, target an
 func TestHealthAndFrontend(t *testing.T) {
 	t.Parallel()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 

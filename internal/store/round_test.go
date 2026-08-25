@@ -13,7 +13,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -117,7 +117,7 @@ func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -151,7 +151,7 @@ func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -186,7 +186,7 @@ func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
 // TestMembershipChangeCancelsNextRoundRequest verifies the active group must consent again after a join.
 func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -378,7 +378,7 @@ func TestReadyParticipantDepartureCancelsConsensus(t *testing.T) {
 func seedReadyConcurrencyRoom(t *testing.T, code string) *Store {
 	t.Helper()
 	ctx := t.Context()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	items := []media.Item{
 		{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"},

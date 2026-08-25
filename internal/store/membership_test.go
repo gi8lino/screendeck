@@ -98,7 +98,7 @@ func TestRoomMembershipSession(t *testing.T) {
 // newMembershipTestStore creates a store with one media item available for room tests.
 func newMembershipTestStore(t *testing.T, ctx context.Context) *Store {
 	t.Helper()
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	require.NoError(t, database.SaveLibrary(
 		ctx,

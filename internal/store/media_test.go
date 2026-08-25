@@ -9,7 +9,7 @@ import (
 )
 
 func TestMediaProvider(t *testing.T) {
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = database.Close() })
 

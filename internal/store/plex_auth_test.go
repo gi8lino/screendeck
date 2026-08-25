@@ -75,7 +75,7 @@ WHERE id = 1
 func TestStandardPlexAuthenticationRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	database, err := Open(":memory:")
+	database, err := Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 

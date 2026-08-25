@@ -16,7 +16,7 @@ func TestMigrate(t *testing.T) {
 	t.Run("creates versioned database", func(t *testing.T) {
 		t.Parallel()
 
-		database, err := Open(":memory:")
+		database, err := Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 
@@ -245,7 +245,7 @@ func TestApplyMigration(t *testing.T) {
 	t.Run("advances version", func(t *testing.T) {
 		t.Parallel()
 
-		database, err := Open(":memory:")
+		database, err := Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 
@@ -282,7 +282,7 @@ CREATE TABLE migration_probe (
 	t.Run("rolls back on failure", func(t *testing.T) {
 		t.Parallel()
 
-		database, err := Open(":memory:")
+		database, err := Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 

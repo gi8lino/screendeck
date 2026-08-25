@@ -44,7 +44,7 @@ func (f fakeCatalog) Poster(
 func TestLibraries(t *testing.T) {
 	t.Parallel()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -132,7 +132,7 @@ func TestLibraries(t *testing.T) {
 func TestCatalogOptionsAndFilters(t *testing.T) {
 	t.Parallel()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -233,7 +233,7 @@ func TestCatalogOptionsAndFilters(t *testing.T) {
 func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	t.Parallel()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -327,7 +327,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 func TestCreateRoundSizeLimitsInitialDeck(t *testing.T) {
 	t.Parallel()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
@@ -491,7 +491,7 @@ func TestSelectInitialItems(t *testing.T) {
 func TestParticipantGenreModeAllRequiresEveryGenre(t *testing.T) {
 	t.Parallel()
 
-	database, err := store.Open(":memory:")
+	database, err := store.Open(":memory:", "")
 	require.NoError(t, err)
 	defer database.Close() // nolint:errcheck
 
