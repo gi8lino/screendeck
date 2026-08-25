@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gi8lino/screendeck/internal/jellyfin"
 	"github.com/gi8lino/screendeck/internal/media"
@@ -13,16 +12,6 @@ import (
 	"github.com/gi8lino/screendeck/internal/requestid"
 	"github.com/gi8lino/screendeck/internal/store"
 )
-
-// participantToken extracts a participant token from a request.
-func participantToken(r *http.Request) string {
-	return strings.TrimSpace(r.Header.Get("X-Participant-Token"))
-}
-
-// setupToken extracts a Plex setup token from a request.
-func setupToken(r *http.Request) string {
-	return strings.TrimSpace(r.Header.Get("X-Setup-Token"))
-}
 
 // decode reads and validates a JSON request body.
 func decode(r *http.Request, target any) error {

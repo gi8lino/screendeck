@@ -10,6 +10,11 @@ import (
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
+// participantToken extracts a participant token from a request.
+func participantToken(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("X-Participant-Token"))
+}
+
 // CreateRoom returns the room creation handler.
 func (a *API) CreateRoom() http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.

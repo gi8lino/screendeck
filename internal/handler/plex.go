@@ -2,10 +2,16 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/plex"
 )
+
+// setupToken extracts a Plex setup token from a request.
+func setupToken(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("X-Setup-Token"))
+}
 
 // plexAuthRequest describes a request to start Plex authorization.
 type plexAuthRequest struct {
