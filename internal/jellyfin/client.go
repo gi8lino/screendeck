@@ -115,7 +115,13 @@ type userData struct {
 }
 
 // NewClient creates an authenticated Jellyfin catalog client.
-func NewClient(rawURL, accessToken, userID, deviceID, version string) (*Client, error) {
+func NewClient(
+	rawURL string,
+	accessToken string,
+	userID string,
+	deviceID string,
+	version string,
+) (*Client, error) {
 	if accessToken == "" || userID == "" || deviceID == "" {
 		return nil, ErrInvalidClientConfig
 	}
@@ -209,7 +215,12 @@ func (c *Client) Poster(ctx context.Context, reference string) (*http.Response, 
 }
 
 // PublicSystemInfo retrieves public identity information from a Jellyfin server.
-func PublicSystemInfo(ctx context.Context, rawURL, deviceID, version string) (name, serverID string, err error) {
+func PublicSystemInfo(
+	ctx context.Context,
+	rawURL string,
+	deviceID string,
+	version string,
+) (name, serverID string, err error) {
 	baseURL, err := parseHTTPURL(rawURL)
 	if err != nil {
 		return "", "", ErrInvalidServerURL
@@ -228,7 +239,14 @@ func PublicSystemInfo(ctx context.Context, rawURL, deviceID, version string) (na
 }
 
 // Authenticate verifies Jellyfin credentials and returns the access token and user identity.
-func Authenticate(ctx context.Context, rawURL, username, password, deviceID, version string) (accessToken, userID, userName, serverID string, err error) {
+func Authenticate(
+	ctx context.Context,
+	rawURL string,
+	username string,
+	password string,
+	deviceID string,
+	version string,
+) (accessToken, userID, userName, serverID string, err error) {
 	baseURL, err := parseHTTPURL(rawURL)
 	if err != nil {
 		return "", "", "", "", ErrInvalidServerURL
@@ -291,7 +309,13 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 }
 
 // do performs one Jellyfin request with ScreenDeck client identity headers.
-func (c *Client) do(ctx context.Context, method, path string, query url.Values, body io.Reader) (*http.Response, error) {
+func (c *Client) do(
+	ctx context.Context,
+	method string,
+	path string,
+	query url.Values,
+	body io.Reader,
+) (*http.Response, error) {
 	u := *c.baseURL
 	u.Path = strings.TrimRight(u.Path, "/") + path
 	if query != nil {

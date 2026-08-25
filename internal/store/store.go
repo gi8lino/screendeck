@@ -14,16 +14,19 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const encryptionKeySize = 32
+const (
+	encryptionKeySize    = 32
+	inMemoryDatabasePath = ":memory:"
+)
 
-// ErrNotFound indicates that a requested persisted entity does not exist.
-var ErrNotFound = errors.New("not found")
-
-// ErrForbidden indicates that the authenticated caller is not allowed to perform an operation.
-var ErrForbidden = errors.New("forbidden")
-
-// ErrMembershipConflict indicates that a browser identity is already linked to another participant in a room.
-var ErrMembershipConflict = errors.New("browser identity already linked to another room participant")
+var (
+	// ErrNotFound indicates that a requested persisted entity does not exist.
+	ErrNotFound = errors.New("not found")
+	// ErrForbidden indicates that the authenticated caller is not allowed to perform an operation.
+	ErrForbidden = errors.New("forbidden")
+	// ErrMembershipConflict indicates that a browser identity is already linked to another participant in a room.
+	ErrMembershipConflict = errors.New("browser identity already linked to another room participant")
+)
 
 // Store owns the SQLite database and the cipher used for stored secrets.
 type Store struct {
@@ -69,17 +72,19 @@ func Open(path string, configuredKeyPath ...string) (*Store, error) {
 
 // openSQLite opens the configured SQLite database and applies connection-level settings.
 func openSQLite(path string) (*sql.DB, error) {
-	if path != ":memory:" {
+	if path != inMemoryDatabasePath {
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			return nil, fmt.Errorf("create database directory: %w", err)
 		}
 	}
 
+	// Enforce relationships, wait briefly for concurrent writers, and let readers proceed during writes.
 	dsn := path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
+	// Keep :memory: databases coherent and serialize SQLite writes through one connection.
 	db.SetMaxOpenConns(1)
 	return db, nil
 }
@@ -111,7 +116,8 @@ func (s *Store) Close() error { return s.db.Close() }
 
 // loadEncryptionKey loads or creates the database encryption key.
 func loadEncryptionKey(databasePath, configuredPath string) ([]byte, error) {
-	if databasePath == ":memory:" {
+	if databasePath == inMemoryDatabasePath {
+		// An in-memory database must not leave its otherwise unusable encryption key on disk.
 		return randomEncryptionKey()
 	}
 
@@ -157,8 +163,10 @@ func createEncryptionKey(databasePath, keyPath string) ([]byte, error) {
 		return nil, err
 	}
 
+	// O_EXCL prevents concurrent processes from silently replacing each other's key.
 	file, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
+		// Another process won the creation race, so use the key it persisted.
 		return loadEncryptionKey(databasePath, keyPath)
 	}
 	if err != nil {
@@ -178,7 +186,7 @@ func createEncryptionKey(databasePath, keyPath string) ([]byte, error) {
 
 // randomEncryptionKey creates a new random AES-256 key.
 func randomEncryptionKey() ([]byte, error) {
-	key := make([]byte, encryptionKeySize)
+	key := make([]byte, encryptionKeySize) // Allocate the exact 32 bytes required for an AES-256 key.
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
@@ -187,10 +195,11 @@ func randomEncryptionKey() ([]byte, error) {
 
 // seal encrypts sensitive data for persistent storage.
 func (s *Store) seal(value []byte) ([]byte, error) {
-	nonce := make([]byte, s.cipher.NonceSize())
+	nonce := make([]byte, s.cipher.NonceSize()) // GCM requires a fresh nonce of this exact size for every encryption.
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
+	// Using nonce as dst prefixes it to the authenticated ciphertext and tag for storage.
 	return s.cipher.Seal(nonce, nonce, value, nil), nil
 }
 
@@ -200,6 +209,8 @@ func (s *Store) open(value []byte) ([]byte, error) {
 		return nil, errors.New("encrypted authentication value is truncated")
 	}
 
-	nonce := value[:s.cipher.NonceSize()]
-	return s.cipher.Open(nil, nonce, value[s.cipher.NonceSize():], nil)
+	nonceSize := s.cipher.NonceSize() // Locate the boundary in the stored nonce || ciphertext layout.
+	nonce := value[:nonceSize]        // Recover the nonce prefix written by seal.
+	// Authenticate and decrypt the remaining ciphertext and tag into a new plaintext buffer.
+	return s.cipher.Open(nil, nonce, value[nonceSize:], nil)
 }

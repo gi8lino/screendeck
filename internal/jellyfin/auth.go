@@ -55,7 +55,12 @@ type AuthManager struct {
 }
 
 // newAuthManager creates a Jellyfin authentication manager and restores saved state.
-func newAuthManager(ctx context.Context, store AuthStore, logger *slog.Logger, version string) (*AuthManager, error) {
+func newAuthManager(
+	ctx context.Context,
+	store AuthStore,
+	logger *slog.Logger,
+	version string,
+) (*AuthManager, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}

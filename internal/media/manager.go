@@ -22,7 +22,11 @@ type Manager struct {
 }
 
 // NewManager creates a media manager and restores the active provider.
-func NewManager(ctx context.Context, store ProviderStore, providers ...Provider) (*Manager, error) {
+func NewManager(
+	ctx context.Context,
+	store ProviderStore,
+	providers ...Provider,
+) (*Manager, error) {
 	registered, err := registerProviders(providers)
 	if err != nil {
 		return nil, err

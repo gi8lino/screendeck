@@ -9,7 +9,10 @@ import (
 )
 
 // RoomsForIdentity returns active room memberships associated with a persistent browser identity.
-func (s *Service) RoomsForIdentity(ctx context.Context, identityToken string) ([]store.RoomMembership, error) {
+func (s *Service) RoomsForIdentity(
+	ctx context.Context,
+	identityToken string,
+) ([]store.RoomMembership, error) {
 	if strings.TrimSpace(identityToken) == "" {
 		return nil, errors.New("browser identity is required")
 	}

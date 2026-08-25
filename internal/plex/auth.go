@@ -298,7 +298,8 @@ func NewAuthManager(
 	ctx context.Context,
 	store AuthStore,
 	logger *slog.Logger,
-	cloudURL, serverURLOverride string,
+	cloudURL string,
+	serverURLOverride string,
 	experimental bool,
 ) (*AuthManager, error) {
 	if logger == nil {
@@ -594,7 +595,8 @@ func authorizationTokenExpiry(method AuthMethod, token string, now time.Time) ti
 
 // completePendingAuthorization stores account authorization data in a pending session.
 func (m *AuthManager) completePendingAuthorization(
-	setupToken, userToken string,
+	setupToken string,
+	userToken string,
 	tokenExpiresAt time.Time,
 	resources map[string]resource,
 ) error {
@@ -689,7 +691,13 @@ func logServerSelection(logger *slog.Logger, server resource) {
 }
 
 // logSelectedConnection records the Plex endpoint selected for runtime use.
-func logSelectedConnection(logger *slog.Logger, server resource, selected connection, effectiveURL string, overridden bool) {
+func logSelectedConnection(
+	logger *slog.Logger,
+	server resource,
+	selected connection,
+	effectiveURL string,
+	overridden bool,
+) {
 	logger.Info("selected Plex connection",
 		"event", "plex_connection_selected",
 		"server_id", server.ClientIdentifier,
@@ -702,7 +710,12 @@ func logSelectedConnection(logger *slog.Logger, server resource, selected connec
 }
 
 // authStateForServer builds persisted authentication state for a selected Plex server.
-func authStateForServer(pending *pendingAuth, server resource, selected connection, serverToken string) AuthState {
+func authStateForServer(
+	pending *pendingAuth,
+	server resource,
+	selected connection,
+	serverToken string,
+) AuthState {
 	return AuthState{
 		Method:         pending.method,
 		ClientID:       pending.clientID,
@@ -718,7 +731,11 @@ func authStateForServer(pending *pendingAuth, server resource, selected connecti
 }
 
 // persistSelectedServer saves authentication state and completes the setup session.
-func (m *AuthManager) persistSelectedServer(ctx context.Context, setupToken string, state AuthState) error {
+func (m *AuthManager) persistSelectedServer(
+	ctx context.Context,
+	setupToken string,
+	state AuthState,
+) error {
 	if err := m.store.SavePlexAuth(ctx, state); err != nil {
 		return fmt.Errorf("save Plex authentication: %w", err)
 	}
@@ -962,7 +979,11 @@ func authStateConfigured(state AuthState) bool {
 }
 
 // serverVerificationCandidates returns Plex tokens in method-specific verification order.
-func serverVerificationCandidates(method AuthMethod, accountToken, resourceToken string) []tokenCandidate {
+func serverVerificationCandidates(
+	method AuthMethod,
+	accountToken string,
+	resourceToken string,
+) []tokenCandidate {
 	if method == AuthMethodJWT {
 		return []tokenCandidate{
 			{
@@ -1049,7 +1070,12 @@ func safeURL(rawURL string) string {
 }
 
 // verifyServer returns the first token accepted by the selected Plex server.
-func (m *AuthManager) verifyServer(ctx context.Context, serverURL, clientID string, candidates ...tokenCandidate) (string, error) {
+func (m *AuthManager) verifyServer(
+	ctx context.Context,
+	serverURL string,
+	clientID string,
+	candidates ...tokenCandidate,
+) (string, error) {
 	logger := m.requestLogger(ctx)
 	var failures []error
 	seen := make(map[string]struct{}, len(candidates))
@@ -1113,7 +1139,12 @@ func (m *AuthManager) verifyServer(ctx context.Context, serverURL, clientID stri
 }
 
 // resources retrieves the Plex resources available to an account.
-func (m *AuthManager) resources(ctx context.Context, method AuthMethod, clientID, token string) (map[string]resource, error) {
+func (m *AuthManager) resources(
+	ctx context.Context,
+	method AuthMethod,
+	clientID string,
+	token string,
+) (map[string]resource, error) {
 	if method == AuthMethodStandard {
 		return m.xmlResources(ctx, clientID, token)
 	}
@@ -1163,7 +1194,11 @@ func (m *AuthManager) resources(ctx context.Context, method AuthMethod, clientID
 }
 
 // xmlResources retrieves Plex resources with server-compatible resource tokens.
-func (m *AuthManager) xmlResources(ctx context.Context, clientID, token string) (map[string]resource, error) {
+func (m *AuthManager) xmlResources(
+	ctx context.Context,
+	clientID string,
+	token string,
+) (map[string]resource, error) {
 	logger := m.requestLogger(ctx)
 	query := url.Values{
 		"includeHttps": {"1"},
@@ -1230,7 +1265,16 @@ func resourceFromXML(item xmlResource) resource {
 }
 
 // cloudJSON sends a JSON request to the Plex cloud API.
-func (m *AuthManager) cloudJSON(ctx context.Context, method, path, clientID, token string, query url.Values, body, target any) error {
+func (m *AuthManager) cloudJSON(
+	ctx context.Context,
+	method string,
+	path string,
+	clientID string,
+	token string,
+	query url.Values,
+	body any,
+	target any,
+) error {
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -1256,7 +1300,15 @@ func (m *AuthManager) cloudJSON(ctx context.Context, method, path, clientID, tok
 }
 
 // cloudXML sends an XML request to the Plex XML cloud API.
-func (m *AuthManager) cloudXML(ctx context.Context, method, path, clientID, token string, query url.Values, target any) error {
+func (m *AuthManager) cloudXML(
+	ctx context.Context,
+	method string,
+	path string,
+	clientID string,
+	token string,
+	query url.Values,
+	target any,
+) error {
 	response, err := m.cloudRequest(ctx, method, path, clientID, token, query, nil, "application/xml", "")
 	if err != nil {
 		return err
@@ -1272,10 +1324,14 @@ func (m *AuthManager) cloudXML(ctx context.Context, method, path, clientID, toke
 // cloudRequest sends one authenticated request to the Plex cloud API.
 func (m *AuthManager) cloudRequest(
 	ctx context.Context,
-	method, path, clientID, token string,
+	method string,
+	path string,
+	clientID string,
+	token string,
 	query url.Values,
 	body io.Reader,
-	accept, contentType string,
+	accept string,
+	contentType string,
 ) (*http.Response, error) {
 	logger := m.requestLogger(ctx)
 	started := time.Now()
@@ -1331,7 +1387,13 @@ func (m *AuthManager) cloudRequest(
 }
 
 // setPlexCloudHeaders adds the common headers required by Plex cloud requests.
-func setPlexCloudHeaders(req *http.Request, clientID, token, accept, contentType string) {
+func setPlexCloudHeaders(
+	req *http.Request,
+	clientID string,
+	token string,
+	accept string,
+	contentType string,
+) {
 	req.Header.Set("Accept", accept)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)

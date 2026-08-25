@@ -122,7 +122,15 @@ type NextRoundState struct {
 }
 
 // CreateRoom persists a room, its owner, the active deck, and the original eligible item pool.
-func (s *Store) CreateRoom(ctx context.Context, room Room, participant Participant, tokenHash string, itemIDs, poolIDs []string, memberships ...RoomMembershipCredential) error {
+func (s *Store) CreateRoom(
+	ctx context.Context,
+	room Room,
+	participant Participant,
+	tokenHash string,
+	itemIDs []string,
+	poolIDs []string,
+	memberships ...RoomMembershipCredential,
+) error {
 	normalizeRoomCreation(&room, &participant)
 	participantGenres, err := encodeParticipantGenres(participant.Genres)
 	if err != nil {
@@ -219,7 +227,14 @@ INSERT INTO rooms (
 }
 
 // insertParticipantTx inserts a participant inside an existing room transaction.
-func insertParticipantTx(ctx context.Context, tx *sql.Tx, code string, participant Participant, tokenHash, genres string) error {
+func insertParticipantTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	participant Participant,
+	tokenHash string,
+	genres string,
+) error {
 	const query = `
 INSERT INTO participants (
   id,
@@ -248,7 +263,13 @@ INSERT INTO participants (
 }
 
 // insertRoomItemsTx inserts an ordered set of active room items at the supplied start position.
-func insertRoomItemsTx(ctx context.Context, tx *sql.Tx, code string, itemIDs []string, startPosition int) error {
+func insertRoomItemsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	itemIDs []string,
+	startPosition int,
+) error {
 	const query = `
 INSERT INTO room_items (
   room_code,
@@ -273,7 +294,13 @@ INSERT INTO room_items (
 }
 
 // insertRoomPoolTx inserts the original eligible item pool and marks active items as used.
-func insertRoomPoolTx(ctx context.Context, tx *sql.Tx, code string, poolIDs, activeIDs []string) error {
+func insertRoomPoolTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	poolIDs []string,
+	activeIDs []string,
+) error {
 	const query = `
 INSERT INTO room_item_pool (
   room_code,
@@ -305,7 +332,13 @@ INSERT INTO room_item_pool (
 }
 
 // JoinRoom persists a participant in an active room.
-func (s *Store) JoinRoom(ctx context.Context, code string, participant Participant, tokenHash string, memberships ...RoomMembershipCredential) error {
+func (s *Store) JoinRoom(
+	ctx context.Context,
+	code string,
+	participant Participant,
+	tokenHash string,
+	memberships ...RoomMembershipCredential,
+) error {
 	normalizeParticipant(&participant)
 	genres, err := encodeParticipantGenres(participant.Genres)
 	if err != nil {
@@ -341,7 +374,14 @@ func (s *Store) JoinRoom(ctx context.Context, code string, participant Participa
 }
 
 // joinParticipantTx inserts a participant only when the target room is still active.
-func joinParticipantTx(ctx context.Context, tx *sql.Tx, code string, participant Participant, tokenHash, genres string) error {
+func joinParticipantTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	participant Participant,
+	tokenHash string,
+	genres string,
+) error {
 	const query = `
 INSERT INTO participants (
   id,
@@ -608,7 +648,12 @@ WHERE code = ?
 }
 
 // loadRoomParticipant returns one participant with current-round readiness and host state.
-func (s *Store) loadRoomParticipant(ctx context.Context, code, participantID string, room Room) (Participant, error) {
+func (s *Store) loadRoomParticipant(
+	ctx context.Context,
+	code string,
+	participantID string,
+	room Room,
+) (Participant, error) {
 	const query = `
 SELECT
   p.id,
@@ -647,7 +692,11 @@ WHERE p.id = ?
 }
 
 // loadRoomParticipants returns all participants with current-round readiness and host state.
-func (s *Store) loadRoomParticipants(ctx context.Context, code string, room Room) ([]Participant, error) {
+func (s *Store) loadRoomParticipants(
+	ctx context.Context,
+	code string,
+	room Room,
+) ([]Participant, error) {
 	const query = `
 SELECT
   p.id,
@@ -705,7 +754,13 @@ func scanParticipant(row scanner, ownerID string) (Participant, error) {
 }
 
 // loadNextRoundState returns current-round readiness and requester information.
-func (s *Store) loadNextRoundState(ctx context.Context, code string, room Room, participants []Participant, matches []media.Item) (NextRoundState, error) {
+func (s *Store) loadNextRoundState(
+	ctx context.Context,
+	code string,
+	room Room,
+	participants []Participant,
+	matches []media.Item,
+) (NextRoundState, error) {
 	state := NextRoundState{Required: len(participants)}
 
 	const readyQuery = `
@@ -731,7 +786,11 @@ WHERE rr.room_code = ?
 }
 
 // loadNextRoundRequester returns the participant that initiated next-round consensus when still present.
-func (s *Store) loadNextRoundRequester(ctx context.Context, code, ownerID string) (*Participant, error) {
+func (s *Store) loadNextRoundRequester(
+	ctx context.Context,
+	code string,
+	ownerID string,
+) (*Participant, error) {
 	const requesterIDQuery = `
 SELECT next_round_requester_id
 FROM rooms
@@ -833,7 +892,12 @@ WHERE room_code = ?
 }
 
 // loadWinner returns final winner details when the room has converged on one match.
-func (s *Store) loadWinner(ctx context.Context, code string, room Room, matches []media.Item) (*WinnerState, error) {
+func (s *Store) loadWinner(
+	ctx context.Context,
+	code string,
+	room Room,
+	matches []media.Item,
+) (*WinnerState, error) {
 	if room.Phase != RoomPhaseFinished || len(matches) != 1 {
 		return nil, nil
 	}
@@ -887,7 +951,11 @@ func scanWinnerSupporter(row scanner, ownerID string) (Participant, error) {
 }
 
 // loadMoreTitlesState returns the unused first-round pool state for the room host.
-func (s *Store) loadMoreTitlesState(ctx context.Context, code string, round int) (MoreTitlesState, error) {
+func (s *Store) loadMoreTitlesState(
+	ctx context.Context,
+	code string,
+	round int,
+) (MoreTitlesState, error) {
 	if round != 1 {
 		return MoreTitlesState{}, nil
 	}
@@ -1056,7 +1124,13 @@ func unanimousMatch(participants, likes int) bool {
 }
 
 // setMatchStateTx persists whether an item is currently a unanimous room match.
-func setMatchStateTx(ctx context.Context, tx *sql.Tx, code, itemID string, matched bool) error {
+func setMatchStateTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	itemID string,
+	matched bool,
+) error {
 	if !matched {
 		const deleteMatchQuery = `
 DELETE FROM item_matches
@@ -1081,7 +1155,13 @@ INSERT OR IGNORE INTO item_matches (
 }
 
 // Vote persists a participant vote and reports whether it produces a unanimous match.
-func (s *Store) Vote(ctx context.Context, code, participantID, itemID string, liked bool) (matched bool, err error) {
+func (s *Store) Vote(
+	ctx context.Context,
+	code string,
+	participantID string,
+	itemID string,
+	liked bool,
+) (matched bool, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -1112,7 +1192,14 @@ func (s *Store) Vote(ctx context.Context, code, participantID, itemID string, li
 }
 
 // upsertVoteTx records a vote only when the participant can vote for the active room item.
-func upsertVoteTx(ctx context.Context, tx *sql.Tx, code, participantID, itemID string, liked bool) error {
+func upsertVoteTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	participantID string,
+	itemID string,
+	liked bool,
+) error {
 	const query = `
 INSERT INTO item_votes (
   room_code,
@@ -1194,7 +1281,12 @@ ON CONFLICT (room_code, participant_id, item_id) DO UPDATE SET
 }
 
 // voteMatchCountsTx returns active participant and positive-vote counts for an item.
-func voteMatchCountsTx(ctx context.Context, tx *sql.Tx, code, itemID string) (participants, likes int, err error) {
+func voteMatchCountsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	itemID string,
+) (participants, likes int, err error) {
 	const query = `
 SELECT
   (
@@ -1215,7 +1307,12 @@ SELECT
 }
 
 // RemoveParticipant removes a non-host participant when requested by the current room host.
-func (s *Store) RemoveParticipant(ctx context.Context, code, requesterTokenHash, participantID string) error {
+func (s *Store) RemoveParticipant(
+	ctx context.Context,
+	code string,
+	requesterTokenHash string,
+	participantID string,
+) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1237,7 +1334,12 @@ func (s *Store) RemoveParticipant(ctx context.Context, code, requesterTokenHash,
 }
 
 // authenticateRoomHostTx authenticates a room participant and verifies that they are the current host.
-func authenticateRoomHostTx(ctx context.Context, tx *sql.Tx, code, tokenHash string) (string, error) {
+func authenticateRoomHostTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	tokenHash string,
+) (string, error) {
 	const hostQuery = `
 SELECT id
 FROM participants p
@@ -1265,7 +1367,12 @@ WHERE p.room_code = ?
 }
 
 // roomTokenAuthenticatedTx reports whether a participant token belongs to the room.
-func roomTokenAuthenticatedTx(ctx context.Context, tx *sql.Tx, code, tokenHash string) (authenticated bool, err error) {
+func roomTokenAuthenticatedTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	tokenHash string,
+) (authenticated bool, err error) {
 	const query = `
 SELECT COUNT(*)
 FROM participants

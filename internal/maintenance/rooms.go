@@ -12,7 +12,12 @@ type expiredRoomStore interface {
 }
 
 // RunRoomCleanup periodically removes expired rooms until shutdown.
-func RunRoomCleanup(ctx context.Context, store expiredRoomStore, roomCleanupInterval time.Duration, logger *slog.Logger) {
+func RunRoomCleanup(
+	ctx context.Context,
+	store expiredRoomStore,
+	roomCleanupInterval time.Duration,
+	logger *slog.Logger,
+) {
 	ticker := time.NewTicker(roomCleanupInterval)
 	defer ticker.Stop()
 	for {

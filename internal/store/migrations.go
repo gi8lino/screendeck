@@ -83,7 +83,11 @@ func (s *Store) validateMigrationSource(ctx context.Context, version, currentVer
 }
 
 // applyPendingMigrations applies every migration newer than the supplied database version.
-func (s *Store) applyPendingMigrations(ctx context.Context, migrations []migration, currentVersion int) (version int, err error) {
+func (s *Store) applyPendingMigrations(
+	ctx context.Context,
+	migrations []migration,
+	currentVersion int,
+) (version int, err error) {
 	version = currentVersion
 
 	for _, migration := range migrations {

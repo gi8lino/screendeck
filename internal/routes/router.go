@@ -10,7 +10,12 @@ import (
 )
 
 // NewRouter wires the ScreenDeck HTTP routes and middleware.
-func NewRouter(appFS fs.FS, handlers *handler.API, logger *slog.Logger, accessLog bool) (http.Handler, error) {
+func NewRouter(
+	appFS fs.FS,
+	handlers *handler.API,
+	logger *slog.Logger,
+	accessLog bool,
+) (http.Handler, error) {
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", handlers.Health())
 

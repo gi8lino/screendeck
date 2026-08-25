@@ -19,7 +19,15 @@ import (
 )
 
 // Run wires the application dependencies and serves until shutdown.
-func Run(ctx context.Context, appFS fs.FS, version, commit string, args []string, stdout, stderr io.Writer) error {
+func Run(
+	ctx context.Context,
+	appFS fs.FS,
+	version string,
+	commit string,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
 	cfg, err := config.Parse(args, version)
 	if err != nil {
 		if tinyflags.IsHelpRequested(err) || tinyflags.IsVersionRequested(err) {

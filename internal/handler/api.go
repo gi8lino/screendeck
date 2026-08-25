@@ -35,7 +35,9 @@ type API struct {
 
 // New creates an API with the supplied application services.
 func New(
-	version, commit, baseURL string,
+	version string,
+	commit string,
+	baseURL string,
 	experimental bool,
 	rooms *room.Service,
 	mediaManager *media.Manager,

@@ -220,7 +220,13 @@ func TestJellyfinFlowThroughHTTP(t *testing.T) {
 }
 
 // postJSON sends a JSON test request to an HTTP handler.
-func postJSON(t *testing.T, router http.Handler, path, body, token string) *httptest.ResponseRecorder {
+func postJSON(
+	t *testing.T,
+	router http.Handler,
+	path string,
+	body string,
+	token string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
 	if token != "" {

@@ -9,7 +9,12 @@ import (
 )
 
 // AddMoreTitles activates additional unused titles in the first round for the room host.
-func (s *Store) AddMoreTitles(ctx context.Context, code, participantID string, count int) (added, remaining int, err error) {
+func (s *Store) AddMoreTitles(
+	ctx context.Context,
+	code string,
+	participantID string,
+	count int,
+) (added, remaining int, err error) {
 	if count <= 0 || count > 1000 {
 		return 0, 0, errors.New("add-more count must be between 1 and 1000")
 	}
@@ -90,7 +95,12 @@ WHERE r.code = ?
 }
 
 // unusedPoolItemIDsTx returns the next unused items from the original first-round pool.
-func unusedPoolItemIDsTx(ctx context.Context, tx *sql.Tx, code string, count int) ([]string, error) {
+func unusedPoolItemIDsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	count int,
+) ([]string, error) {
 	const query = `
 SELECT item_id
 FROM room_item_pool
@@ -134,7 +144,13 @@ WHERE room_code = ?
 }
 
 // insertAdditionalRoomItemsTx appends unused pool items without duplicating active titles.
-func insertAdditionalRoomItemsTx(ctx context.Context, tx *sql.Tx, code string, itemIDs []string, startPosition int) error {
+func insertAdditionalRoomItemsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	itemIDs []string,
+	startPosition int,
+) error {
 	const query = `
 INSERT OR IGNORE INTO room_items (
   room_code,
@@ -214,7 +230,11 @@ WHERE room_code = ?
 }
 
 // roomRoundSummaryTx returns the current deck size and active participant count.
-func roomRoundSummaryTx(ctx context.Context, tx *sql.Tx, code string) (titles, participants int, err error) {
+func roomRoundSummaryTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+) (titles, participants int, err error) {
 	const titlesQuery = `
 SELECT COUNT(*)
 FROM room_items
@@ -231,7 +251,14 @@ WHERE room_code = ?
 }
 
 // setRoundReadinessTx records or withdraws one participant's next-round readiness.
-func setRoundReadinessTx(ctx context.Context, tx *sql.Tx, code string, round int, participantID string, ready bool) error {
+func setRoundReadinessTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	round int,
+	participantID string,
+	ready bool,
+) error {
 	if !ready {
 		const clearReadyQuery = `
 DELETE FROM round_ready
@@ -296,7 +323,13 @@ type roundReadinessRequestState struct {
 }
 
 // SetRoundReady updates one participant's next-round readiness and advances once everyone agrees.
-func (s *Store) SetRoundReady(ctx context.Context, code, participantID string, expectedRound int, ready bool) (round, titles, readyCount, required int, advanced bool, err error) {
+func (s *Store) SetRoundReady(
+	ctx context.Context,
+	code string,
+	participantID string,
+	expectedRound int,
+	ready bool,
+) (round, titles, readyCount, required int, advanced bool, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, 0, 0, false, err
@@ -339,7 +372,8 @@ func (s *Store) SetRoundReady(ctx context.Context, code, participantID string, e
 func prepareRoundReadinessTx(
 	ctx context.Context,
 	tx *sql.Tx,
-	code, participantID string,
+	code string,
+	participantID string,
 	expectedRound int,
 ) (roundReadinessRequestState, error) {
 	round, err := activeRoomRoundTx(ctx, tx, code)
@@ -421,7 +455,12 @@ WHERE code = ?
 }
 
 // roundReadyCountTx returns the number of active participants ready for the supplied round.
-func roundReadyCountTx(ctx context.Context, tx *sql.Tx, code string, round int) (int, error) {
+func roundReadyCountTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	round int,
+) (int, error) {
 	const query = `
 SELECT COUNT(*)
 FROM round_ready rr
@@ -450,7 +489,12 @@ WHERE code = ?
 }
 
 // advanceRoundTx snapshots the current matches and makes them the next shuffled deck.
-func advanceRoundTx(ctx context.Context, tx *sql.Tx, code string, round int) (nextRound, titleCount int, err error) {
+func advanceRoundTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	round int,
+) (nextRound, titleCount int, err error) {
 	itemIDs, err := matchItemIDsTx(ctx, tx, code)
 	if err != nil {
 		return 0, 0, err
@@ -533,7 +577,13 @@ WHERE room_code = ?
 }
 
 // updateRoomRoundTx advances a room to the supplied round and resets its phase state.
-func updateRoomRoundTx(ctx context.Context, tx *sql.Tx, code string, currentRound, nextRound int) error {
+func updateRoomRoundTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	currentRound int,
+	nextRound int,
+) error {
 	const query = `
 UPDATE rooms
 SET round = ?,

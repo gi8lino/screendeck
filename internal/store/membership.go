@@ -122,7 +122,11 @@ func scanRoomMembership(row scanner) (RoomMembership, error) {
 }
 
 // RoomMembershipSession restores room credentials associated with a browser identity.
-func (s *Store) RoomMembershipSession(ctx context.Context, identityHash, code string) (MembershipSession, error) {
+func (s *Store) RoomMembershipSession(
+	ctx context.Context,
+	identityHash string,
+	code string,
+) (MembershipSession, error) {
 	if err := validateIdentityHash(identityHash); err != nil {
 		return MembershipSession{}, err
 	}
@@ -192,7 +196,8 @@ WHERE identity_hash = ?
 func (s *Store) saveRoomMembershipTx(
 	ctx context.Context,
 	tx *sql.Tx,
-	code, participantID string,
+	code string,
+	participantID string,
 	credential RoomMembershipCredential,
 ) error {
 	if err := validateRoomMembershipCredential(credential); err != nil {
@@ -228,7 +233,13 @@ func validateRoomMembershipCredential(credential RoomMembershipCredential) error
 }
 
 // ensureRoomMembershipAvailableTx verifies that neither side of a membership is linked elsewhere.
-func ensureRoomMembershipAvailableTx(ctx context.Context, tx *sql.Tx, code, participantID, identityHash string) error {
+func ensureRoomMembershipAvailableTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	code string,
+	participantID string,
+	identityHash string,
+) error {
 	const identityQuery = `
 SELECT participant_id
 FROM room_memberships
@@ -286,7 +297,9 @@ WHERE p.id = ?
 func saveRoomMembershipRecordTx(
 	ctx context.Context,
 	tx *sql.Tx,
-	code, participantID, identityHash string,
+	code string,
+	participantID string,
+	identityHash string,
 	encryptedToken []byte,
 ) error {
 	const query = `
@@ -338,7 +351,8 @@ ON CONFLICT (token_hash) DO NOTHING
 func (s *Store) saveOptionalRoomMembershipTx(
 	ctx context.Context,
 	tx *sql.Tx,
-	code, participantID string,
+	code string,
+	participantID string,
 	credentials []RoomMembershipCredential,
 ) error {
 	if len(credentials) == 0 {
