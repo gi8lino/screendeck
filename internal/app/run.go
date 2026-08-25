@@ -97,15 +97,7 @@ func Run(
 		serverLogger,
 	)
 
-	router, err := routes.NewRouter(appFS, api, serverLogger, cfg.AccessLog)
-	if err != nil {
-		setupLogger.Error("application failed",
-			"event", "app_failed",
-			"stage", "create_router",
-			"error", err,
-		)
-		return fmt.Errorf("configure router: %w", err)
-	}
+	router := routes.NewRouter(appFS, api, serverLogger, cfg.AccessLog)
 
 	ctx, stop := server.SignalContext(ctx)
 	defer stop()

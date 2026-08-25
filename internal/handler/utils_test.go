@@ -50,6 +50,20 @@ func TestDecode(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `unknown field "unexpected"`)
 	})
+
+	t.Run("rejects multiple JSON values", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/",
+			bytes.NewBufferString(`{"itemId":"42"} {"itemId":"43"}`),
+		)
+		var input decodeTestRequest
+
+		err := decode(request, &input)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exactly one JSON value")
+	})
 }
 
 // TestStatusForError verifies application errors map to stable public HTTP statuses.

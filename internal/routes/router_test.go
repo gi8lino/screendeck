@@ -72,8 +72,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 		logger,
 	)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ScreenDeck</title>")}}
-	router, err := NewRouter(appFS, api, logger, false)
-	require.NoError(t, err)
+	router := NewRouter(appFS, api, logger, false)
 
 	host := postJSON(t, router, "/api/rooms", `{"name":"Host","libraryKeys":["1"]}`, "")
 	require.Equal(t, http.StatusCreated, host.Code, host.Body.String())
@@ -184,8 +183,7 @@ func TestJellyfinFlowThroughHTTP(t *testing.T) {
 		logger,
 	)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
-	router, err := NewRouter(appFS, api, logger, false)
-	require.NoError(t, err)
+	router := NewRouter(appFS, api, logger, false)
 
 	connected := postJSON(
 		t,
@@ -284,8 +282,7 @@ func TestHealthAndFrontend(t *testing.T) {
 		logger,
 	)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
-	router, err := NewRouter(appFS, api, logger, true)
-	require.NoError(t, err)
+	router := NewRouter(appFS, api, logger, true)
 
 	health := httptest.NewRecorder()
 	router.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/healthz", nil).WithContext(t.Context()))

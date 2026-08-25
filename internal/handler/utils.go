@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/gi8lino/screendeck/internal/jellyfin"
@@ -16,11 +17,22 @@ import (
 // decode reads and validates a JSON request body.
 func decode(r *http.Request, target any) error {
 	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20)
+
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("invalid request: %w", err)
 	}
+
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("invalid request: body must contain exactly one JSON value")
+		}
+		return fmt.Errorf("invalid request: %w", err)
+	}
+
 	return nil
 }
 

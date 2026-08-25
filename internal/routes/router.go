@@ -15,7 +15,7 @@ func NewRouter(
 	handlers *handler.API,
 	logger *slog.Logger,
 	accessLog bool,
-) (http.Handler, error) {
+) http.Handler {
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", handlers.Health())
 
@@ -53,5 +53,5 @@ func NewRouter(
 	if accessLog {
 		routed = middleware.Chain(routed, middleware.AccessLog(logger))
 	}
-	return middleware.Chain(routed, middleware.RequestID()), nil
+	return middleware.Chain(routed, middleware.RequestID())
 }
