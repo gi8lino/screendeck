@@ -21,8 +21,8 @@ func TestUnanimousMatchLifecycle(t *testing.T) {
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ABC123", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"42"}, []string{"42"}))
-	require.NoError(t, database.JoinRoom(ctx, "ABC123", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "ABC123", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"42"}, []string{"42"}))
+	require.NoError(t, joinTestRoom(database, ctx, "ABC123", Participant{ID: "p2", Name: "Two"}, "hash2"))
 
 	matched, err := database.Vote(ctx, "ABC123", "p1", "42", true)
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestRoomStateIncludesPosterLookahead(t *testing.T) {
 	}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(
+	require.NoError(t, createTestRoom(database,
 		ctx,
 		Room{Code: "POSTER", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 		Participant{ID: "p1", Name: "One"},
@@ -100,9 +100,9 @@ func TestLeavingParticipantCanCompleteMatch(t *testing.T) {
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "LEAVE1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"7"}, []string{"7"}))
-	require.NoError(t, database.JoinRoom(ctx, "LEAVE1", Participant{ID: "p2", Name: "Two"}, "hash2"))
-	require.NoError(t, database.JoinRoom(ctx, "LEAVE1", Participant{ID: "p3", Name: "Three"}, "hash3"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "LEAVE1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"7"}, []string{"7"}))
+	require.NoError(t, joinTestRoom(database, ctx, "LEAVE1", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, joinTestRoom(database, ctx, "LEAVE1", Participant{ID: "p3", Name: "Three"}, "hash3"))
 
 	_, err = database.Vote(ctx, "LEAVE1", "p1", "7", true)
 	require.NoError(t, err)
@@ -127,8 +127,8 @@ func TestHostOwnershipTransfersOnLeave(t *testing.T) {
 	item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "HOST01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
-	require.NoError(t, database.JoinRoom(ctx, "HOST01", Participant{ID: "p2", Name: "Next"}, "hash2"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "HOST01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
+	require.NoError(t, joinTestRoom(database, ctx, "HOST01", Participant{ID: "p2", Name: "Next"}, "hash2"))
 
 	state, err := database.RoomState(ctx, "HOST01", "p1")
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestRoomLock(t *testing.T) {
 	item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(
+	require.NoError(t, createTestRoom(database,
 		ctx,
 		Room{Code: "LOCK01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 		Participant{ID: "host", Name: "Host"},
@@ -168,11 +168,11 @@ func TestRoomLock(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, state.Room.Locked)
 
-	err = database.JoinRoom(ctx, "LOCK01", Participant{ID: "guest", Name: "Guest"}, "guest-hash")
+	err = joinTestRoom(database, ctx, "LOCK01", Participant{ID: "guest", Name: "Guest"}, "guest-hash")
 	require.ErrorIs(t, err, ErrRoomLocked)
 
 	require.NoError(t, database.SetRoomLocked(ctx, "LOCK01", "host-hash", false))
-	require.NoError(t, database.JoinRoom(ctx, "LOCK01", Participant{ID: "guest", Name: "Guest"}, "guest-hash"))
+	require.NoError(t, joinTestRoom(database, ctx, "LOCK01", Participant{ID: "guest", Name: "Guest"}, "guest-hash"))
 	err = database.SetRoomLocked(ctx, "LOCK01", "guest-hash", true)
 	require.ErrorIs(t, err, ErrForbidden)
 }
@@ -186,8 +186,8 @@ func TestConcurrentFinalVotesCreateOneMatch(t *testing.T) {
 	item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "RACE01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a"}))
-	require.NoError(t, database.JoinRoom(ctx, "RACE01", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "RACE01", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a"}))
+	require.NoError(t, joinTestRoom(database, ctx, "RACE01", Participant{ID: "p2", Name: "Two"}, "hash2"))
 
 	// voteResult captures the outcome of a concurrent vote in tests.
 	type voteResult struct {
@@ -238,9 +238,9 @@ func TestRemoveParticipant(t *testing.T) {
 		}
 		require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 		now := time.Now().UTC()
-		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMHOST", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
-		require.NoError(t, database.JoinRoom(ctx, "RMHOST", Participant{ID: "p2", Name: "Guest"}, "hash2"))
-		require.NoError(t, database.JoinRoom(ctx, "RMHOST", Participant{ID: "p3", Name: "Third"}, "hash3"))
+		require.NoError(t, createTestRoom(database, ctx, Room{Code: "RMHOST", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+		require.NoError(t, joinTestRoom(database, ctx, "RMHOST", Participant{ID: "p2", Name: "Guest"}, "hash2"))
+		require.NoError(t, joinTestRoom(database, ctx, "RMHOST", Participant{ID: "p3", Name: "Third"}, "hash3"))
 		_, err = database.Vote(ctx, "RMHOST", "p1", "a", true)
 		require.NoError(t, err)
 		_, err = database.Vote(ctx, "RMHOST", "p2", "a", true)
@@ -282,8 +282,8 @@ func TestRemoveParticipant(t *testing.T) {
 		item := media.Item{ID: "a", LibraryKey: "1", Type: "movie", Title: "Alpha"}
 		require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, []media.Item{item}))
 		now := time.Now().UTC()
-		require.NoError(t, database.CreateRoom(ctx, Room{Code: "RMNOPE", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
-		require.NoError(t, database.JoinRoom(ctx, "RMNOPE", Participant{ID: "p2", Name: "Guest"}, "hash2"))
+		require.NoError(t, createTestRoom(database, ctx, Room{Code: "RMNOPE", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "Host"}, "hash1", []string{"a"}, []string{"a"}))
+		require.NoError(t, joinTestRoom(database, ctx, "RMNOPE", Participant{ID: "p2", Name: "Guest"}, "hash2"))
 
 		err = database.RemoveParticipant(ctx, "RMNOPE", "hash2", "p1")
 		require.ErrorIs(t, err, ErrForbidden)

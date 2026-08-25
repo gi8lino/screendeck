@@ -95,6 +95,72 @@ func TestRoomMembershipSession(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
+// TestRoomMembershipRequired verifies room writes roll back without browser credentials.
+func TestRoomMembershipRequired(t *testing.T) {
+	t.Parallel()
+
+	t.Run("create room", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+		database := newMembershipTestStore(t, ctx)
+		defer database.Close() // nolint:errcheck
+
+		now := time.Now().UTC()
+		err := database.CreateRoom(
+			ctx,
+			Room{Code: "MEM003", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+			Participant{ID: "host", Name: "Host"},
+			"host-hash",
+			[]string{"item"},
+			[]string{"item"},
+			RoomMembershipCredential{},
+		)
+		require.Error(t, err)
+
+		var rooms int
+		require.NoError(t, database.db.QueryRowContext(
+			ctx,
+			"SELECT COUNT(*) FROM rooms WHERE code = ?",
+			"MEM003",
+		).Scan(&rooms))
+		assert.Zero(t, rooms)
+	})
+
+	t.Run("join room", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+		database := newMembershipTestStore(t, ctx)
+		defer database.Close() // nolint:errcheck
+
+		now := time.Now().UTC()
+		require.NoError(t, database.CreateRoom(
+			ctx,
+			Room{Code: "MEM004", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+			Participant{ID: "host", Name: "Host"},
+			"host-hash",
+			[]string{"item"},
+			[]string{"item"},
+			testRoomMembership("host"),
+		))
+		err := database.JoinRoom(
+			ctx,
+			"MEM004",
+			Participant{ID: "guest", Name: "Guest"},
+			"guest-hash",
+			RoomMembershipCredential{},
+		)
+		require.Error(t, err)
+
+		var participants int
+		require.NoError(t, database.db.QueryRowContext(
+			ctx,
+			"SELECT COUNT(*) FROM participants WHERE room_code = ?",
+			"MEM004",
+		).Scan(&participants))
+		assert.Equal(t, 1, participants)
+	})
+}
+
 // newMembershipTestStore creates a store with one media item available for room tests.
 func newMembershipTestStore(t *testing.T, ctx context.Context) *Store {
 	t.Helper()

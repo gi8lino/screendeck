@@ -275,13 +275,14 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 	host, err := service.create(
 		context.Background(),
 		createRoomOptions{
-			name:        "Host",
-			libraryKeys: []string{"1"},
-			filters:     Filters{},
-			genres:      []string{"Drama"},
-			genreMode:   GenreModeAny,
-			sampling:    SamplingRandom,
-			roundSize:   0,
+			name:          "Host",
+			libraryKeys:   []string{"1"},
+			filters:       Filters{},
+			genres:        []string{"Drama"},
+			genreMode:     GenreModeAny,
+			sampling:      SamplingRandom,
+			roundSize:     0,
+			identityToken: "aG9zdC1pZGVudGl0eQ",
 		},
 	)
 	require.NoError(t, err)
@@ -305,7 +306,7 @@ func TestParticipantGenresFilterPersonalDecks(t *testing.T) {
 		"Guest",
 		[]string{"Action"},
 		GenreModeAny,
-		"",
+		"Z3Vlc3QtaWRlbnRpdHk",
 	)
 	require.NoError(t, err)
 

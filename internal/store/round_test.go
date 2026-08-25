@@ -25,8 +25,8 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "ROUND1", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b", "c"}, []string{"a", "b", "c"}))
-	require.NoError(t, database.JoinRoom(ctx, "ROUND1", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "ROUND1", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b", "c"}, []string{"a", "b", "c"}))
+	require.NoError(t, joinTestRoom(database, ctx, "ROUND1", Participant{ID: "p2", Name: "Two"}, "hash2"))
 
 	_, err = database.Vote(ctx, "ROUND1", "p1", "a", true)
 	require.NoError(t, err)
@@ -128,7 +128,7 @@ func TestAddMoreTitlesUsesUnusedPool(t *testing.T) {
 	}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "MORE01", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a", "b", "c"}))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "MORE01", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a"}, []string{"a", "b", "c"}))
 
 	state, err := database.RoomState(ctx, "MORE01", "p1")
 	require.NoError(t, err)
@@ -161,8 +161,8 @@ func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
 	}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "CANCEL", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
-	require.NoError(t, database.JoinRoom(ctx, "CANCEL", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "CANCEL", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+	require.NoError(t, joinTestRoom(database, ctx, "CANCEL", Participant{ID: "p2", Name: "Two"}, "hash2"))
 	_, err = database.Vote(ctx, "CANCEL", "p1", "a", true)
 	require.NoError(t, err)
 	_, err = database.Vote(ctx, "CANCEL", "p2", "a", true)
@@ -196,8 +196,8 @@ func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: "MEMBER", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
-	require.NoError(t, database.JoinRoom(ctx, "MEMBER", Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: "MEMBER", Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+	require.NoError(t, joinTestRoom(database, ctx, "MEMBER", Participant{ID: "p2", Name: "Two"}, "hash2"))
 	_, err = database.Vote(ctx, "MEMBER", "p1", "a", true)
 	require.NoError(t, err)
 	_, err = database.Vote(ctx, "MEMBER", "p2", "a", true)
@@ -209,7 +209,7 @@ func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	_, _, _, _, _, err = database.SetRoundReady(ctx, "MEMBER", "p1", 1, true)
 	require.NoError(t, err)
 
-	require.NoError(t, database.JoinRoom(ctx, "MEMBER", Participant{ID: "p3", Name: "Three"}, "hash3"))
+	require.NoError(t, joinTestRoom(database, ctx, "MEMBER", Participant{ID: "p3", Name: "Three"}, "hash3"))
 	state, err := database.RoomState(ctx, "MEMBER", "p1")
 	require.NoError(t, err)
 	assert.Equal(t, 0, state.NextRound.Ready)
@@ -352,7 +352,7 @@ func TestReadyParticipantDepartureCancelsConsensus(t *testing.T) {
 	ctx := t.Context()
 	database := seedReadyConcurrencyRoom(t, "RACE05")
 	defer database.Close() // nolint:errcheck
-	require.NoError(t, database.JoinRoom(ctx, "RACE05", Participant{ID: "p3", Name: "Three"}, "hash3"))
+	require.NoError(t, joinTestRoom(database, ctx, "RACE05", Participant{ID: "p3", Name: "Three"}, "hash3"))
 
 	_, _, _, _, _, err := database.SetRoundReady(ctx, "RACE05", "p1", 1, true)
 	require.Error(t, err)
@@ -386,8 +386,8 @@ func seedReadyConcurrencyRoom(t *testing.T, code string) *Store {
 	}
 	require.NoError(t, database.SaveLibrary(ctx, media.Library{Key: "1", Title: "Films"}, items))
 	now := time.Now().UTC()
-	require.NoError(t, database.CreateRoom(ctx, Room{Code: code, Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
-	require.NoError(t, database.JoinRoom(ctx, code, Participant{ID: "p2", Name: "Two"}, "hash2"))
+	require.NoError(t, createTestRoom(database, ctx, Room{Code: code, Round: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, Participant{ID: "p1", Name: "One"}, "hash1", []string{"a", "b"}, []string{"a", "b"}))
+	require.NoError(t, joinTestRoom(database, ctx, code, Participant{ID: "p2", Name: "Two"}, "hash2"))
 	_, err = database.Vote(ctx, code, "p1", "a", true)
 	require.NoError(t, err)
 	_, err = database.Vote(ctx, code, "p2", "a", true)

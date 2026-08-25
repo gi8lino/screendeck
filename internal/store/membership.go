@@ -346,20 +346,3 @@ ON CONFLICT (token_hash) DO NOTHING
 	_, err := tx.ExecContext(ctx, query, identityHash, time.Now().Unix())
 	return err
 }
-
-// saveOptionalRoomMembershipTx persists at most one optional browser identity association.
-func (s *Store) saveOptionalRoomMembershipTx(
-	ctx context.Context,
-	tx *sql.Tx,
-	code string,
-	participantID string,
-	credentials []RoomMembershipCredential,
-) error {
-	if len(credentials) == 0 {
-		return nil
-	}
-	if len(credentials) > 1 {
-		return errors.New("only one browser identity may be linked to a room participant")
-	}
-	return s.saveRoomMembershipTx(ctx, tx, code, participantID, credentials[0])
-}

@@ -135,7 +135,7 @@ func (s *Store) CreateRoom(
 	tokenHash string,
 	itemIDs []string,
 	poolIDs []string,
-	memberships ...RoomMembershipCredential,
+	membership RoomMembershipCredential,
 ) error {
 	normalizeRoomCreation(&room, &participant)
 	participantGenres, err := encodeParticipantGenres(participant.Genres)
@@ -155,7 +155,7 @@ func (s *Store) CreateRoom(
 	if err := insertParticipantTx(ctx, tx, room.Code, participant, tokenHash, participantGenres); err != nil {
 		return err
 	}
-	if err := s.saveOptionalRoomMembershipTx(ctx, tx, room.Code, participant.ID, memberships); err != nil {
+	if err := s.saveRoomMembershipTx(ctx, tx, room.Code, participant.ID, membership); err != nil {
 		return err
 	}
 	if err := insertRoomItemsTx(ctx, tx, room.Code, itemIDs, 0); err != nil {
@@ -345,7 +345,7 @@ func (s *Store) JoinRoom(
 	code string,
 	participant Participant,
 	tokenHash string,
-	memberships ...RoomMembershipCredential,
+	membership RoomMembershipCredential,
 ) error {
 	normalizeParticipant(&participant)
 	genres, err := encodeParticipantGenres(participant.Genres)
@@ -362,7 +362,7 @@ func (s *Store) JoinRoom(
 	if err := joinParticipantTx(ctx, tx, code, participant, tokenHash, genres); err != nil {
 		return err
 	}
-	if err := s.saveOptionalRoomMembershipTx(ctx, tx, code, participant.ID, memberships); err != nil {
+	if err := s.saveRoomMembershipTx(ctx, tx, code, participant.ID, membership); err != nil {
 		return err
 	}
 

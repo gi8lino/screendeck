@@ -38,14 +38,10 @@ func (s *Service) ResumeIdentity(ctx context.Context, identityToken, code string
 	return Session{Code: session.Code, Token: session.Token}, nil
 }
 
-// membershipCredentials builds an optional persisted browser membership for a participant token.
-func membershipCredentials(identityToken, participantToken string) []store.RoomMembershipCredential {
-	if strings.TrimSpace(identityToken) == "" {
-		return nil
-	}
-
-	return []store.RoomMembershipCredential{{
+// membershipCredential builds a persisted browser membership for a participant token.
+func membershipCredential(identityToken, participantToken string) store.RoomMembershipCredential {
+	return store.RoomMembershipCredential{
 		IdentityHash: hashToken(identityToken),
 		SessionToken: participantToken,
-	}}
+	}
 }

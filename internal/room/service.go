@@ -287,7 +287,7 @@ type createRoomOptions struct {
 	roundSize int
 	// lifetimeHours overrides the configured room lifetime when non-zero.
 	lifetimeHours int
-	// identityToken optionally links the host to a persistent browser identity.
+	// identityToken identifies the host's persistent browser membership.
 	identityToken string
 }
 
@@ -321,7 +321,7 @@ func (s *Service) CreateForIdentity(
 	})
 }
 
-// create creates a room with an optional persistent browser identity association.
+// create creates a room with a persistent browser identity association.
 func (s *Service) create(
 	ctx context.Context,
 	options createRoomOptions,
@@ -389,7 +389,7 @@ func (s *Service) create(
 		tokenHash,
 		itemIDs(selected),
 		itemIDs(pool),
-		membershipCredentials(options.identityToken, token)...,
+		membershipCredential(options.identityToken, token),
 	); err != nil {
 		return Session{}, err
 	}
@@ -908,7 +908,7 @@ func (s *Service) JoinForIdentity(
 	)
 }
 
-// join adds a participant with an optional persistent browser identity association.
+// join adds a participant with a persistent browser identity association.
 func (s *Service) join(
 	ctx context.Context,
 	code,
@@ -959,7 +959,7 @@ func (s *Service) join(
 		code,
 		participant,
 		tokenHash,
-		membershipCredentials(identityToken, token)...,
+		membershipCredential(identityToken, token),
 	); err != nil {
 		return Session{}, err
 	}
