@@ -33,7 +33,7 @@ func (s *Service) ResumeIdentity(ctx context.Context, identityToken, code string
 		return Session{}, err
 	}
 
-	return Session{Code: session.Code, Token: session.Token}, nil
+	return Session(session), nil
 }
 
 // membershipCredential builds a persisted browser membership for a participant token.
