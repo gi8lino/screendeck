@@ -12,8 +12,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	mediafactory "github.com/gi8lino/screendeck/internal/media/factory"
 	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/providers"
 	"github.com/gi8lino/screendeck/internal/room"
 	"github.com/gi8lino/screendeck/internal/store"
 	"github.com/stretchr/testify/assert"
@@ -51,11 +51,12 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 		ServerToken: "token",
 	}))
 
-	mediaServices, err := mediafactory.New(
+	mediaServices, err := providers.New(
+		t.Context(),
 		database,
 		logger,
-		mediafactory.Options{Version: "test"},
-	).Create(t.Context())
+		providers.Options{Version: "test"},
+	)
 	require.NoError(t, err)
 	rooms := room.NewService(database, mediaServices.Media, time.Hour, nil)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ScreenDeck</title>")}}
@@ -199,11 +200,12 @@ func TestJellyfinFlowThroughHTTP(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	mediaServices, err := mediafactory.New(
+	mediaServices, err := providers.New(
+		t.Context(),
 		database,
 		logger,
-		mediafactory.Options{Version: "test"},
-	).Create(t.Context())
+		providers.Options{Version: "test"},
+	)
 	require.NoError(t, err)
 	rooms := room.NewService(database, mediaServices.Media, time.Hour, nil)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
@@ -300,11 +302,12 @@ func TestHealthAndFrontend(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
-	mediaServices, err := mediafactory.New(
+	mediaServices, err := providers.New(
+		t.Context(),
 		database,
 		logger,
-		mediafactory.Options{Version: "test"},
-	).Create(t.Context())
+		providers.Options{Version: "test"},
+	)
 	require.NoError(t, err)
 	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
 	router := NewRouter(

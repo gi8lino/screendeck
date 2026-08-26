@@ -1,4 +1,5 @@
-package factory
+// Package providers assembles the supported media-provider integrations.
+package providers
 
 import (
 	"context"
@@ -37,29 +38,23 @@ type Services struct {
 	Jellyfin *jellyfin.AuthManager
 }
 
-// Factory constructs all supported media providers and wires the active provider manager.
-type Factory struct {
-	store   Store
-	logger  *slog.Logger
-	options Options
-}
-
-// New creates a media provider factory.
-func New(store Store, logger *slog.Logger, options Options) *Factory {
+// New constructs all supported media providers and restores the active provider.
+func New(
+	ctx context.Context,
+	store Store,
+	logger *slog.Logger,
+	options Options,
+) (Services, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Factory{store: store, logger: logger, options: options}
-}
 
-// Create constructs provider-specific services and restores the active provider.
-func (f *Factory) Create(ctx context.Context) (Services, error) {
 	plexAuth, err := plex.NewProvider(
 		ctx,
-		f.store,
-		f.logger.With("component", "plex"),
-		f.options.PlexURLOverride,
-		f.options.Experimental,
+		store,
+		logger.With("component", "plex"),
+		options.PlexURLOverride,
+		options.Experimental,
 	)
 	if err != nil {
 		return Services{}, fmt.Errorf("configure Plex: %w", err)
@@ -67,15 +62,15 @@ func (f *Factory) Create(ctx context.Context) (Services, error) {
 
 	jellyfinAuth, err := jellyfin.NewProvider(
 		ctx,
-		f.store,
-		f.logger.With("component", "jellyfin"),
-		f.options.Version,
+		store,
+		logger.With("component", "jellyfin"),
+		options.Version,
 	)
 	if err != nil {
 		return Services{}, fmt.Errorf("configure Jellyfin: %w", err)
 	}
 
-	manager, err := media.NewManager(ctx, f.store, plexAuth, jellyfinAuth)
+	manager, err := media.NewManager(ctx, store, plexAuth, jellyfinAuth)
 	if err != nil {
 		return Services{}, fmt.Errorf("configure media provider: %w", err)
 	}

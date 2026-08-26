@@ -11,7 +11,7 @@ import (
 	"github.com/gi8lino/screendeck/internal/config"
 	"github.com/gi8lino/screendeck/internal/logging"
 	"github.com/gi8lino/screendeck/internal/maintenance"
-	mediafactory "github.com/gi8lino/screendeck/internal/media/factory"
+	"github.com/gi8lino/screendeck/internal/providers"
 	"github.com/gi8lino/screendeck/internal/room"
 	"github.com/gi8lino/screendeck/internal/routes"
 	"github.com/gi8lino/screendeck/internal/store"
@@ -62,15 +62,16 @@ func Run(
 	}
 	defer database.Close() // nolint:errcheck
 
-	mediaServices, err := mediafactory.New(
+	mediaServices, err := providers.New(
+		ctx,
 		database,
 		logger,
-		mediafactory.Options{
+		providers.Options{
 			Version:         version,
 			PlexURLOverride: cfg.PlexURLOverride,
 			Experimental:    cfg.Experimental,
 		},
-	).Create(ctx)
+	)
 	if err != nil {
 		setupLogger.Error("application failed",
 			"event", "app_failed",

@@ -45,7 +45,7 @@ internal/logging     structured logging and request context
 internal/maintenance background housekeeping jobs
 internal/middleware  HTTP middleware
 internal/media       provider-neutral media types, provider interface, and active-provider manager
-internal/media/factory provider construction and application wiring for Plex and Jellyfin
+internal/providers   construction and assembly of Plex and Jellyfin integrations
 internal/plex        Plex authorization and catalog adapter
 internal/jellyfin    Jellyfin authorization and catalog adapter
 internal/room        room orchestration and live notifications
@@ -68,9 +68,9 @@ Room orchestration depends only on the provider-neutral catalog contract in `int
 
 `internal/plex` and `internal/jellyfin` remain independent adapters. Their authentication and setup methods stay provider-specific, while their authenticated managers also implement `media.Provider`. Compile-time interface assertions in each adapter keep the runtime contract explicit.
 
-`internal/media/factory` is the composition boundary. It constructs the Plex and Jellyfin services, registers them with `media.Manager`, and returns both the provider-neutral runtime manager and the provider-specific setup services needed by the HTTP handlers. `internal/app` therefore does not construct or register individual providers itself.
+`internal/providers` is the composition boundary. It constructs the Plex and Jellyfin services, registers them with `media.Manager`, and returns both the provider-neutral runtime manager and the provider-specific setup services needed by the HTTP handlers. `internal/app` therefore does not construct or register individual providers itself.
 
-ScreenDeck intentionally activates one provider per installation. This keeps persisted library keys, item IDs, cached metadata, and poster references in one provider namespace. A future provider such as Emby can be added by implementing `media.Provider` and registering its constructor in the factory while keeping its authentication logic separate.
+ScreenDeck intentionally activates one provider per installation. This keeps persisted library keys, item IDs, cached metadata, and poster references in one provider namespace. A future provider such as Emby can be added by implementing `media.Provider` and registering its constructor in `internal/providers` while keeping its authentication logic separate.
 
 ## Local provider smoke tests
 

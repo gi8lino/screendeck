@@ -1,4 +1,4 @@
-package factory_test
+package providers_test
 
 import (
 	"io"
@@ -6,24 +6,26 @@ import (
 	"testing"
 
 	"github.com/gi8lino/screendeck/internal/media"
-	mediafactory "github.com/gi8lino/screendeck/internal/media/factory"
 	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/providers"
 	"github.com/gi8lino/screendeck/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestFactory(t *testing.T) {
+// TestNew verifies construction and restoration of the supported media providers.
+func TestNew(t *testing.T) {
 	t.Run("creates supported providers", func(t *testing.T) {
 		database, err := store.Open(":memory:", "")
 		require.NoError(t, err)
 		defer database.Close() // nolint:errcheck
 
-		services, err := mediafactory.New(
+		services, err := providers.New(
+			t.Context(),
 			database,
 			slog.New(slog.NewTextHandler(io.Discard, nil)),
-			mediafactory.Options{Version: "test"},
-		).Create(t.Context())
+			providers.Options{Version: "test"},
+		)
 		require.NoError(t, err)
 		require.NotNil(t, services.Media)
 		require.NotNil(t, services.Plex)
@@ -46,11 +48,12 @@ func TestFactory(t *testing.T) {
 			ServerToken: "token",
 		}))
 
-		services, err := mediafactory.New(
+		services, err := providers.New(
+			t.Context(),
 			database,
 			slog.New(slog.NewTextHandler(io.Discard, nil)),
-			mediafactory.Options{Version: "test"},
-		).Create(t.Context())
+			providers.Options{Version: "test"},
+		)
 		require.NoError(t, err)
 		assert.Equal(t, media.Status{
 			Configured: true,
