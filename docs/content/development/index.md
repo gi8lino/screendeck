@@ -7,6 +7,8 @@ hide:
 
 ScreenDeck is a Go application with an embedded, dependency-free browser frontend. The module currently targets Go 1.25.
 
+See [Architecture](architecture.md) for package boundaries, dependency rules, and extension guidance.
+
 Python 3 with `venv` support is only needed for the MkDocs documentation site. Node.js is used for Prettier and Playwright-based screenshot capture. ImageMagick normalizes the committed documentation screenshots.
 
 ## Get started
