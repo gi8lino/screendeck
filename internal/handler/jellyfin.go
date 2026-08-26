@@ -2,10 +2,12 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/gi8lino/screendeck/internal/jellyfin"
 	"github.com/gi8lino/screendeck/internal/media"
 )
 
@@ -20,7 +22,7 @@ type jellyfinConnectRequest struct {
 }
 
 // Valid returns every field-level Jellyfin connection problem.
-func (input *jellyfinConnectRequest) Valid(context.Context) map[string]string {
+func (input jellyfinConnectRequest) Valid(context.Context) map[string]string {
 	problems := make(map[string]string)
 
 	serverURL := strings.TrimSpace(input.ServerURL)
@@ -37,27 +39,31 @@ func (input *jellyfinConnectRequest) Valid(context.Context) map[string]string {
 }
 
 // ConnectJellyfin authenticates to a Jellyfin server and selects Jellyfin as the instance media provider.
-func (a *API) ConnectJellyfin() http.HandlerFunc {
+func ConnectJellyfin(
+	mediaManager *media.Manager,
+	jellyfinAuth *jellyfin.AuthManager,
+	logger *slog.Logger,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := a.Media.CheckProvider(media.ProviderJellyfin); err != nil {
-			a.fail(r, w, err)
+		if err := mediaManager.CheckProvider(media.ProviderJellyfin); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		var input jellyfinConnectRequest
-		if err := decodeValid(r, &input); err != nil {
-			a.fail(r, w, err)
+		input, err := decodeValid[jellyfinConnectRequest](r)
+		if err != nil {
+			fail(logger, r, w, err)
 			return
 		}
 		input.ServerURL = strings.TrimSpace(input.ServerURL)
 		input.Username = strings.TrimSpace(input.Username)
-		if err := a.Jellyfin.Connect(r.Context(), input.ServerURL, input.Username, input.Password); err != nil {
-			a.fail(r, w, err)
+		if err := jellyfinAuth.Connect(r.Context(), input.ServerURL, input.Username, input.Password); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		if err := a.Media.SetActive(r.Context(), media.ProviderJellyfin); err != nil {
-			a.fail(r, w, err)
+		if err := mediaManager.SetActive(r.Context(), media.ProviderJellyfin); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, map[string]string{"status": "connected"})
+		respond(logger, w, http.StatusOK, map[string]string{"status": "connected"})
 	}
 }

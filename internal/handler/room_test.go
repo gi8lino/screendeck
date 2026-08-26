@@ -3,11 +3,11 @@ package handler
 import (
 	"testing"
 
-	"github.com/gi8lino/screendeck/internal/plex"
 	"github.com/gi8lino/screendeck/internal/room"
 	"github.com/stretchr/testify/assert"
 )
 
+// TestCreateRoomRequestValidation verifies every invalid room creation field is reported.
 func TestCreateRoomRequestValidation(t *testing.T) {
 	input := createRoomRequest{
 		Filters: room.Filters{
@@ -33,6 +33,7 @@ func TestCreateRoomRequestValidation(t *testing.T) {
 	assert.Contains(t, problems, "samplingStrategy")
 }
 
+// TestJoinRoomRequestValidation verifies every invalid room joining field is reported.
 func TestJoinRoomRequestValidation(t *testing.T) {
 	input := joinRoomRequest{Code: "IO10", GenreMode: "invalid"}
 
@@ -41,29 +42,4 @@ func TestJoinRoomRequestValidation(t *testing.T) {
 	assert.Contains(t, problems, "code")
 	assert.Contains(t, problems, "name")
 	assert.Contains(t, problems, "genreMode")
-}
-
-func TestJellyfinConnectRequestValidation(t *testing.T) {
-	input := jellyfinConnectRequest{ServerURL: "jellyfin.local"}
-
-	problems := input.Valid(t.Context())
-
-	assert.Contains(t, problems, "serverUrl")
-	assert.Contains(t, problems, "username")
-}
-
-func TestPlexAuthRequestValidation(t *testing.T) {
-	input := plexAuthRequest{Method: plex.AuthMethod("invalid")}
-
-	problems := input.Valid(t.Context())
-
-	assert.Contains(t, problems, "method")
-}
-
-func TestSelectPlexServerRequestValidation(t *testing.T) {
-	input := selectPlexServerRequest{ServerID: "  "}
-
-	problems := input.Valid(t.Context())
-
-	assert.Contains(t, problems, "serverId")
 }

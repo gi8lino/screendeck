@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -22,7 +23,7 @@ type plexAuthRequest struct {
 
 // Valid validates a request to start Plex authorization.
 func (input plexAuthRequest) Valid(context.Context) map[string]string {
-	if !plex.ValidAuthMethod(input.Method) {
+	if input.Method != "" && !plex.ValidAuthMethod(input.Method) {
 		return map[string]string{"method": "Choose a supported Plex authentication method."}
 	}
 	return nil
@@ -43,59 +44,70 @@ func (input selectPlexServerRequest) Valid(context.Context) map[string]string {
 }
 
 // StartPlexAuth returns the handler that begins Plex authorization.
-func (a *API) StartPlexAuth() http.HandlerFunc {
+func StartPlexAuth(
+	mediaManager *media.Manager,
+	plexAuth *plex.AuthManager,
+	logger *slog.Logger,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := a.Media.CheckProvider(media.ProviderPlex); err != nil {
-			a.fail(r, w, err)
+		if err := mediaManager.CheckProvider(media.ProviderPlex); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		input := plexAuthRequest{Method: plex.AuthMethodStandard}
-		if err := decodeValid(r, &input); err != nil {
-			a.fail(r, w, err)
-			return
-		}
-		started, err := a.Plex.Start(r.Context(), input.Method)
+		input, err := decodeValid[plexAuthRequest](r)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusCreated, started)
+		if input.Method == "" {
+			input.Method = plex.AuthMethodStandard
+		}
+		started, err := plexAuth.Start(r.Context(), input.Method)
+		if err != nil {
+			fail(logger, r, w, err)
+			return
+		}
+		respond(logger, w, http.StatusCreated, started)
 	}
 }
 
 // PlexAuthStatus returns the handler that polls Plex authorization.
-func (a *API) PlexAuthStatus() http.HandlerFunc {
+func PlexAuthStatus(plexAuth *plex.AuthManager, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		status, err := a.Plex.Status(r.Context(), setupToken(r))
+		status, err := plexAuth.Status(r.Context(), setupToken(r))
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, status)
+		respond(logger, w, http.StatusOK, status)
 	}
 }
 
 // SelectPlexServer returns the handler that selects an authorized Plex server.
-func (a *API) SelectPlexServer() http.HandlerFunc {
+func SelectPlexServer(
+	mediaManager *media.Manager,
+	plexAuth *plex.AuthManager,
+	logger *slog.Logger,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := a.Media.CheckProvider(media.ProviderPlex); err != nil {
-			a.fail(r, w, err)
+		if err := mediaManager.CheckProvider(media.ProviderPlex); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		var input selectPlexServerRequest
-		if err := decodeValid(r, &input); err != nil {
-			a.fail(r, w, err)
+		input, err := decodeValid[selectPlexServerRequest](r)
+		if err != nil {
+			fail(logger, r, w, err)
 			return
 		}
 		input.ServerID = strings.TrimSpace(input.ServerID)
-		if err := a.Plex.SelectServer(r.Context(), setupToken(r), input.ServerID); err != nil {
-			a.fail(r, w, err)
+		if err := plexAuth.SelectServer(r.Context(), setupToken(r), input.ServerID); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		if err := a.Media.SetActive(r.Context(), media.ProviderPlex); err != nil {
-			a.fail(r, w, err)
+		if err := mediaManager.SetActive(r.Context(), media.ProviderPlex); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, map[string]string{"status": "connected"})
+		respond(logger, w, http.StatusOK, map[string]string{"status": "connected"})
 	}
 }

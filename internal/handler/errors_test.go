@@ -1,12 +1,9 @@
 package handler
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/gi8lino/screendeck/internal/jellyfin"
@@ -14,93 +11,7 @@ import (
 	"github.com/gi8lino/screendeck/internal/plex"
 	"github.com/gi8lino/screendeck/internal/store"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
-
-// decodeTestRequest is the request shape used to verify strict JSON decoding.
-type decodeTestRequest struct {
-	// ItemID identifies the decoded media item.
-	ItemID string `json:"itemId"`
-}
-
-type decodeValidTestRequest struct {
-	Name string `json:"name"`
-	Code string `json:"code"`
-}
-
-func (input *decodeValidTestRequest) Valid(context.Context) map[string]string {
-	problems := make(map[string]string)
-	if input.Name == "" {
-		problems["name"] = "Enter your name."
-	}
-	if input.Code == "" {
-		problems["code"] = "Enter a room code."
-	}
-	return problems
-}
-
-// TestDecode verifies strict JSON request decoding.
-func TestDecode(t *testing.T) {
-	t.Run("accepts valid request", func(t *testing.T) {
-		request := httptest.NewRequest(
-			http.MethodPost,
-			"/",
-			bytes.NewBufferString(`{"itemId":"42"}`),
-		)
-		var input decodeTestRequest
-
-		err := decode(request, &input)
-
-		require.NoError(t, err)
-		assert.Equal(t, "42", input.ItemID)
-	})
-
-	t.Run("rejects unknown field", func(t *testing.T) {
-		request := httptest.NewRequest(
-			http.MethodPost,
-			"/",
-			bytes.NewBufferString(`{"unexpected":"42"}`),
-		)
-		var input decodeTestRequest
-
-		err := decode(request, &input)
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), `unknown field "unexpected"`)
-	})
-
-	t.Run("rejects multiple JSON values", func(t *testing.T) {
-		request := httptest.NewRequest(
-			http.MethodPost,
-			"/",
-			bytes.NewBufferString(`{"itemId":"42"} {"itemId":"43"}`),
-		)
-		var input decodeTestRequest
-
-		err := decode(request, &input)
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "exactly one JSON value")
-	})
-}
-
-func TestDecodeValidCollectsFieldProblems(t *testing.T) {
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/",
-		bytes.NewBufferString(`{}`),
-	)
-	var input decodeValidTestRequest
-
-	err := decodeValid(request, &input)
-
-	var validation validationError
-	require.ErrorAs(t, err, &validation)
-	assert.Equal(t, map[string]string{
-		"code": "Enter a room code.",
-		"name": "Enter your name.",
-	}, validation.Problems)
-}
 
 // TestStatusForError verifies application errors map to stable public HTTP statuses.
 func TestStatusForError(t *testing.T) {

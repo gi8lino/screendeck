@@ -12,7 +12,6 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/gi8lino/screendeck/internal/handler"
 	mediafactory "github.com/gi8lino/screendeck/internal/media/factory"
 	"github.com/gi8lino/screendeck/internal/plex"
 	"github.com/gi8lino/screendeck/internal/room"
@@ -59,7 +58,9 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	).Create(t.Context())
 	require.NoError(t, err)
 	rooms := room.NewService(database, mediaServices.Media, time.Hour, nil)
-	api := handler.New(
+	appFS := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ScreenDeck</title>")}}
+	router := NewRouter(
+		appFS,
 		"test",
 		"commit",
 		"http://movies.test",
@@ -70,9 +71,8 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 		mediaServices.Jellyfin,
 		database,
 		logger,
+		false,
 	)
-	appFS := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ScreenDeck</title>")}}
-	router := NewRouter(appFS, api, logger, false)
 
 	invalid := postJSON(t, router, "/api/rooms", `{}`, "")
 	require.Equal(t, http.StatusBadRequest, invalid.Code, invalid.Body.String())
@@ -206,7 +206,9 @@ func TestJellyfinFlowThroughHTTP(t *testing.T) {
 	).Create(t.Context())
 	require.NoError(t, err)
 	rooms := room.NewService(database, mediaServices.Media, time.Hour, nil)
-	api := handler.New(
+	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
+	router := NewRouter(
+		appFS,
 		"test",
 		"commit",
 		"http://movies.test",
@@ -217,9 +219,8 @@ func TestJellyfinFlowThroughHTTP(t *testing.T) {
 		mediaServices.Jellyfin,
 		database,
 		logger,
+		false,
 	)
-	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
-	router := NewRouter(appFS, api, logger, false)
 
 	connected := postJSON(
 		t,
@@ -305,7 +306,9 @@ func TestHealthAndFrontend(t *testing.T) {
 		mediafactory.Options{Version: "test"},
 	).Create(t.Context())
 	require.NoError(t, err)
-	api := handler.New(
+	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
+	router := NewRouter(
+		appFS,
 		"test",
 		"commit",
 		"http://movies.test",
@@ -316,9 +319,8 @@ func TestHealthAndFrontend(t *testing.T) {
 		mediaServices.Jellyfin,
 		database,
 		logger,
+		true,
 	)
-	appFS := fstest.MapFS{"index.html": {Data: []byte("ScreenDeck")}}
-	router := NewRouter(appFS, api, logger, true)
 
 	health := httptest.NewRecorder()
 	router.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/healthz", nil).WithContext(t.Context()))

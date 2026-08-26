@@ -6,45 +6,64 @@ import (
 	"net/http"
 
 	"github.com/gi8lino/screendeck/internal/handler"
+	"github.com/gi8lino/screendeck/internal/jellyfin"
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/middleware"
+	"github.com/gi8lino/screendeck/internal/plex"
+	"github.com/gi8lino/screendeck/internal/room"
 )
 
 // NewRouter wires the ScreenDeck HTTP routes and middleware.
 func NewRouter(
 	appFS fs.FS,
-	handlers *handler.API,
+	version string,
+	commit string,
+	baseURL string,
+	experimental bool,
+	rooms *room.Service,
+	mediaManager *media.Manager,
+	plexAuth *plex.AuthManager,
+	jellyfinAuth *jellyfin.AuthManager,
+	healthProber handler.HealthProber,
 	logger *slog.Logger,
 	accessLog bool,
 ) http.Handler {
 	root := http.NewServeMux()
-	root.HandleFunc("GET /healthz", handlers.Health())
+	root.HandleFunc("GET /healthz", handler.Health(healthProber, logger))
 
 	api := http.NewServeMux()
-	api.HandleFunc("GET /config", handlers.Config())
+	api.HandleFunc("GET /config", handler.Config(
+		version,
+		commit,
+		baseURL,
+		experimental,
+		mediaManager,
+		logger,
+	))
 
-	api.HandleFunc("POST /plex/auth", handlers.StartPlexAuth())
-	api.HandleFunc("GET /plex/auth/status", handlers.PlexAuthStatus())
-	api.HandleFunc("POST /plex/server", handlers.SelectPlexServer())
-	api.HandleFunc("POST /jellyfin/connect", handlers.ConnectJellyfin())
+	api.HandleFunc("POST /plex/auth", handler.StartPlexAuth(mediaManager, plexAuth, logger))
+	api.HandleFunc("GET /plex/auth/status", handler.PlexAuthStatus(plexAuth, logger))
+	api.HandleFunc("POST /plex/server", handler.SelectPlexServer(mediaManager, plexAuth, logger))
+	api.HandleFunc("POST /jellyfin/connect", handler.ConnectJellyfin(mediaManager, jellyfinAuth, logger))
 
-	api.HandleFunc("GET /libraries", handlers.Libraries())
-	api.HandleFunc("POST /catalog/options", handlers.CatalogOptions())
-	api.HandleFunc("GET /posters/{itemID}", handlers.Poster())
+	api.HandleFunc("GET /libraries", handler.Libraries(rooms, logger))
+	api.HandleFunc("POST /catalog/options", handler.CatalogOptions(rooms, logger))
+	api.HandleFunc("GET /posters/{itemID}", handler.Poster(rooms, logger))
 
-	api.HandleFunc("GET /me/rooms", handlers.MyRooms())
-	api.HandleFunc("POST /me/rooms/{code}/session", handlers.ResumeRoom())
+	api.HandleFunc("GET /me/rooms", handler.MyRooms(rooms, logger))
+	api.HandleFunc("POST /me/rooms/{code}/session", handler.ResumeRoom(rooms, logger))
 
-	api.HandleFunc("POST /rooms", handlers.CreateRoom())
-	api.HandleFunc("POST /rooms/join", handlers.JoinRoom())
-	api.HandleFunc("GET /rooms/{code}", handlers.RoomState())
-	api.HandleFunc("GET /rooms/{code}/genres", handlers.RoomGenres())
-	api.HandleFunc("DELETE /rooms/{code}", handlers.LeaveRoom())
-	api.HandleFunc("PATCH /rooms/{code}/settings", handlers.UpdateRoomSettings())
-	api.HandleFunc("DELETE /rooms/{code}/participants/{participantID}", handlers.RemoveParticipant())
-	api.HandleFunc("POST /rooms/{code}/votes", handlers.Vote())
-	api.HandleFunc("POST /rooms/{code}/more-titles", handlers.AddMoreTitles())
-	api.HandleFunc("POST /rooms/{code}/round-ready", handlers.NextRoundReady())
-	api.HandleFunc("GET /rooms/{code}/events", handlers.Events())
+	api.HandleFunc("POST /rooms", handler.CreateRoom(rooms, logger))
+	api.HandleFunc("POST /rooms/join", handler.JoinRoom(rooms, logger))
+	api.HandleFunc("GET /rooms/{code}", handler.RoomState(rooms, logger))
+	api.HandleFunc("GET /rooms/{code}/genres", handler.RoomGenres(rooms, logger))
+	api.HandleFunc("DELETE /rooms/{code}", handler.LeaveRoom(rooms, logger))
+	api.HandleFunc("PATCH /rooms/{code}/settings", handler.UpdateRoomSettings(rooms, logger))
+	api.HandleFunc("DELETE /rooms/{code}/participants/{participantID}", handler.RemoveParticipant(rooms, logger))
+	api.HandleFunc("POST /rooms/{code}/votes", handler.Vote(rooms, logger))
+	api.HandleFunc("POST /rooms/{code}/more-titles", handler.AddMoreTitles(rooms, logger))
+	api.HandleFunc("POST /rooms/{code}/round-ready", handler.NextRoundReady(rooms, logger))
+	api.HandleFunc("GET /rooms/{code}/events", handler.Events(rooms, logger))
 
 	root.Handle("/api/", http.StripPrefix("/api", api))
 	root.Handle("/", handler.Frontend(appFS))

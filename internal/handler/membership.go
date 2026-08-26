@@ -1,37 +1,42 @@
 package handler
 
-import "net/http"
+import (
+	"log/slog"
+	"net/http"
+
+	"github.com/gi8lino/screendeck/internal/room"
+)
 
 // MyRooms returns active rooms associated with the current browser identity.
-func (a *API) MyRooms() http.HandlerFunc {
+func MyRooms(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		identityToken, err := ensureBrowserIdentity(w, r)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		rooms, err := a.Rooms.RoomsForIdentity(r.Context(), identityToken)
+		memberships, err := rooms.RoomsForIdentity(r.Context(), identityToken)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, rooms)
+		respond(logger, w, http.StatusOK, memberships)
 	}
 }
 
 // ResumeRoom returns the saved participant session for an active browser room membership.
-func (a *API) ResumeRoom() http.HandlerFunc {
+func ResumeRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		identityToken, err := ensureBrowserIdentity(w, r)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		session, err := a.Rooms.ResumeIdentity(r.Context(), identityToken, r.PathValue("code"))
+		session, err := rooms.ResumeIdentity(r.Context(), identityToken, r.PathValue("code"))
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, session)
+		respond(logger, w, http.StatusOK, session)
 	}
 }

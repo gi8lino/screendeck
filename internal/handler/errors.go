@@ -1,11 +1,8 @@
 package handler
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/gi8lino/screendeck/internal/jellyfin"
@@ -14,54 +11,6 @@ import (
 	"github.com/gi8lino/screendeck/internal/requestid"
 	"github.com/gi8lino/screendeck/internal/store"
 )
-
-// validRequest validates a decoded request and returns problems keyed by JSON field path.
-type validRequest interface {
-	Valid(context.Context) map[string]string
-}
-
-// validationError contains all field-level problems found in a request.
-type validationError struct {
-	Problems map[string]string
-}
-
-// Error implements error.
-func (e validationError) Error() string {
-	return "request validation failed"
-}
-
-// decode reads and validates a JSON request body.
-func decode(r *http.Request, target any) error {
-	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20)
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("invalid request: %w", err)
-	}
-
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("invalid request: body must contain exactly one JSON value")
-		}
-		return fmt.Errorf("invalid request: %w", err)
-	}
-
-	return nil
-}
-
-// decodeValid decodes a request and reports all field-level validation problems.
-func decodeValid(r *http.Request, target validRequest) error {
-	if err := decode(r, target); err != nil {
-		return err
-	}
-	if problems := target.Valid(r.Context()); len(problems) > 0 {
-		return validationError{Problems: problems}
-	}
-	return nil
-}
 
 // statusForError maps application errors to their public HTTP status.
 func statusForError(err error) int {
@@ -109,9 +58,9 @@ func publicErrorMessage(err error) string {
 }
 
 // fail logs and writes an API error response.
-func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
+func fail(logger *slog.Logger, r *http.Request, w http.ResponseWriter, err error) {
 	status := statusForError(err)
-	requestid.WithLogger(a.Logger, r.Context()).Error("API request failed",
+	requestid.WithLogger(logger, r.Context()).Error("API request failed",
 		"event", "api_request_failed",
 		"method", r.Method,
 		"path", r.URL.Path,
@@ -123,17 +72,5 @@ func (a *API) fail(r *http.Request, w http.ResponseWriter, err error) {
 	if errors.As(err, &validation) {
 		payload["problems"] = validation.Problems
 	}
-	a.respond(w, status, payload)
-}
-
-// respond writes a JSON API response.
-func (a *API) respond(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(value); err != nil {
-		requestid.WithLogger(a.Logger, nil).Error("encode response",
-			"event", "encode_response_failed",
-			"error", err,
-		)
-	}
+	respond(logger, w, status, payload)
 }

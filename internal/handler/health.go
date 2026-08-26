@@ -2,25 +2,26 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 )
 
-// healthProber defines the database operation required by the health check.
-type healthProber interface {
+// HealthProber defines the database operation required by the health check.
+type HealthProber interface {
 	Ping(context.Context) error
 }
 
 // Health returns the service health handler.
-func (a *API) Health() http.HandlerFunc {
+func Health(healthProber HealthProber, logger *slog.Logger) http.HandlerFunc {
 	type status struct {
 		Status string `json:"status"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := a.healthProber.Ping(r.Context()); err != nil {
-			a.respond(w, http.StatusServiceUnavailable, status{Status: "unhealthy"})
+		if err := healthProber.Ping(r.Context()); err != nil {
+			respond(logger, w, http.StatusServiceUnavailable, status{Status: "unhealthy"})
 			return
 		}
 
-		a.respond(w, http.StatusOK, status{Status: "ok"})
+		respond(logger, w, http.StatusOK, status{Status: "ok"})
 	}
 }

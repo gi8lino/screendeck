@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -24,7 +25,7 @@ type createRoomRequest struct {
 }
 
 // Valid returns every field-level room creation problem.
-func (input *createRoomRequest) Valid(context.Context) map[string]string {
+func (input createRoomRequest) Valid(context.Context) map[string]string {
 	problems := make(map[string]string)
 
 	if strings.TrimSpace(input.Name) == "" {
@@ -79,7 +80,7 @@ type joinRoomRequest struct {
 }
 
 // Valid returns every field-level room joining problem.
-func (input *joinRoomRequest) Valid(context.Context) map[string]string {
+func (input joinRoomRequest) Valid(context.Context) map[string]string {
 	problems := make(map[string]string)
 	if !validRoomCode(input.Code) {
 		problems["code"] = "Enter a valid six-character room code."
@@ -114,19 +115,19 @@ func participantToken(r *http.Request) string {
 }
 
 // CreateRoom returns the room creation handler.
-func (a *API) CreateRoom() http.HandlerFunc {
+func CreateRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input createRoomRequest
-		if err := decodeValid(r, &input); err != nil {
-			a.fail(r, w, err)
+		input, err := decodeValid[createRoomRequest](r)
+		if err != nil {
+			fail(logger, r, w, err)
 			return
 		}
 		identityToken, err := ensureBrowserIdentity(w, r)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		session, err := a.Rooms.CreateForIdentity(
+		session, err := rooms.CreateForIdentity(
 			r.Context(),
 			input.Name,
 			input.LibraryKeys,
@@ -139,10 +140,10 @@ func (a *API) CreateRoom() http.HandlerFunc {
 			identityToken,
 		)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusCreated, session)
+		respond(logger, w, http.StatusCreated, session)
 	}
 }
 
@@ -152,7 +153,7 @@ type roomSettingsRequest struct {
 }
 
 // Valid validates a room settings update.
-func (input *roomSettingsRequest) Valid(context.Context) map[string]string {
+func (input roomSettingsRequest) Valid(context.Context) map[string]string {
 	if input.Locked == nil {
 		return map[string]string{"locked": "Choose whether the room accepts new participants."}
 	}
@@ -160,40 +161,40 @@ func (input *roomSettingsRequest) Valid(context.Context) map[string]string {
 }
 
 // UpdateRoomSettings returns the handler that changes host-controlled room settings.
-func (a *API) UpdateRoomSettings() http.HandlerFunc {
+func UpdateRoomSettings(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input roomSettingsRequest
-		if err := decodeValid(r, &input); err != nil {
-			a.fail(r, w, err)
+		input, err := decodeValid[roomSettingsRequest](r)
+		if err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		if err := a.Rooms.SetRoomLocked(
+		if err := rooms.SetRoomLocked(
 			r.Context(),
 			r.PathValue("code"),
 			participantToken(r),
 			*input.Locked,
 		); err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, map[string]bool{"locked": *input.Locked})
+		respond(logger, w, http.StatusOK, map[string]bool{"locked": *input.Locked})
 	}
 }
 
 // JoinRoom returns the room joining handler.
-func (a *API) JoinRoom() http.HandlerFunc {
+func JoinRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input joinRoomRequest
-		if err := decodeValid(r, &input); err != nil {
-			a.fail(r, w, err)
+		input, err := decodeValid[joinRoomRequest](r)
+		if err != nil {
+			fail(logger, r, w, err)
 			return
 		}
 		identityToken, err := ensureBrowserIdentity(w, r)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		session, err := a.Rooms.JoinForIdentity(
+		session, err := rooms.JoinForIdentity(
 			r.Context(),
 			input.Code,
 			input.Name,
@@ -202,39 +203,39 @@ func (a *API) JoinRoom() http.HandlerFunc {
 			identityToken,
 		)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusCreated, session)
+		respond(logger, w, http.StatusCreated, session)
 	}
 }
 
 // RoomGenres returns the personal genre choices available in a room.
-func (a *API) RoomGenres() http.HandlerFunc {
+func RoomGenres(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		genres, err := a.Rooms.Genres(r.Context(), r.PathValue("code"))
+		genres, err := rooms.Genres(r.Context(), r.PathValue("code"))
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, map[string][]string{"genres": genres})
+		respond(logger, w, http.StatusOK, map[string][]string{"genres": genres})
 	}
 }
 
 // RoomState returns the current room state handler.
-func (a *API) RoomState() http.HandlerFunc {
+func RoomState(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		state, err := a.Rooms.State(r.Context(), r.PathValue("code"), participantToken(r))
+		state, err := rooms.State(r.Context(), r.PathValue("code"), participantToken(r))
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, state)
+		respond(logger, w, http.StatusOK, state)
 	}
 }
 
 // Vote returns the media voting handler.
-func (a *API) Vote() http.HandlerFunc {
+func Vote(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
 		// ItemID identifies the canonical media item being voted on.
@@ -243,48 +244,48 @@ func (a *API) Vote() http.HandlerFunc {
 		Liked bool `json:"liked"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input request
-		if err := decode(r, &input); err != nil {
-			a.fail(r, w, err)
+		input, err := decode[request](r)
+		if err != nil {
+			fail(logger, r, w, err)
 			return
 		}
 		if input.ItemID == "" {
-			a.fail(r, w, errors.New("itemId is required"))
+			fail(logger, r, w, errors.New("itemId is required"))
 			return
 		}
-		matched, err := a.Rooms.Vote(r.Context(), r.PathValue("code"), participantToken(r), input.ItemID, input.Liked)
+		matched, err := rooms.Vote(r.Context(), r.PathValue("code"), participantToken(r), input.ItemID, input.Liked)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, map[string]bool{"matched": matched})
+		respond(logger, w, http.StatusOK, map[string]bool{"matched": matched})
 	}
 }
 
 // AddMoreTitles returns the handler that expands the first round from its unused pool.
-func (a *API) AddMoreTitles() http.HandlerFunc {
+func AddMoreTitles(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
 		// Count is the requested number of additional titles.
 		Count int `json:"count"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input request
-		if err := decode(r, &input); err != nil {
-			a.fail(r, w, err)
-			return
-		}
-		result, err := a.Rooms.AddMoreTitles(r.Context(), r.PathValue("code"), participantToken(r), input.Count)
+		input, err := decode[request](r)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, result)
+		result, err := rooms.AddMoreTitles(r.Context(), r.PathValue("code"), participantToken(r), input.Count)
+		if err != nil {
+			fail(logger, r, w, err)
+			return
+		}
+		respond(logger, w, http.StatusOK, result)
 	}
 }
 
 // NextRoundReady returns the handler that records agreement to narrow the deck to current matches.
-func (a *API) NextRoundReady() http.HandlerFunc {
+func NextRoundReady(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
 		// Round identifies the room round the readiness update applies to.
@@ -293,48 +294,59 @@ func (a *API) NextRoundReady() http.HandlerFunc {
 		Ready bool `json:"ready"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input request
-		if err := decode(r, &input); err != nil {
-			a.fail(r, w, err)
-			return
-		}
-		result, err := a.Rooms.SetNextRoundReady(r.Context(), r.PathValue("code"), participantToken(r), input.Round, input.Ready)
+		input, err := decode[request](r)
 		if err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, result)
+		result, err := rooms.SetNextRoundReady(
+			r.Context(),
+			r.PathValue("code"),
+			participantToken(r),
+			input.Round,
+			input.Ready,
+		)
+		if err != nil {
+			fail(logger, r, w, err)
+			return
+		}
+		respond(logger, w, http.StatusOK, result)
 	}
 }
 
 // LeaveRoom returns the room departure handler.
-func (a *API) LeaveRoom() http.HandlerFunc {
+func LeaveRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := a.Rooms.Leave(r.Context(), r.PathValue("code"), participantToken(r)); err != nil {
-			a.fail(r, w, err)
+		if err := rooms.Leave(r.Context(), r.PathValue("code"), participantToken(r)); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, map[string]string{"status": "left"})
+		respond(logger, w, http.StatusOK, map[string]string{"status": "left"})
 	}
 }
 
 // RemoveParticipant returns the handler that lets a room host remove another participant.
-func (a *API) RemoveParticipant() http.HandlerFunc {
+func RemoveParticipant(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := a.Rooms.RemoveParticipant(r.Context(), r.PathValue("code"), participantToken(r), r.PathValue("participantID")); err != nil {
-			a.fail(r, w, err)
+		if err := rooms.RemoveParticipant(
+			r.Context(),
+			r.PathValue("code"),
+			participantToken(r),
+			r.PathValue("participantID"),
+		); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
-		a.respond(w, http.StatusOK, map[string]string{"status": "removed"})
+		respond(logger, w, http.StatusOK, map[string]string{"status": "removed"})
 	}
 }
 
 // Events returns the room server-sent events handler.
-func (a *API) Events() http.HandlerFunc {
+func Events(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code, token := strings.ToUpper(r.PathValue("code")), r.URL.Query().Get("token")
-		if _, err := a.Rooms.State(r.Context(), code, token); err != nil {
-			a.fail(r, w, err)
+		if _, err := rooms.State(r.Context(), code, token); err != nil {
+			fail(logger, r, w, err)
 			return
 		}
 		flusher, ok := w.(http.Flusher)
@@ -343,13 +355,13 @@ func (a *API) Events() http.HandlerFunc {
 			return
 		}
 		if err := disableWriteDeadline(w); err != nil {
-			a.fail(r, w, err)
+			fail(logger, r, w, err)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Accel-Buffering", "no")
-		events, unsubscribe := a.Rooms.Subscribe(code)
+		events, unsubscribe := rooms.Subscribe(code)
 		defer unsubscribe()
 		if _, err := io.WriteString(w, "event: update\ndata: connected\n\n"); err != nil {
 			return

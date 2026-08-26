@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,17 +24,15 @@ func (d fakeHealthProber) Ping(context.Context) error {
 
 func TestHealth(t *testing.T) {
 	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("healthy healthProber", func(t *testing.T) {
 		t.Parallel()
 
-		api := &API{
-			healthProber: fakeHealthProber{},
-		}
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 
-		api.Health().ServeHTTP(response, request)
+		Health(fakeHealthProber{}, logger).ServeHTTP(response, request)
 
 		assert.Equal(t, http.StatusOK, response.Code)
 		assert.JSONEq(t, `{"status":"ok"}`, response.Body.String())
@@ -41,15 +41,12 @@ func TestHealth(t *testing.T) {
 	t.Run("unhealthy healthProber", func(t *testing.T) {
 		t.Parallel()
 
-		api := &API{
-			healthProber: fakeHealthProber{
-				err: errors.New("healthProber unavailable"),
-			},
-		}
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 
-		api.Health().ServeHTTP(response, request)
+		Health(fakeHealthProber{
+			err: errors.New("healthProber unavailable"),
+		}, logger).ServeHTTP(response, request)
 
 		assert.Equal(t, http.StatusServiceUnavailable, response.Code)
 		assert.JSONEq(t, `{"status":"unhealthy"}`, response.Body.String())

@@ -9,7 +9,6 @@ import (
 	"github.com/containeroo/httpgrace/server"
 	"github.com/containeroo/tinyflags"
 	"github.com/gi8lino/screendeck/internal/config"
-	"github.com/gi8lino/screendeck/internal/handler"
 	"github.com/gi8lino/screendeck/internal/logging"
 	"github.com/gi8lino/screendeck/internal/maintenance"
 	mediafactory "github.com/gi8lino/screendeck/internal/media/factory"
@@ -81,10 +80,16 @@ func Run(
 		return err
 	}
 
-	roomService := room.NewService(database, mediaServices.Media, cfg.RoomTTL, cfg.ExcludeLibraries)
+	roomService := room.NewService(
+		database,
+		mediaServices.Media,
+		cfg.RoomTTL,
+		cfg.ExcludeLibraries,
+	)
 
 	serverLogger := logger.With("component", "server")
-	api := handler.New(
+	router := routes.NewRouter(
+		appFS,
 		version,
 		commit,
 		cfg.BaseURL,
@@ -95,9 +100,8 @@ func Run(
 		mediaServices.Jellyfin,
 		database,
 		serverLogger,
+		cfg.AccessLog,
 	)
-
-	router := routes.NewRouter(appFS, api, serverLogger, cfg.AccessLog)
 
 	ctx, stop := server.SignalContext(ctx)
 	defer stop()
