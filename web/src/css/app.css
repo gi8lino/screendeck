@@ -757,8 +757,8 @@ select option {
   overflow: hidden;
 }
 .item-dialog {
-  width: min(760px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 32px));
+  width: min(940px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
   padding: 0;
   overflow: hidden;
   border: 1px solid #ffffff24;
@@ -770,6 +770,12 @@ select option {
 .item-dialog::backdrop {
   background: #08070acc;
   backdrop-filter: blur(8px);
+}
+.item-dialog-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
 }
 .dialog-close {
   position: absolute;
@@ -785,23 +791,51 @@ select option {
   font-size: 26px;
 }
 .dialog-poster {
-  float: left;
-  width: min(42%, 290px);
-  min-height: 460px;
+  width: 100%;
+  aspect-ratio: 2/3;
   object-fit: cover;
+  border-radius: 16px;
   background: var(--soft);
 }
 .dialog-content {
-  max-height: min(760px, calc(100vh - 32px));
-  padding: 54px 34px 36px;
-  overflow-y: auto;
+  display: flex;
+  min-width: 0;
+  max-height: min(510px, calc(100dvh - 68px));
+  padding: 46px 42px 20px 24px;
+  flex-direction: column;
 }
 .dialog-content h2 {
-  font-size: clamp(34px, 5vw, 52px);
+  margin: 6px 0 10px;
+  font-size: clamp(34px, 5vw, 48px);
+  line-height: 0.98;
 }
 .dialog-summary {
+  max-width: 58ch;
+  min-height: 0;
+  margin: 18px 0 0;
+  padding-right: 10px;
+  overflow-y: auto;
   color: #ddd6df;
+  line-height: 1.65;
   white-space: pre-line;
+}
+.item-dialog-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+.item-dialog-genres[hidden] {
+  display: none;
+}
+.item-dialog-genres span {
+  padding: 6px 10px;
+  border: 1px solid #ffffff1c;
+  border-radius: 999px;
+  background: #ffffff0a;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
 }
 .dialog-genres {
   color: var(--muted);
@@ -1373,15 +1407,25 @@ select option {
   .item-dialog {
     overflow-y: auto;
   }
+  .item-dialog-layout {
+    display: block;
+    padding: 12px;
+  }
   .dialog-poster {
-    float: none;
     width: 100%;
-    min-height: 0;
-    max-height: 42vh;
+    max-height: 44dvh;
+    border-radius: 14px;
+    object-position: center 22%;
   }
   .dialog-content {
     max-height: none;
-    padding: 28px 22px 26px;
+    padding: 28px 10px 14px;
+  }
+  .dialog-content h2 {
+    font-size: clamp(32px, 11vw, 44px);
+  }
+  .dialog-summary {
+    max-width: none;
     overflow: visible;
   }
   .match-dialog {

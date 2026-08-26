@@ -771,7 +771,13 @@ function showItemDetails(item) {
   refs.summary.textContent = item.summary || "No synopsis available.";
   if (item.genres?.length) {
     refs.genres.hidden = false;
-    refs.genres.textContent = item.genres.join(" · ");
+    refs.genres.replaceChildren(
+      ...item.genres.map((genre) => {
+        const chip = document.createElement("span");
+        chip.textContent = genre;
+        return chip;
+      }),
+    );
   }
   showModalDialog(dialog, showNextMatch);
 }

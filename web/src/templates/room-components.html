@@ -221,21 +221,23 @@
 
 <template id="item-dialog-template">
   <dialog class="item-dialog">
-    <button
-      class="dialog-close"
-      type="button"
-      aria-label="Close details"
-      data-ref="close"
-    >
-      ×
-    </button>
-    <img class="dialog-poster" data-ref="poster" />
-    <div class="dialog-content">
-      <div class="eyebrow" data-ref="type"></div>
-      <h2 data-ref="title"></h2>
-      <div class="meta" data-ref="meta"></div>
-      <p class="dialog-summary" data-ref="summary"></p>
-      <p class="dialog-genres" data-ref="genres" hidden></p>
+    <div class="item-dialog-layout">
+      <img class="dialog-poster" data-ref="poster" />
+      <div class="dialog-content">
+        <button
+          class="dialog-close"
+          type="button"
+          aria-label="Close details"
+          data-ref="close"
+        >
+          ×
+        </button>
+        <div class="eyebrow" data-ref="type"></div>
+        <h2 data-ref="title"></h2>
+        <div class="meta" data-ref="meta"></div>
+        <div class="item-dialog-genres" data-ref="genres" hidden></div>
+        <p class="dialog-summary" data-ref="summary"></p>
+      </div>
     </div>
   </dialog>
 </template>
