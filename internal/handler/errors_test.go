@@ -9,7 +9,7 @@ import (
 	"github.com/gi8lino/screendeck/internal/jellyfin"
 	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/plex"
-	"github.com/gi8lino/screendeck/internal/store"
+	"github.com/gi8lino/screendeck/internal/room"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,16 +24,16 @@ func TestStatusForError(t *testing.T) {
 	})
 
 	t.Run("conflict", func(t *testing.T) {
-		assert.Equal(t, http.StatusConflict, statusForError(store.ErrMembershipConflict))
-		assert.Equal(t, http.StatusConflict, statusForError(store.ErrRoomLocked))
+		assert.Equal(t, http.StatusConflict, statusForError(room.ErrMembershipConflict))
+		assert.Equal(t, http.StatusConflict, statusForError(room.ErrLocked))
 	})
 
 	t.Run("forbidden", func(t *testing.T) {
-		assert.Equal(t, http.StatusForbidden, statusForError(store.ErrForbidden))
+		assert.Equal(t, http.StatusForbidden, statusForError(room.ErrForbidden))
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		assert.Equal(t, http.StatusNotFound, statusForError(store.ErrNotFound))
+		assert.Equal(t, http.StatusNotFound, statusForError(room.ErrNotFound))
 	})
 
 	t.Run("not configured", func(t *testing.T) {
@@ -64,7 +64,7 @@ func TestIsMediaUpstreamError(t *testing.T) {
 	})
 
 	t.Run("application error", func(t *testing.T) {
-		assert.False(t, isMediaUpstreamError(store.ErrNotFound))
+		assert.False(t, isMediaUpstreamError(room.ErrNotFound))
 	})
 }
 

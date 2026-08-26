@@ -19,17 +19,6 @@ const (
 	inMemoryDatabasePath = ":memory:"
 )
 
-var (
-	// ErrNotFound indicates that a requested persisted entity does not exist.
-	ErrNotFound = errors.New("not found")
-	// ErrForbidden indicates that the authenticated caller is not allowed to perform an operation.
-	ErrForbidden = errors.New("forbidden")
-	// ErrMembershipConflict indicates that a browser identity is already linked to another participant in a room.
-	ErrMembershipConflict = errors.New("browser identity already linked to another room participant")
-	// ErrRoomLocked indicates that a room is not accepting new participants.
-	ErrRoomLocked = errors.New("room is locked")
-)
-
 // Store owns the SQLite database and the cipher used for stored secrets.
 type Store struct {
 	// db is the underlying SQLite connection pool.

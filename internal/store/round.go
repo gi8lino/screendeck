@@ -6,6 +6,8 @@ import (
 	"errors"
 	mathrand "math/rand/v2"
 	"time"
+
+	roomdomain "github.com/gi8lino/screendeck/internal/room"
 )
 
 // AddMoreTitles activates additional unused titles in the first round for the room host.
@@ -81,7 +83,7 @@ WHERE r.code = ?
 	var ownerID string
 	if err := tx.QueryRowContext(ctx, query, code, participantID, time.Now().Unix()).Scan(&round, &ownerID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return roomdomain.ErrNotFound
 		}
 		return err
 	}
@@ -447,7 +449,7 @@ WHERE code = ?
 	var round int
 	if err := tx.QueryRowContext(ctx, query, code, time.Now().Unix()).Scan(&round); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, ErrNotFound
+			return 0, roomdomain.ErrNotFound
 		}
 		return 0, err
 	}
@@ -592,7 +594,7 @@ SET round = ?,
 WHERE code = ?
   AND round = ?
 `
-	_, err := tx.ExecContext(ctx, query, nextRound, RoomPhaseSwiping, code, currentRound)
+	_, err := tx.ExecContext(ctx, query, nextRound, roomdomain.PhaseSwiping, code, currentRound)
 	return err
 }
 
@@ -657,7 +659,7 @@ UPDATE rooms
 SET phase = ?
 WHERE code = ?
 `
-	_, err = tx.ExecContext(ctx, updateQuery, roomPhase(ready, remaining, matches), code)
+	_, err = tx.ExecContext(ctx, updateQuery, deriveRoomPhase(ready, remaining, matches), code)
 	return err
 }
 
@@ -689,17 +691,17 @@ WHERE room_code = ?
 	return matches, nil
 }
 
-// roomPhase derives a room phase from readiness, remaining votes, and current matches.
-func roomPhase(ready, remaining, matches int) RoomPhase {
+// deriveRoomPhase derives a room phase from readiness, remaining votes, and current matches.
+func deriveRoomPhase(ready, remaining, matches int) roomPhase {
 	switch {
 	case ready > 0:
-		return RoomPhaseNextRoundRequested
+		return roomdomain.PhaseNextRoundRequested
 	case remaining == 0 && matches == 1:
-		return RoomPhaseFinished
+		return roomdomain.PhaseFinished
 	case remaining == 0:
-		return RoomPhaseRoundComplete
+		return roomdomain.PhaseRoundComplete
 	default:
-		return RoomPhaseSwiping
+		return roomdomain.PhaseSwiping
 	}
 }
 

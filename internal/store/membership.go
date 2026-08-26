@@ -6,48 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	roomdomain "github.com/gi8lino/screendeck/internal/room"
 )
 
-// RoomMembershipCredential links a room participant to a persistent browser identity.
-type RoomMembershipCredential struct {
-	// IdentityHash is the stored digest of the long-lived browser identity token.
-	IdentityHash string
-	// SessionToken is the participant token returned when the room membership is resumed.
-	SessionToken string
-}
-
-// RoomMembership describes an active room associated with one browser identity.
-type RoomMembership struct {
-	// Code is the six-character room identifier.
-	Code string `json:"code"`
-	// Round is the current one-based room round.
-	Round int `json:"round"`
-	// Phase is the current room lifecycle phase.
-	Phase RoomPhase `json:"phase"`
-	// ParticipantID identifies the browser identity's participant in the room.
-	ParticipantID string `json:"participantId"`
-	// Name is the participant display name used in the room.
-	Name string `json:"name"`
-	// IsHost reports whether the participant currently owns the room.
-	IsHost bool `json:"isHost"`
-	// ParticipantCount is the number of active participants in the room.
-	ParticipantCount int `json:"participantCount"`
-	// CreatedAt is the room creation time.
-	CreatedAt time.Time `json:"createdAt"`
-	// ExpiresAt is the time at which the room becomes inactive.
-	ExpiresAt time.Time `json:"expiresAt"`
-}
-
-// MembershipSession contains the participant credentials persisted for a browser identity.
-type MembershipSession struct {
-	// Code is the six-character room identifier.
-	Code string
-	// Token authenticates the participant to the room.
-	Token string
-}
+type membershipCredential = roomdomain.MembershipCredential
+type roomMembership = roomdomain.Membership
+type membershipSession = roomdomain.MembershipSession
 
 // RoomMemberships returns active rooms associated with a browser identity.
-func (s *Store) RoomMemberships(ctx context.Context, identityHash string) ([]RoomMembership, error) {
+func (s *Store) RoomMemberships(
+	ctx context.Context,
+	identityHash string,
+) ([]roomdomain.Membership, error) {
 	if err := validateIdentityHash(identityHash); err != nil {
 		return nil, err
 	}
@@ -83,7 +54,7 @@ ORDER BY membership.updated_at DESC, r.created_at DESC
 	}
 	defer rows.Close() // nolint:errcheck
 
-	memberships := make([]RoomMembership, 0)
+	memberships := make([]roomMembership, 0)
 	for rows.Next() {
 		membership, err := scanRoomMembership(rows)
 		if err != nil {
@@ -99,8 +70,8 @@ ORDER BY membership.updated_at DESC, r.created_at DESC
 }
 
 // scanRoomMembership decodes one browser room membership from a database row.
-func scanRoomMembership(row scanner) (RoomMembership, error) {
-	var membership RoomMembership
+func scanRoomMembership(row scanner) (roomMembership, error) {
+	var membership roomMembership
 	var createdAt, expiresAt int64
 	if err := row.Scan(
 		&membership.Code,
@@ -113,7 +84,7 @@ func scanRoomMembership(row scanner) (RoomMembership, error) {
 		&createdAt,
 		&expiresAt,
 	); err != nil {
-		return RoomMembership{}, err
+		return roomMembership{}, err
 	}
 
 	membership.CreatedAt = time.Unix(createdAt, 0).UTC()
@@ -126,25 +97,25 @@ func (s *Store) RoomMembershipSession(
 	ctx context.Context,
 	identityHash string,
 	code string,
-) (MembershipSession, error) {
+) (roomdomain.MembershipSession, error) {
 	if err := validateIdentityHash(identityHash); err != nil {
-		return MembershipSession{}, err
+		return membershipSession{}, err
 	}
 
 	encryptedToken, err := s.roomMembershipToken(ctx, identityHash, code)
 	if err != nil {
-		return MembershipSession{}, err
+		return membershipSession{}, err
 	}
 
 	token, err := s.open(encryptedToken)
 	if err != nil {
-		return MembershipSession{}, fmt.Errorf("decrypt room membership session: %w", err)
+		return membershipSession{}, fmt.Errorf("decrypt room membership session: %w", err)
 	}
 	if err := s.touchRoomMembership(ctx, identityHash, code); err != nil {
-		return MembershipSession{}, err
+		return membershipSession{}, err
 	}
 
-	return MembershipSession{Code: code, Token: string(token)}, nil
+	return membershipSession{Code: code, Token: string(token)}, nil
 }
 
 // validateIdentityHash verifies that a browser identity digest can be used for persistence.
@@ -173,7 +144,7 @@ WHERE membership.identity_hash = ?
 	var encryptedToken []byte
 	if err := s.db.QueryRowContext(ctx, query, identityHash, code, time.Now().Unix()).Scan(&encryptedToken); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, roomdomain.ErrNotFound
 		}
 		return nil, err
 	}
@@ -198,7 +169,7 @@ func (s *Store) saveRoomMembershipTx(
 	tx *sql.Tx,
 	code string,
 	participantID string,
-	credential RoomMembershipCredential,
+	credential membershipCredential,
 ) error {
 	if err := validateRoomMembershipCredential(credential); err != nil {
 		return err
@@ -222,7 +193,7 @@ func (s *Store) saveRoomMembershipTx(
 }
 
 // validateRoomMembershipCredential verifies browser and participant membership credentials.
-func validateRoomMembershipCredential(credential RoomMembershipCredential) error {
+func validateRoomMembershipCredential(credential membershipCredential) error {
 	if err := validateIdentityHash(credential.IdentityHash); err != nil {
 		return err
 	}
@@ -249,7 +220,7 @@ WHERE identity_hash = ?
 	var existingParticipantID string
 	err := tx.QueryRowContext(ctx, identityQuery, identityHash, code).Scan(&existingParticipantID)
 	if err == nil && existingParticipantID != participantID {
-		return ErrMembershipConflict
+		return roomdomain.ErrMembershipConflict
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -263,7 +234,7 @@ WHERE participant_id = ?
 	var existingIdentityHash string
 	err = tx.QueryRowContext(ctx, participantQuery, participantID).Scan(&existingIdentityHash)
 	if err == nil && existingIdentityHash != identityHash {
-		return ErrMembershipConflict
+		return roomdomain.ErrMembershipConflict
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -286,7 +257,7 @@ WHERE p.id = ?
 	var exists int
 	if err := tx.QueryRowContext(ctx, query, participantID, code, time.Now().Unix()).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return roomdomain.ErrNotFound
 		}
 		return err
 	}

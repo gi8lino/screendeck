@@ -9,133 +9,32 @@ import (
 	"time"
 
 	"github.com/gi8lino/screendeck/internal/media"
+	roomdomain "github.com/gi8lino/screendeck/internal/room"
 )
 
-// RoomPhase identifies the current lifecycle phase of a room.
-type RoomPhase string
-
 const (
-	// RoomPhaseSwiping indicates that participants can still vote in the current round.
-	RoomPhaseSwiping RoomPhase = "swiping"
-	// RoomPhaseNextRoundRequested indicates that at least one participant requested the next round.
-	RoomPhaseNextRoundRequested RoomPhase = "next_round_requested"
-	// RoomPhaseRoundComplete indicates that no eligible votes remain and the round has no single winner.
-	RoomPhaseRoundComplete RoomPhase = "round_complete"
-	// RoomPhaseFinished indicates that the room has converged on one winning item.
-	RoomPhaseFinished RoomPhase = "finished"
 	// posterLookaheadSize limits how many upcoming posters the browser preloads.
 	posterLookaheadSize = 3
 )
 
-// Room contains persisted room metadata.
-type Room struct {
-	// Code is the six-character room identifier.
-	Code string `json:"code"`
-	// Round is the current one-based room round.
-	Round int `json:"round"`
-	// Phase is the current room lifecycle phase.
-	Phase RoomPhase `json:"phase"`
-	// OwnerID identifies the participant that owns the room.
-	OwnerID string `json:"ownerId"`
-	// CreatedAt is the room creation time.
-	CreatedAt time.Time `json:"createdAt"`
-	// ExpiresAt is the time at which the room becomes inactive.
-	ExpiresAt time.Time `json:"expiresAt"`
-	// Locked reports whether the room rejects new participants.
-	Locked bool `json:"locked"`
-}
-
-// Participant contains public room participant state.
-type Participant struct {
-	// ID is the stable participant identifier.
-	ID string `json:"id"`
-	// Name is the participant display name.
-	Name string `json:"name"`
-	// Genres contains the participant's personal genre preferences.
-	Genres []string `json:"genres"`
-	// GenreMode controls whether selected personal genres match any or all values.
-	GenreMode string `json:"genreMode"`
-	// IsHost reports whether the participant currently owns the room.
-	IsHost bool `json:"isHost"`
-	// ReadyForNextRound reports whether the participant has agreed to advance.
-	ReadyForNextRound bool `json:"readyForNextRound"`
-}
-
-// MoreTitlesState reports whether unused first-round titles can be added.
-type MoreTitlesState struct {
-	// Available is the number of unused first-round titles still available.
-	Available int `json:"available"`
-	// CanAdd reports whether the host can activate more first-round titles.
-	CanAdd bool `json:"canAdd"`
-}
-
-// WinnerState contains the final winning item and its supporters.
-type WinnerState struct {
-	// Item is the winning media item.
-	Item media.Item `json:"item"`
-	// LikedBy contains participants whose likes support the winner.
-	LikedBy []Participant `json:"likedBy"`
-}
-
-// RoomState contains the participant-specific view of a room.
-type RoomState struct {
-	// Room contains room metadata.
-	Room Room `json:"room"`
-	// Me is the authenticated participant.
-	Me Participant `json:"me"`
-	// Participants contains all active room participants.
-	Participants []Participant `json:"participants"`
-	// Candidate is the next eligible item for the authenticated participant.
-	Candidate *media.Item `json:"candidate,omitempty"`
-	// PosterLookahead contains upcoming item identifiers in participant deck order.
-	PosterLookahead []string `json:"posterLookahead,omitempty"`
-	// Matches contains items unanimously liked by active participants.
-	Matches []media.Item `json:"matches"`
-	// Winner contains final winner details when the room is finished.
-	Winner *WinnerState `json:"winner,omitempty"`
-	// Progress contains participant-specific swipe counts.
-	Progress Progress `json:"progress"`
-	// NextRound contains group readiness state.
-	NextRound NextRoundState `json:"nextRound"`
-	// RoundComplete reports whether the current round has no remaining eligible votes.
-	RoundComplete bool `json:"roundComplete"`
-	// MoreTitles describes unused first-round titles available to the host.
-	MoreTitles MoreTitlesState `json:"moreTitles"`
-}
-
-// Progress reports swipe progress for the current participant and round.
-type Progress struct {
-	// Voted is the number of eligible titles already voted on by the participant.
-	Voted int `json:"voted"`
-	// Total is the number of titles eligible for the participant.
-	Total int `json:"total"`
-	// RoundTotal is the total number of titles active in the round.
-	RoundTotal int `json:"roundTotal"`
-	// FilteredOut is the number of active round titles excluded by personal genres.
-	FilteredOut int `json:"filteredOut"`
-}
-
-// NextRoundState reports group consensus for advancing to the next round.
-type NextRoundState struct {
-	// Ready is the number of active participants ready to advance.
-	Ready int `json:"ready"`
-	// Required is the number of active participants whose readiness is required.
-	Required int `json:"required"`
-	// Available reports whether enough matches and participants exist to request another round.
-	Available bool `json:"available"`
-	// RequestedBy identifies the participant who initiated next-round consensus.
-	RequestedBy *Participant `json:"requestedBy,omitempty"`
-}
+type roomRecord = roomdomain.Room
+type roomPhase = roomdomain.Phase
+type roomParticipant = roomdomain.Participant
+type moreTitlesState = roomdomain.MoreTitlesState
+type winnerState = roomdomain.WinnerState
+type roomState = roomdomain.State
+type roomProgress = roomdomain.Progress
+type nextRoundState = roomdomain.NextRoundState
 
 // CreateRoom persists a room, its owner, the active deck, and the original eligible item pool.
 func (s *Store) CreateRoom(
 	ctx context.Context,
-	room Room,
-	participant Participant,
+	room roomdomain.Room,
+	participant roomdomain.Participant,
 	tokenHash string,
 	itemIDs []string,
 	poolIDs []string,
-	membership RoomMembershipCredential,
+	membership roomdomain.MembershipCredential,
 ) error {
 	normalizeRoomCreation(&room, &participant)
 	participantGenres, err := encodeParticipantGenres(participant.Genres)
@@ -172,12 +71,12 @@ func (s *Store) CreateRoom(
 }
 
 // normalizeRoomCreation applies default room and participant values before persistence.
-func normalizeRoomCreation(room *Room, participant *Participant) {
+func normalizeRoomCreation(room *roomRecord, participant *roomParticipant) {
 	if room.Round <= 0 {
 		room.Round = 1
 	}
 	if room.Phase == "" {
-		room.Phase = RoomPhaseSwiping
+		room.Phase = roomdomain.PhaseSwiping
 	}
 	if room.OwnerID == "" {
 		room.OwnerID = participant.ID
@@ -187,7 +86,7 @@ func normalizeRoomCreation(room *Room, participant *Participant) {
 }
 
 // normalizeParticipant applies persistence defaults to participant state.
-func normalizeParticipant(participant *Participant) {
+func normalizeParticipant(participant *roomParticipant) {
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
@@ -206,7 +105,7 @@ func encodeParticipantGenres(genres []string) (string, error) {
 }
 
 // insertRoomTx inserts room metadata inside an existing transaction.
-func insertRoomTx(ctx context.Context, tx *sql.Tx, room Room) error {
+func insertRoomTx(ctx context.Context, tx *sql.Tx, room roomRecord) error {
 	const query = `
 INSERT INTO rooms (
   code,
@@ -239,7 +138,7 @@ func insertParticipantTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	code string,
-	participant Participant,
+	participant roomParticipant,
 	tokenHash string,
 	genres string,
 ) error {
@@ -343,9 +242,9 @@ INSERT INTO room_item_pool (
 func (s *Store) JoinRoom(
 	ctx context.Context,
 	code string,
-	participant Participant,
+	participant roomdomain.Participant,
 	tokenHash string,
-	membership RoomMembershipCredential,
+	membership roomdomain.MembershipCredential,
 ) error {
 	normalizeParticipant(&participant)
 	genres, err := encodeParticipantGenres(participant.Genres)
@@ -386,7 +285,7 @@ func joinParticipantTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	code string,
-	participant Participant,
+	participant roomParticipant,
 	tokenHash string,
 	genres string,
 ) error {
@@ -450,14 +349,14 @@ WHERE code = ?
 	var locked bool
 	if err := tx.QueryRowContext(ctx, query, code, time.Now().Unix()).Scan(&locked); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return roomdomain.ErrNotFound
 		}
 		return err
 	}
 	if locked {
-		return ErrRoomLocked
+		return roomdomain.ErrLocked
 	}
-	return ErrNotFound
+	return roomdomain.ErrNotFound
 }
 
 // invalidateNonUnanimousMatchesTx removes matches invalidated by a newly joined participant.
@@ -482,7 +381,11 @@ WHERE room_code = ?
 }
 
 // ParticipantByToken authenticates and returns a room participant.
-func (s *Store) ParticipantByToken(ctx context.Context, code, tokenHash string) (Participant, error) {
+func (s *Store) ParticipantByToken(
+	ctx context.Context,
+	code string,
+	tokenHash string,
+) (roomdomain.Participant, error) {
 	const query = `
 SELECT
   id,
@@ -493,7 +396,7 @@ FROM participants
 WHERE room_code = ?
   AND token_hash = ?
 `
-	var participant Participant
+	var participant roomParticipant
 	var genres string
 	err := s.db.QueryRowContext(ctx, query, code, tokenHash).Scan(
 		&participant.ID,
@@ -502,7 +405,7 @@ WHERE room_code = ?
 		&participant.GenreMode,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return participant, ErrNotFound
+		return participant, roomdomain.ErrNotFound
 	}
 	if err != nil {
 		return participant, err
@@ -571,32 +474,32 @@ WHERE code = ?
 	var exists int
 	if err := s.db.QueryRowContext(ctx, query, code, time.Now().Unix()).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return roomdomain.ErrNotFound
 		}
 		return err
 	}
 	return nil
 }
 
-// RoomState returns the state of a room for one participant.
-func (s *Store) RoomState(ctx context.Context, code, participantID string) (RoomState, error) {
+// roomState returns the state of a room for one participant.
+func (s *Store) RoomState(ctx context.Context, code, participantID string) (roomdomain.State, error) {
 	room, err := s.loadRoom(ctx, code)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 
 	me, err := s.loadRoomParticipant(ctx, code, participantID, room)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 	participants, err := s.loadRoomParticipants(ctx, code, room)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 
 	upcoming, err := s.nextItems(ctx, code, participantID, posterLookaheadSize+1)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 	var candidate *media.Item
 	var posterLookahead []string
@@ -609,34 +512,34 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 	}
 	matches, err := s.matchItems(ctx, code)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 
 	nextRound, err := s.loadNextRoundState(ctx, code, room, participants, matches)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 	progress, err := s.loadProgress(ctx, code, participantID)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 
 	remaining, err := s.roundRemaining(ctx, code)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
-	roundComplete := room.Phase == RoomPhaseRoundComplete || room.Phase == RoomPhaseFinished || remaining == 0
+	roundComplete := room.Phase == roomdomain.PhaseRoundComplete || room.Phase == roomdomain.PhaseFinished || remaining == 0
 
 	winner, err := s.loadWinner(ctx, code, room, matches)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 	moreTitles, err := s.loadMoreTitlesState(ctx, code, room.Round)
 	if err != nil {
-		return RoomState{}, err
+		return roomState{}, err
 	}
 
-	return RoomState{
+	return roomState{
 		Room:            room,
 		Me:              me,
 		Participants:    participants,
@@ -652,7 +555,7 @@ func (s *Store) RoomState(ctx context.Context, code, participantID string) (Room
 }
 
 // loadRoom returns active room metadata.
-func (s *Store) loadRoom(ctx context.Context, code string) (Room, error) {
+func (s *Store) loadRoom(ctx context.Context, code string) (roomRecord, error) {
 	const query = `
 SELECT
   code,
@@ -666,7 +569,7 @@ FROM rooms
 WHERE code = ?
   AND expires_at > ?
 `
-	var room Room
+	var room roomRecord
 	var created, expires int64
 	err := s.db.QueryRowContext(ctx, query, code, time.Now().Unix()).Scan(
 		&room.Code,
@@ -678,10 +581,10 @@ WHERE code = ?
 		&room.Locked,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Room{}, ErrNotFound
+		return roomRecord{}, roomdomain.ErrNotFound
 	}
 	if err != nil {
-		return Room{}, err
+		return roomRecord{}, err
 	}
 
 	room.CreatedAt = time.Unix(created, 0).UTC()
@@ -711,8 +614,8 @@ func (s *Store) loadRoomParticipant(
 	ctx context.Context,
 	code string,
 	participantID string,
-	room Room,
-) (Participant, error) {
+	room roomRecord,
+) (roomParticipant, error) {
 	const query = `
 SELECT
   p.id,
@@ -730,7 +633,7 @@ FROM participants p
 WHERE p.id = ?
   AND p.room_code = ?
 `
-	var participant Participant
+	var participant roomParticipant
 	var genres string
 	if err := s.db.QueryRowContext(ctx, query, room.Round, participantID, code).Scan(
 		&participant.ID,
@@ -740,9 +643,9 @@ WHERE p.id = ?
 		&participant.ReadyForNextRound,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Participant{}, ErrNotFound
+			return roomParticipant{}, roomdomain.ErrNotFound
 		}
-		return Participant{}, err
+		return roomParticipant{}, err
 	}
 
 	decodeGenres(genres, &participant.Genres)
@@ -754,8 +657,8 @@ WHERE p.id = ?
 func (s *Store) loadRoomParticipants(
 	ctx context.Context,
 	code string,
-	room Room,
-) ([]Participant, error) {
+	room roomRecord,
+) ([]roomParticipant, error) {
 	const query = `
 SELECT
   p.id,
@@ -779,7 +682,7 @@ ORDER BY p.joined_at
 	}
 	defer rows.Close() // nolint:errcheck
 
-	var participants []Participant
+	var participants []roomParticipant
 	for rows.Next() {
 		participant, err := scanParticipant(rows, room.OwnerID)
 		if err != nil {
@@ -794,8 +697,8 @@ ORDER BY p.joined_at
 }
 
 // scanParticipant decodes a participant row that includes current-round readiness.
-func scanParticipant(row scanner, ownerID string) (Participant, error) {
-	var participant Participant
+func scanParticipant(row scanner, ownerID string) (roomParticipant, error) {
+	var participant roomParticipant
 	var genres string
 	if err := row.Scan(
 		&participant.ID,
@@ -804,7 +707,7 @@ func scanParticipant(row scanner, ownerID string) (Participant, error) {
 		&participant.GenreMode,
 		&participant.ReadyForNextRound,
 	); err != nil {
-		return Participant{}, err
+		return roomParticipant{}, err
 	}
 
 	decodeGenres(genres, &participant.Genres)
@@ -816,11 +719,11 @@ func scanParticipant(row scanner, ownerID string) (Participant, error) {
 func (s *Store) loadNextRoundState(
 	ctx context.Context,
 	code string,
-	room Room,
-	participants []Participant,
+	room roomRecord,
+	participants []roomParticipant,
 	matches []media.Item,
-) (NextRoundState, error) {
-	state := NextRoundState{Required: len(participants)}
+) (nextRoundState, error) {
+	state := nextRoundState{Required: len(participants)}
 
 	const readyQuery = `
 SELECT COUNT(*)
@@ -832,12 +735,12 @@ WHERE rr.room_code = ?
   AND rr.round = ?
 `
 	if err := s.db.QueryRowContext(ctx, readyQuery, code, room.Round).Scan(&state.Ready); err != nil {
-		return NextRoundState{}, err
+		return nextRoundState{}, err
 	}
 
 	requester, err := s.loadNextRoundRequester(ctx, code, room.OwnerID)
 	if err != nil {
-		return NextRoundState{}, err
+		return nextRoundState{}, err
 	}
 	state.RequestedBy = requester
 	state.Available = state.Required > 1 && len(matches) > 1
@@ -849,7 +752,7 @@ func (s *Store) loadNextRoundRequester(
 	ctx context.Context,
 	code string,
 	ownerID string,
-) (*Participant, error) {
+) (*roomParticipant, error) {
 	const requesterIDQuery = `
 SELECT next_round_requester_id
 FROM rooms
@@ -872,7 +775,7 @@ FROM participants
 WHERE room_code = ?
   AND id = ?
 `
-	var requester Participant
+	var requester roomParticipant
 	if err := s.db.QueryRowContext(ctx, requesterQuery, code, requesterID).Scan(
 		&requester.ID,
 		&requester.Name,
@@ -889,7 +792,7 @@ WHERE room_code = ?
 }
 
 // loadProgress returns participant-specific swipe progress for the active round.
-func (s *Store) loadProgress(ctx context.Context, code, participantID string) (Progress, error) {
+func (s *Store) loadProgress(ctx context.Context, code, participantID string) (roomProgress, error) {
 	const progressQuery = `
 SELECT
   COUNT(v.item_id),
@@ -930,12 +833,12 @@ WHERE p.id = ?
     )
   )
 `
-	var progress Progress
+	var progress roomProgress
 	if err := s.db.QueryRowContext(ctx, progressQuery, participantID, code).Scan(
 		&progress.Voted,
 		&progress.Total,
 	); err != nil {
-		return Progress{}, err
+		return roomProgress{}, err
 	}
 
 	const roundTotalQuery = `
@@ -944,7 +847,7 @@ FROM room_items
 WHERE room_code = ?
 `
 	if err := s.db.QueryRowContext(ctx, roundTotalQuery, code).Scan(&progress.RoundTotal); err != nil {
-		return Progress{}, err
+		return roomProgress{}, err
 	}
 	progress.FilteredOut = progress.RoundTotal - progress.Total
 	return progress, nil
@@ -954,10 +857,10 @@ WHERE room_code = ?
 func (s *Store) loadWinner(
 	ctx context.Context,
 	code string,
-	room Room,
+	room roomRecord,
 	matches []media.Item,
-) (*WinnerState, error) {
-	if room.Phase != RoomPhaseFinished || len(matches) != 1 {
+) (*winnerState, error) {
+	if room.Phase != roomdomain.PhaseFinished || len(matches) != 1 {
 		return nil, nil
 	}
 
@@ -982,7 +885,7 @@ ORDER BY p.joined_at
 	}
 	defer rows.Close() // nolint:errcheck
 
-	winner := &WinnerState{Item: matches[0]}
+	winner := &winnerState{Item: matches[0]}
 	for rows.Next() {
 		participant, err := scanWinnerSupporter(rows, room.OwnerID)
 		if err != nil {
@@ -997,11 +900,11 @@ ORDER BY p.joined_at
 }
 
 // scanWinnerSupporter decodes a participant row used by final winner details.
-func scanWinnerSupporter(row scanner, ownerID string) (Participant, error) {
-	var participant Participant
+func scanWinnerSupporter(row scanner, ownerID string) (roomParticipant, error) {
+	var participant roomParticipant
 	var genres string
 	if err := row.Scan(&participant.ID, &participant.Name, &genres, &participant.GenreMode); err != nil {
-		return Participant{}, err
+		return roomParticipant{}, err
 	}
 
 	decodeGenres(genres, &participant.Genres)
@@ -1014,9 +917,9 @@ func (s *Store) loadMoreTitlesState(
 	ctx context.Context,
 	code string,
 	round int,
-) (MoreTitlesState, error) {
+) (moreTitlesState, error) {
 	if round != 1 {
-		return MoreTitlesState{}, nil
+		return moreTitlesState{}, nil
 	}
 
 	const query = `
@@ -1025,9 +928,9 @@ FROM room_item_pool
 WHERE room_code = ?
   AND used = 0
 `
-	var state MoreTitlesState
+	var state moreTitlesState
 	if err := s.db.QueryRowContext(ctx, query, code).Scan(&state.Available); err != nil {
-		return MoreTitlesState{}, err
+		return moreTitlesState{}, err
 	}
 	state.CanAdd = state.Available > 0
 	return state, nil
@@ -1344,7 +1247,7 @@ ON CONFLICT (room_code, participant_id, item_id) DO UPDATE SET
 		return err
 	}
 	if count == 0 {
-		return ErrNotFound
+		return roomdomain.ErrNotFound
 	}
 	return nil
 }
@@ -1430,9 +1333,9 @@ WHERE p.room_code = ?
 		return "", err
 	}
 	if !authenticated {
-		return "", ErrNotFound
+		return "", roomdomain.ErrNotFound
 	}
-	return "", ErrForbidden
+	return "", roomdomain.ErrForbidden
 }
 
 // roomTokenAuthenticatedTx reports whether a participant token belongs to the room.
@@ -1472,7 +1375,7 @@ WHERE room_code = ?
 	var leavingID string
 	if err := tx.QueryRowContext(ctx, participantQuery, code, tokenHash).Scan(&leavingID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return roomdomain.ErrNotFound
 		}
 		return err
 	}
@@ -1515,7 +1418,7 @@ WHERE room_code = ?
 		return err
 	}
 	if count == 0 {
-		return ErrNotFound
+		return roomdomain.ErrNotFound
 	}
 	return nil
 }

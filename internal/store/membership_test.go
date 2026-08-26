@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gi8lino/screendeck/internal/media"
+	roomdomain "github.com/gi8lino/screendeck/internal/room"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,19 +21,19 @@ func TestRoomMemberships(t *testing.T) {
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(
 		ctx,
-		Room{Code: "MEM001", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
-		Participant{ID: "host", Name: "Host"},
+		roomdomain.Room{Code: "MEM001", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		roomdomain.Participant{ID: "host", Name: "Host"},
 		"host-hash",
 		[]string{"item"},
 		[]string{"item"},
-		RoomMembershipCredential{IdentityHash: "identity-host", SessionToken: "host-token"},
+		membershipCredential{IdentityHash: "identity-host", SessionToken: "host-token"},
 	))
 	require.NoError(t, database.JoinRoom(
 		ctx,
 		"MEM001",
-		Participant{ID: "guest", Name: "Guest"},
+		roomdomain.Participant{ID: "guest", Name: "Guest"},
 		"guest-hash",
-		RoomMembershipCredential{IdentityHash: "identity-guest", SessionToken: "guest-token"},
+		membershipCredential{IdentityHash: "identity-guest", SessionToken: "guest-token"},
 	))
 
 	hostRooms, err := database.RoomMemberships(ctx, "identity-host")
@@ -69,12 +70,12 @@ func TestRoomMembershipSession(t *testing.T) {
 	now := time.Now().UTC()
 	require.NoError(t, database.CreateRoom(
 		ctx,
-		Room{Code: "MEM002", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
-		Participant{ID: "host", Name: "Host"},
+		roomdomain.Room{Code: "MEM002", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		roomdomain.Participant{ID: "host", Name: "Host"},
 		"host-hash",
 		[]string{"item"},
 		[]string{"item"},
-		RoomMembershipCredential{IdentityHash: "identity-host", SessionToken: "session-secret"},
+		membershipCredential{IdentityHash: "identity-host", SessionToken: "session-secret"},
 	))
 
 	session, err := database.RoomMembershipSession(ctx, "identity-host", "MEM002")
@@ -92,7 +93,7 @@ func TestRoomMembershipSession(t *testing.T) {
 	assert.NotEqual(t, []byte("session-secret"), storedToken)
 
 	_, err = database.RoomMembershipSession(ctx, "identity-other", "MEM002")
-	require.ErrorIs(t, err, ErrNotFound)
+	require.ErrorIs(t, err, roomdomain.ErrNotFound)
 }
 
 // TestRoomMembershipRequired verifies room writes roll back without browser credentials.
@@ -108,12 +109,12 @@ func TestRoomMembershipRequired(t *testing.T) {
 		now := time.Now().UTC()
 		err := database.CreateRoom(
 			ctx,
-			Room{Code: "MEM003", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
-			Participant{ID: "host", Name: "Host"},
+			roomdomain.Room{Code: "MEM003", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+			roomdomain.Participant{ID: "host", Name: "Host"},
 			"host-hash",
 			[]string{"item"},
 			[]string{"item"},
-			RoomMembershipCredential{},
+			membershipCredential{},
 		)
 		require.Error(t, err)
 
@@ -135,8 +136,8 @@ func TestRoomMembershipRequired(t *testing.T) {
 		now := time.Now().UTC()
 		require.NoError(t, database.CreateRoom(
 			ctx,
-			Room{Code: "MEM004", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
-			Participant{ID: "host", Name: "Host"},
+			roomdomain.Room{Code: "MEM004", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+			roomdomain.Participant{ID: "host", Name: "Host"},
 			"host-hash",
 			[]string{"item"},
 			[]string{"item"},
@@ -145,9 +146,9 @@ func TestRoomMembershipRequired(t *testing.T) {
 		err := database.JoinRoom(
 			ctx,
 			"MEM004",
-			Participant{ID: "guest", Name: "Guest"},
+			roomdomain.Participant{ID: "guest", Name: "Guest"},
 			"guest-hash",
-			RoomMembershipCredential{},
+			membershipCredential{},
 		)
 		require.Error(t, err)
 
@@ -200,7 +201,7 @@ func TestValidateRoomMembershipCredential(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		t.Parallel()
 
-		require.NoError(t, validateRoomMembershipCredential(RoomMembershipCredential{
+		require.NoError(t, validateRoomMembershipCredential(membershipCredential{
 			IdentityHash: "identity-hash",
 			SessionToken: "participant-token",
 		}))
@@ -209,7 +210,7 @@ func TestValidateRoomMembershipCredential(t *testing.T) {
 	t.Run("missing identity", func(t *testing.T) {
 		t.Parallel()
 
-		err := validateRoomMembershipCredential(RoomMembershipCredential{SessionToken: "participant-token"})
+		err := validateRoomMembershipCredential(membershipCredential{SessionToken: "participant-token"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "browser identity")
 	})
@@ -217,7 +218,7 @@ func TestValidateRoomMembershipCredential(t *testing.T) {
 	t.Run("missing session token", func(t *testing.T) {
 		t.Parallel()
 
-		err := validateRoomMembershipCredential(RoomMembershipCredential{IdentityHash: "identity-hash"})
+		err := validateRoomMembershipCredential(membershipCredential{IdentityHash: "identity-hash"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "participant session token")
 	})

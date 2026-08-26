@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/gi8lino/screendeck/internal/media"
-	"github.com/gi8lino/screendeck/internal/store"
 )
 
 const (
@@ -30,7 +29,7 @@ const (
 // Service orchestrates room behavior, catalog access, caching, and live notifications.
 type Service struct {
 	// store persists rooms and catalog metadata.
-	store *store.Store
+	store Store
 	// catalog provides media metadata and poster access.
 	catalog media.Catalog
 	// roomTTL controls expiration for newly created rooms.
@@ -133,7 +132,7 @@ type Session struct {
 
 // NewService creates a room service backed by the supplied catalog and store.
 func NewService(
-	database *store.Store,
+	database Store,
 	catalog media.Catalog,
 	roomTTL time.Duration,
 	excludedLibraries []string,
@@ -374,13 +373,13 @@ func (s *Service) create(
 
 	if err := s.store.CreateRoom(
 		ctx,
-		store.Room{
+		Room{
 			Code:      code,
 			Round:     1,
 			CreatedAt: now,
 			ExpiresAt: now.Add(s.roomLifetime(options.lifetimeHours)),
 		},
-		store.Participant{
+		Participant{
 			ID:        participantID,
 			Name:      options.name,
 			Genres:    participantGenres,
@@ -894,7 +893,7 @@ func (s *Service) JoinForIdentity(
 		return session, nil
 	}
 
-	if !errors.Is(err, store.ErrNotFound) {
+	if !errors.Is(err, ErrNotFound) {
 		return Session{}, err
 	}
 
@@ -947,7 +946,7 @@ func (s *Service) join(
 		return Session{}, err
 	}
 
-	participant := store.Participant{
+	participant := Participant{
 		ID:        participantID,
 		Name:      name,
 		Genres:    participantGenres,
@@ -1008,14 +1007,14 @@ func (s *Service) State(
 	ctx context.Context,
 	code,
 	token string,
-) (store.RoomState, error) {
+) (State, error) {
 	participant, err := s.store.ParticipantByToken(
 		ctx,
 		strings.ToUpper(code),
 		hashToken(token),
 	)
 	if err != nil {
-		return store.RoomState{}, err
+		return State{}, err
 	}
 
 	return s.store.RoomState(

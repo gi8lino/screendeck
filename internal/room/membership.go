@@ -4,15 +4,13 @@ import (
 	"context"
 	"errors"
 	"strings"
-
-	"github.com/gi8lino/screendeck/internal/store"
 )
 
 // RoomsForIdentity returns active room memberships associated with a persistent browser identity.
 func (s *Service) RoomsForIdentity(
 	ctx context.Context,
 	identityToken string,
-) ([]store.RoomMembership, error) {
+) ([]Membership, error) {
 	if strings.TrimSpace(identityToken) == "" {
 		return nil, errors.New("browser identity is required")
 	}
@@ -39,8 +37,8 @@ func (s *Service) ResumeIdentity(ctx context.Context, identityToken, code string
 }
 
 // membershipCredential builds a persisted browser membership for a participant token.
-func membershipCredential(identityToken, participantToken string) store.RoomMembershipCredential {
-	return store.RoomMembershipCredential{
+func membershipCredential(identityToken, participantToken string) MembershipCredential {
+	return MembershipCredential{
 		IdentityHash: hashToken(identityToken),
 		SessionToken: participantToken,
 	}

@@ -9,7 +9,7 @@ import (
 	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/plex"
 	"github.com/gi8lino/screendeck/internal/requestid"
-	"github.com/gi8lino/screendeck/internal/store"
+	"github.com/gi8lino/screendeck/internal/room"
 )
 
 // statusForError maps application errors to their public HTTP status.
@@ -17,13 +17,13 @@ func statusForError(err error) int {
 	switch {
 	case errors.Is(err, errBrowserIdentityUnavailable):
 		return http.StatusInternalServerError
-	case errors.Is(err, store.ErrMembershipConflict),
-		errors.Is(err, store.ErrRoomLocked),
+	case errors.Is(err, room.ErrMembershipConflict),
+		errors.Is(err, room.ErrLocked),
 		errors.Is(err, media.ErrProviderConflict):
 		return http.StatusConflict
-	case errors.Is(err, store.ErrForbidden):
+	case errors.Is(err, room.ErrForbidden):
 		return http.StatusForbidden
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, room.ErrNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, media.ErrNotConfigured), errors.Is(err, plex.ErrNotConfigured):
 		return http.StatusServiceUnavailable

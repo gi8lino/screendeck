@@ -126,7 +126,7 @@ func TestRoomFlowThroughHTTP(t *testing.T) {
 	roomsResponse := httptest.NewRecorder()
 	router.ServeHTTP(roomsResponse, roomsRequest)
 	require.Equal(t, http.StatusOK, roomsResponse.Code, roomsResponse.Body.String())
-	var memberships []store.RoomMembership
+	var memberships []room.Membership
 	decodeResponse(t, roomsResponse, &memberships)
 	require.Len(t, memberships, 1)
 	assert.Equal(t, hostSession.Code, memberships[0].Code)
@@ -273,14 +273,14 @@ func postJSON(
 }
 
 // getState retrieves and decodes room state in an HTTP test.
-func getState(t *testing.T, router http.Handler, session room.Session) store.RoomState {
+func getState(t *testing.T, router http.Handler, session room.Session) room.State {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/rooms/"+session.Code, nil)
 	req.Header.Set("X-Participant-Token", session.Token)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
-	var state store.RoomState
+	var state room.State
 	decodeResponse(t, recorder, &state)
 	return state
 }

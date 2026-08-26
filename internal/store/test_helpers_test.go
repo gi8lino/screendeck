@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+
+	roomdomain "github.com/gi8lino/screendeck/internal/room"
 )
 
 // testRoomMembership returns deterministic valid browser membership credentials.
-func testRoomMembership(seed string) RoomMembershipCredential {
+func testRoomMembership(seed string) roomdomain.MembershipCredential {
 	digest := sha256.Sum256([]byte(seed))
-	return RoomMembershipCredential{
+	return roomdomain.MembershipCredential{
 		IdentityHash: hex.EncodeToString(digest[:]),
 		SessionToken: "session-" + seed,
 	}
@@ -19,8 +21,8 @@ func testRoomMembership(seed string) RoomMembershipCredential {
 func createTestRoom(
 	database *Store,
 	ctx context.Context,
-	room Room,
-	participant Participant,
+	room roomdomain.Room,
+	participant roomdomain.Participant,
 	tokenHash string,
 	itemIDs []string,
 	poolIDs []string,
@@ -41,7 +43,7 @@ func joinTestRoom(
 	database *Store,
 	ctx context.Context,
 	code string,
-	participant Participant,
+	participant roomdomain.Participant,
 	tokenHash string,
 ) error {
 	return database.JoinRoom(

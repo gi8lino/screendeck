@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gi8lino/screendeck/internal/media"
+	roomdomain "github.com/gi8lino/screendeck/internal/room"
 )
 
 // SaveLibrary replaces cached metadata for a media library.
@@ -138,12 +139,12 @@ WHERE id = ?
 	var poster string
 	if err := s.db.QueryRowContext(ctx, query, itemID).Scan(&poster); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrNotFound
+			return "", roomdomain.ErrNotFound
 		}
 		return "", err
 	}
 	if strings.TrimSpace(poster) == "" {
-		return "", ErrNotFound
+		return "", roomdomain.ErrNotFound
 	}
 
 	return poster, nil
