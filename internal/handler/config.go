@@ -7,13 +7,18 @@ import (
 	"github.com/gi8lino/screendeck/internal/media"
 )
 
+// mediaStatusReader exposes configured media-provider state to the public configuration handler.
+type mediaStatusReader interface {
+	Status() media.Status
+}
+
 // Config returns the public application configuration handler.
 func Config(
 	version string,
 	commit string,
 	baseURL string,
 	experimental bool,
-	mediaManager *media.Manager,
+	mediaManager mediaStatusReader,
 	logger *slog.Logger,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -9,8 +10,13 @@ import (
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
+// posterReader retrieves a proxied poster response for a media item.
+type posterReader interface {
+	Poster(context.Context, string) (*room.PosterResponse, error)
+}
+
 // Poster returns the proxied media poster handler.
-func Poster(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func Poster(rooms posterReader, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		response, err := rooms.Poster(r.Context(), r.PathValue("itemID"))
 		if err != nil {

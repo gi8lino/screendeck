@@ -1,14 +1,26 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
+	"github.com/gi8lino/screendeck/internal/media"
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
+// libraryReader lists media libraries available for room creation.
+type libraryReader interface {
+	Libraries(context.Context) ([]media.Library, error)
+}
+
+// catalogOptionsReader derives filter options for selected libraries.
+type catalogOptionsReader interface {
+	Options(context.Context, []string) (room.CatalogOptions, error)
+}
+
 // Libraries returns the media library listing handler.
-func Libraries(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func Libraries(rooms libraryReader, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		libraries, err := rooms.Libraries(r.Context())
 		if err != nil {
@@ -21,7 +33,7 @@ func Libraries(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // CatalogOptions returns the catalog filter options handler.
-func CatalogOptions(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func CatalogOptions(rooms catalogOptionsReader, logger *slog.Logger) http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
 		// LibraryKeys identifies the media libraries included in the room.

@@ -12,7 +12,7 @@ import (
 func (s *Service) Poster(
 	ctx context.Context,
 	itemID string,
-) (*posterResponse, error) {
+) (*PosterResponse, error) {
 	if s.catalog == nil {
 		return nil, media.ErrNotConfigured
 	}
@@ -27,14 +27,14 @@ func (s *Service) Poster(
 		return nil, err
 	}
 
-	return &posterResponse{
+	return &PosterResponse{
 		Body:   response.Body,
 		Header: response.Header,
 	}, nil
 }
 
-// posterResponse exposes only the poster response fields required by handlers.
-type posterResponse struct {
+// PosterResponse exposes only the poster response fields required by handlers.
+type PosterResponse struct {
 	// Body is the proxied poster response body.
 	Body io.ReadCloser
 	// Header contains poster response headers from the active media provider.

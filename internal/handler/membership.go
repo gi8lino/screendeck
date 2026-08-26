@@ -1,14 +1,25 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
+// membershipReader lists rooms associated with a browser identity.
+type membershipReader interface {
+	RoomsForIdentity(context.Context, string) ([]room.Membership, error)
+}
+
+// membershipResumer restores a participant session for a browser identity.
+type membershipResumer interface {
+	ResumeIdentity(context.Context, string, string) (room.Session, error)
+}
+
 // MyRooms returns active rooms associated with the current browser identity.
-func MyRooms(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func MyRooms(rooms membershipReader, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		identityToken, err := ensureBrowserIdentity(w, r)
 		if err != nil {
@@ -25,7 +36,7 @@ func MyRooms(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // ResumeRoom returns the saved participant session for an active browser room membership.
-func ResumeRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func ResumeRoom(rooms membershipResumer, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		identityToken, err := ensureBrowserIdentity(w, r)
 		if err != nil {

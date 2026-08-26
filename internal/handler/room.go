@@ -12,6 +12,80 @@ import (
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
+// roomCreator creates rooms for persistent browser identities.
+type roomCreator interface {
+	CreateForIdentity(
+		context.Context,
+		string,
+		[]string,
+		room.Filters,
+		[]string,
+		room.GenreMode,
+		room.SamplingStrategy,
+		int,
+		int,
+		string,
+	) (room.Session, error)
+}
+
+// roomSettingsUpdater changes host-controlled room settings.
+type roomSettingsUpdater interface {
+	SetRoomLocked(context.Context, string, string, bool) error
+}
+
+// roomJoiner adds a browser identity to a room.
+type roomJoiner interface {
+	JoinForIdentity(
+		context.Context,
+		string,
+		string,
+		[]string,
+		room.GenreMode,
+		string,
+	) (room.Session, error)
+}
+
+// roomGenreReader lists genres represented by a room deck.
+type roomGenreReader interface {
+	Genres(context.Context, string) ([]string, error)
+}
+
+// roomStateReader returns participant-specific room state.
+type roomStateReader interface {
+	State(context.Context, string, string) (room.State, error)
+}
+
+// roomVoter records participant votes.
+type roomVoter interface {
+	Vote(context.Context, string, string, string, bool) (bool, error)
+}
+
+// roomExpander adds unused titles to a room's first round.
+type roomExpander interface {
+	AddMoreTitles(context.Context, string, string, int) (room.MoreTitlesResult, error)
+}
+
+// roundReadinessUpdater records participant readiness for the next round.
+type roundReadinessUpdater interface {
+	SetNextRoundReady(context.Context, string, string, int, bool) (room.RoundResult, error)
+}
+
+// roomLeaver removes the authenticated participant from a room.
+type roomLeaver interface {
+	Leave(context.Context, string, string) error
+}
+
+// participantRemover removes another participant at the host's request.
+type participantRemover interface {
+	RemoveParticipant(context.Context, string, string, string) error
+}
+
+// roomEventSource authenticates event subscribers and publishes room changes.
+type roomEventSource interface {
+	roomStateReader
+	Subscribe(string) (<-chan struct{}, func())
+}
+
 // createRoomRequest describes the JSON payload accepted when creating a room.
 type createRoomRequest struct {
 	Name             string                `json:"name"`
@@ -115,7 +189,7 @@ func participantToken(r *http.Request) string {
 }
 
 // CreateRoom returns the room creation handler.
-func CreateRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func CreateRoom(rooms roomCreator, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		input, err := decodeValid[createRoomRequest](r)
 		if err != nil {
@@ -161,7 +235,7 @@ func (input roomSettingsRequest) Valid(context.Context) map[string]string {
 }
 
 // UpdateRoomSettings returns the handler that changes host-controlled room settings.
-func UpdateRoomSettings(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func UpdateRoomSettings(rooms roomSettingsUpdater, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		input, err := decodeValid[roomSettingsRequest](r)
 		if err != nil {
@@ -182,7 +256,7 @@ func UpdateRoomSettings(rooms *room.Service, logger *slog.Logger) http.HandlerFu
 }
 
 // JoinRoom returns the room joining handler.
-func JoinRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func JoinRoom(rooms roomJoiner, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		input, err := decodeValid[joinRoomRequest](r)
 		if err != nil {
@@ -211,7 +285,7 @@ func JoinRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // RoomGenres returns the personal genre choices available in a room.
-func RoomGenres(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func RoomGenres(rooms roomGenreReader, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		genres, err := rooms.Genres(r.Context(), r.PathValue("code"))
 		if err != nil {
@@ -223,7 +297,7 @@ func RoomGenres(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // RoomState returns the current room state handler.
-func RoomState(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func RoomState(rooms roomStateReader, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		state, err := rooms.State(r.Context(), r.PathValue("code"), participantToken(r))
 		if err != nil {
@@ -235,7 +309,7 @@ func RoomState(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // Vote returns the media voting handler.
-func Vote(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func Vote(rooms roomVoter, logger *slog.Logger) http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
 		// ItemID identifies the canonical media item being voted on.
@@ -263,7 +337,7 @@ func Vote(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // AddMoreTitles returns the handler that expands the first round from its unused pool.
-func AddMoreTitles(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func AddMoreTitles(rooms roomExpander, logger *slog.Logger) http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
 		// Count is the requested number of additional titles.
@@ -285,7 +359,7 @@ func AddMoreTitles(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // NextRoundReady returns the handler that records agreement to narrow the deck to current matches.
-func NextRoundReady(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func NextRoundReady(rooms roundReadinessUpdater, logger *slog.Logger) http.HandlerFunc {
 	// request describes the JSON payload accepted by this handler.
 	type request struct {
 		// Round identifies the room round the readiness update applies to.
@@ -315,7 +389,7 @@ func NextRoundReady(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // LeaveRoom returns the room departure handler.
-func LeaveRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func LeaveRoom(rooms roomLeaver, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := rooms.Leave(r.Context(), r.PathValue("code"), participantToken(r)); err != nil {
 			fail(logger, r, w, err)
@@ -326,7 +400,7 @@ func LeaveRoom(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
 }
 
 // RemoveParticipant returns the handler that lets a room host remove another participant.
-func RemoveParticipant(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func RemoveParticipant(rooms participantRemover, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := rooms.RemoveParticipant(
 			r.Context(),
@@ -342,7 +416,7 @@ func RemoveParticipant(rooms *room.Service, logger *slog.Logger) http.HandlerFun
 }
 
 // Events returns the room server-sent events handler.
-func Events(rooms *room.Service, logger *slog.Logger) http.HandlerFunc {
+func Events(rooms roomEventSource, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code, token := strings.ToUpper(r.PathValue("code")), r.URL.Query().Get("token")
 		if _, err := rooms.State(r.Context(), code, token); err != nil {

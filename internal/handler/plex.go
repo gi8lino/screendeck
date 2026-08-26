@@ -10,6 +10,21 @@ import (
 	"github.com/gi8lino/screendeck/internal/plex"
 )
 
+// plexAuthStarter begins a Plex authentication flow.
+type plexAuthStarter interface {
+	Start(context.Context, plex.AuthMethod) (plex.AuthStart, error)
+}
+
+// plexAuthStatusReader polls a Plex authentication flow.
+type plexAuthStatusReader interface {
+	Status(context.Context, string) (plex.AuthStatus, error)
+}
+
+// plexServerSelector selects a server discovered during Plex authentication.
+type plexServerSelector interface {
+	SelectServer(context.Context, string, string) error
+}
+
 // setupToken extracts a Plex setup token from a request.
 func setupToken(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("X-Setup-Token"))
@@ -45,8 +60,8 @@ func (input selectPlexServerRequest) Valid(context.Context) map[string]string {
 
 // StartPlexAuth returns the handler that begins Plex authorization.
 func StartPlexAuth(
-	mediaManager *media.Manager,
-	plexAuth *plex.AuthManager,
+	mediaManager providerSelector,
+	plexAuth plexAuthStarter,
 	logger *slog.Logger,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +87,7 @@ func StartPlexAuth(
 }
 
 // PlexAuthStatus returns the handler that polls Plex authorization.
-func PlexAuthStatus(plexAuth *plex.AuthManager, logger *slog.Logger) http.HandlerFunc {
+func PlexAuthStatus(plexAuth plexAuthStatusReader, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status, err := plexAuth.Status(r.Context(), setupToken(r))
 		if err != nil {
@@ -85,8 +100,8 @@ func PlexAuthStatus(plexAuth *plex.AuthManager, logger *slog.Logger) http.Handle
 
 // SelectPlexServer returns the handler that selects an authorized Plex server.
 func SelectPlexServer(
-	mediaManager *media.Manager,
-	plexAuth *plex.AuthManager,
+	mediaManager providerSelector,
+	plexAuth plexServerSelector,
 	logger *slog.Logger,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -7,9 +7,19 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/gi8lino/screendeck/internal/jellyfin"
 	"github.com/gi8lino/screendeck/internal/media"
 )
+
+// providerSelector controls which media provider is active.
+type providerSelector interface {
+	CheckProvider(media.ProviderID) error
+	SetActive(context.Context, media.ProviderID) error
+}
+
+// jellyfinConnector authenticates ScreenDeck with a Jellyfin server.
+type jellyfinConnector interface {
+	Connect(context.Context, string, string, string) error
+}
 
 // jellyfinConnectRequest contains the credentials used to authorize ScreenDeck against Jellyfin.
 type jellyfinConnectRequest struct {
@@ -40,8 +50,8 @@ func (input jellyfinConnectRequest) Valid(context.Context) map[string]string {
 
 // ConnectJellyfin authenticates to a Jellyfin server and selects Jellyfin as the instance media provider.
 func ConnectJellyfin(
-	mediaManager *media.Manager,
-	jellyfinAuth *jellyfin.AuthManager,
+	mediaManager providerSelector,
+	jellyfinAuth jellyfinConnector,
 	logger *slog.Logger,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
