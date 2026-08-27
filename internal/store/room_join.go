@@ -83,6 +83,9 @@ WHERE code = ?
   AND expires_at > ?
   AND locked = 0
 `
+
+	now := time.Now().Unix()
+
 	result, err := tx.ExecContext(
 		ctx,
 		query,
@@ -91,9 +94,9 @@ WHERE code = ?
 		genres,
 		participant.GenreMode,
 		tokenHash,
-		time.Now().Unix(),
+		now,
 		code,
-		time.Now().Unix(),
+		now,
 	)
 	if err != nil {
 		return err
@@ -106,6 +109,7 @@ WHERE code = ?
 	if count == 0 {
 		return joinRoomUnavailable(ctx, tx, code)
 	}
+
 	return nil
 }
 
