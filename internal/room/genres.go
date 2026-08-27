@@ -1,10 +1,11 @@
 package room
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -26,9 +27,7 @@ func (s *Service) Genres(
 
 // normalizeGenreMode returns a supported personal genre matching mode.
 func normalizeGenreMode(mode GenreMode) GenreMode {
-	if mode == "" {
-		return GenreModeAny
-	}
+	mode = cmp.Or(mode, GenreModeAny)
 	if ValidGenreMode(mode) {
 		return mode
 	}
@@ -70,7 +69,7 @@ func canonicalGenres(
 		result = append(result, value)
 	}
 
-	sort.Strings(result)
+	slices.Sort(result)
 
 	return result, nil
 }
@@ -93,17 +92,4 @@ func collectGenres(
 
 		target[normalizeGenreKey(trimmed)] = trimmed
 	}
-}
-
-// genreValues returns sorted canonical genre values from a normalized set.
-func genreValues(genres map[string]string) []string {
-	values := make([]string, 0, len(genres))
-
-	for _, genre := range genres {
-		values = append(values, genre)
-	}
-
-	sort.Strings(values)
-
-	return values
 }

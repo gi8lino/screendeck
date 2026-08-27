@@ -2,6 +2,7 @@ package jellyfin
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -129,9 +131,7 @@ func NewClient(
 	if err != nil {
 		return nil, ErrInvalidServerURL
 	}
-	if version == "" {
-		version = "dev"
-	}
+	version = cmp.Or(version, "dev")
 	return &Client{
 		baseURL:     baseURL,
 		accessToken: accessToken,
@@ -317,8 +317,8 @@ func (c *Client) do(
 	query url.Values,
 	body io.Reader,
 ) (*http.Response, error) {
-	u := *c.baseURL
-	u.Path = strings.TrimRight(u.Path, "/") + path
+	u := c.baseURL.JoinPath(path)
+
 	if query != nil {
 		u.RawQuery = query.Encode()
 	}
@@ -438,7 +438,7 @@ func itemFromBaseItem(library media.Library, item baseItem) media.Item {
 		Duration:   int(item.RunTimeTicks / 10000),
 		Rating:     item.CommunityRating,
 		Poster:     poster,
-		Genres:     append([]string(nil), item.Genres...),
+		Genres:     slices.Clone(item.Genres),
 		Viewed:     item.UserData.Played,
 		AddedAt:    addedAt,
 	}

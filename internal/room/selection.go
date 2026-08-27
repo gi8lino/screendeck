@@ -1,9 +1,11 @@
 package room
 
 import (
+	"cmp"
 	"errors"
+	"maps"
 	mathrand "math/rand/v2"
-	"sort"
+	"slices"
 
 	"github.com/gi8lino/screendeck/internal/media"
 )
@@ -57,7 +59,7 @@ func genresFromItems(items []media.Item) []string {
 		collectGenres(genres, item.Genres)
 	}
 
-	return genreValues(genres)
+	return slices.Sorted(maps.Values(genres))
 }
 
 // limitItems returns the first limit items while preserving the original ordering.
@@ -114,7 +116,7 @@ func orderInitialItems(
 	items []media.Item,
 	strategy SamplingStrategy,
 ) ([]media.Item, error) {
-	selected := append([]media.Item(nil), items...)
+	selected := slices.Clone(items)
 
 	switch strategy {
 	case SamplingRandom:
@@ -154,23 +156,21 @@ func shuffleItems(items []media.Item) {
 
 // sortItemsByRating orders media by descending rating and then title.
 func sortItemsByRating(items []media.Item) {
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].Rating != items[j].Rating {
-			return items[i].Rating > items[j].Rating
-		}
-
-		return items[i].Title < items[j].Title
+	slices.SortStableFunc(items, func(a, b media.Item) int {
+		return cmp.Or(
+			cmp.Compare(b.Rating, a.Rating),
+			cmp.Compare(a.Title, b.Title),
+		)
 	})
 }
 
 // sortItemsByAddedAt orders media by newest provider added-at time and then title.
 func sortItemsByAddedAt(items []media.Item) {
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].AddedAt != items[j].AddedAt {
-			return items[i].AddedAt > items[j].AddedAt
-		}
-
-		return items[i].Title < items[j].Title
+	slices.SortStableFunc(items, func(a, b media.Item) int {
+		return cmp.Or(
+			cmp.Compare(b.AddedAt, a.AddedAt),
+			cmp.Compare(a.Title, b.Title),
+		)
 	})
 }
 

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -59,12 +60,8 @@ func normalizeRoomCreation(room *roomRecord, participant *roomParticipant) {
 	if room.Round <= 0 {
 		room.Round = 1
 	}
-	if room.Phase == "" {
-		room.Phase = roomdomain.PhaseSwiping
-	}
-	if room.OwnerID == "" {
-		room.OwnerID = participant.ID
-	}
+	room.Phase = cmp.Or(room.Phase, roomdomain.PhaseSwiping)
+	room.OwnerID = cmp.Or(room.OwnerID, participant.ID)
 
 	normalizeParticipant(participant)
 }
@@ -74,9 +71,7 @@ func normalizeParticipant(participant *roomParticipant) {
 	if participant.Genres == nil {
 		participant.Genres = []string{}
 	}
-	if participant.GenreMode == "" {
-		participant.GenreMode = "any"
-	}
+	participant.GenreMode = cmp.Or(participant.GenreMode, "any")
 }
 
 // encodeParticipantGenres serializes participant genres for SQLite JSON queries.

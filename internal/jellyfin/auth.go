@@ -1,6 +1,7 @@
 package jellyfin
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -64,9 +65,7 @@ func newAuthManager(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if version == "" {
-		version = "dev"
-	}
+	version = cmp.Or(version, "dev")
 	manager := &AuthManager{
 		store:   store,
 		logger:  logger,
@@ -123,13 +122,8 @@ func (m *AuthManager) Connect(ctx context.Context, serverURL, username, password
 	if err != nil {
 		return err
 	}
-	serverID := authenticatedServerID
-	if serverID == "" {
-		serverID = publicServerID
-	}
-	if userName == "" {
-		userName = username
-	}
+	serverID := cmp.Or(authenticatedServerID, publicServerID)
+	userName = cmp.Or(userName, username)
 
 	state := AuthState{
 		ServerID:    serverID,

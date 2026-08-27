@@ -1,6 +1,7 @@
 package room
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -186,9 +187,7 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 		)
 	}
 
-	if options.sampling == "" {
-		options.sampling = SamplingRandom
-	}
+	options.sampling = cmp.Or(options.sampling, SamplingRandom)
 
 	if !ValidSamplingStrategy(options.sampling) {
 		return createRoomOptions{}, errors.New(

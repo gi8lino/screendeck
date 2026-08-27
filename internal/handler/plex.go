@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"net/http"
@@ -74,9 +75,7 @@ func StartPlexAuth(
 			fail(logger, r, w, err)
 			return
 		}
-		if input.Method == "" {
-			input.Method = plex.AuthMethodStandard
-		}
+		input.Method = cmp.Or(input.Method, plex.AuthMethodStandard)
 		started, err := plexAuth.Start(r.Context(), input.Method)
 		if err != nil {
 			fail(logger, r, w, err)

@@ -1,10 +1,11 @@
 package room
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -82,20 +83,18 @@ func (s *Service) Options(
 // catalogOptions derives available genres and year bounds from media items.
 func catalogOptions(items []media.Item) CatalogOptions {
 	genreSet := make(map[string]struct{})
-	options := CatalogOptions{
-		Genres: make([]string, 0),
-	}
+	options := CatalogOptions{}
 
 	for _, item := range items {
 		collectCatalogGenres(genreSet, item.Genres)
 		updateCatalogYearBounds(&options, item.Year)
 	}
 
+	options.Genres = make([]string, 0, len(genreSet))
 	for genre := range genreSet {
 		options.Genres = append(options.Genres, genre)
 	}
-
-	sort.Strings(options.Genres)
+	slices.Sort(options.Genres)
 
 	return options
 }
@@ -230,11 +229,10 @@ func cacheEntryFresh(
 
 // SortLibraries orders libraries by media type and title.
 func SortLibraries(libraries []media.Library) {
-	sort.Slice(libraries, func(i, j int) bool {
-		if libraries[i].Type != libraries[j].Type {
-			return libraries[i].Type < libraries[j].Type
-		}
-
-		return libraries[i].Title < libraries[j].Title
+	slices.SortFunc(libraries, func(a, b media.Library) int {
+		return cmp.Or(
+			cmp.Compare(a.Type, b.Type),
+			cmp.Compare(a.Title, b.Title),
+		)
 	})
 }

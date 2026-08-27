@@ -2,6 +2,7 @@ package plex
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -15,7 +16,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1339,9 +1340,9 @@ func (m *AuthManager) cloudRequest(
 		"authenticated", token != "",
 	)
 
-	u := *m.cloudBase
-	u.Path = strings.TrimRight(u.Path, "/") + path
+	u := m.cloudBase.JoinPath(path)
 	u.RawQuery = query.Encode()
+
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return nil, fmt.Errorf("create Plex authentication request: %w", err)
@@ -1456,14 +1457,20 @@ func serverInfos(resources map[string]resource) []ServerInfo {
 			Platform: server.Platform,
 		})
 	}
-	sort.Slice(servers, func(i, j int) bool {
-		if servers[i].Local != servers[j].Local {
-			return servers[i].Local
+	slices.SortFunc(servers, func(a, b ServerInfo) int {
+		if a.Local != b.Local {
+			if a.Local {
+				return -1
+			}
+			return 1
 		}
-		if servers[i].Owned != servers[j].Owned {
-			return servers[i].Owned
+		if a.Owned != b.Owned {
+			if a.Owned {
+				return -1
+			}
+			return 1
 		}
-		return servers[i].Name < servers[j].Name
+		return cmp.Compare(a.Name, b.Name)
 	})
 	return servers
 }
@@ -1473,8 +1480,8 @@ func preferredConnection(connections []connection) (selected connection, ok bool
 	if len(connections) == 0 {
 		return connection{}, false
 	}
-	copyOf := append([]connection(nil), connections...)
-	sort.SliceStable(copyOf, func(i, j int) bool {
+	copyOf := slices.Clone(connections)
+	slices.SortStableFunc(copyOf, func(a, b connection) int {
 		score := func(c connection) int {
 			if c.Local && !c.Relay {
 				return 0
@@ -1484,7 +1491,7 @@ func preferredConnection(connections []connection) (selected connection, ok bool
 			}
 			return 2
 		}
-		return score(copyOf[i]) < score(copyOf[j])
+		return cmp.Compare(score(a), score(b))
 	})
 	for _, candidate := range copyOf {
 		if _, err := parseHTTPURL(candidate.URI); err != nil {

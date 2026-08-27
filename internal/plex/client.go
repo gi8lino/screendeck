@@ -1,6 +1,7 @@
 package plex
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -110,7 +111,7 @@ func NewWithClientID(rawURL, token, clientID string) (*Client, error) {
 	if clientID == "" {
 		return nil, ErrInvalidClientID
 	}
-	u, err := parseHTTPURL(strings.TrimRight(rawURL, "/"))
+	u, err := parseHTTPURL(rawURL)
 	if err != nil {
 		return nil, ErrInvalidServerURL
 	}
@@ -173,10 +174,7 @@ func itemFromMetadata(library media.Library, metadata metadataItem) media.Item {
 		viewed = metadata.LeafCount > 0 && metadata.ViewedLeafCount >= metadata.LeafCount
 	}
 
-	itemType := metadata.Type
-	if itemType == "" {
-		itemType = library.Type
-	}
+	itemType := cmp.Or(metadata.Type, library.Type)
 
 	return media.Item{
 		ID:         metadata.RatingKey,
@@ -236,8 +234,8 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 
 // do sends an authenticated request to Plex.
 func (c *Client) do(ctx context.Context, path string, query url.Values) (*http.Response, error) {
-	u := *c.baseURL
-	u.Path = strings.TrimRight(u.Path, "/") + path
+	u := c.baseURL.JoinPath(path)
+
 	if query != nil {
 		u.RawQuery = query.Encode()
 	}

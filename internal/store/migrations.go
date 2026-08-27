@@ -1,12 +1,13 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -121,8 +122,8 @@ func loadMigrations() ([]migration, error) {
 		}
 	}
 
-	sort.Slice(migrations, func(i, j int) bool {
-		return migrations[i].version < migrations[j].version
+	slices.SortFunc(migrations, func(a, b migration) int {
+		return cmp.Compare(a.version, b.version)
 	})
 	if err := validateMigrationSequence(migrations); err != nil {
 		return nil, err
