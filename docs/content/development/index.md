@@ -57,9 +57,9 @@ web/src              canonical frontend source: HTML, templates, CSS, JavaScript
 web/dist             generated, ignored browser assets embedded by Go
 deploy               deployment examples
 docs                 documentation project, sources, assets, and tooling dependencies
-scripts/web           frontend distribution build
-scripts/screenshots   documentation screenshot capture and normalization helpers
-test/smoke            local ScreenDeck, Jellyfin, and Plex smoke environment
+scripts/web          frontend distribution build
+scripts/screenshots  documentation screenshot capture and normalization helpers
+test/smoke           local ScreenDeck, Jellyfin, and Plex smoke environment
 ```
 
 ## Media-provider architecture
