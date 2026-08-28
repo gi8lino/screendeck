@@ -292,8 +292,8 @@ func (e httpStatusError) Error() string { return fmt.Sprintf("HTTP status %d", e
 
 // errorsIsStatus reports whether an error contains the expected Jellyfin HTTP status.
 func errorsIsStatus(err error, status int) bool {
-	var statusErr httpStatusError
-	return errors.As(err, &statusErr) && statusErr.status == status
+	statusErr, ok := errors.AsType[httpStatusError](err)
+	return ok && statusErr.status == status
 }
 
 // getJSON retrieves and decodes one Jellyfin JSON response.

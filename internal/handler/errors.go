@@ -39,8 +39,8 @@ func statusForError(err error) int {
 }
 
 func isValidationError(err error) bool {
-	var validation validationError
-	return errors.As(err, &validation)
+	_, ok := errors.AsType[validationError](err)
+	return ok
 }
 
 // isClientMediaError reports whether media setup rejected client-supplied state.
@@ -101,8 +101,7 @@ func fail(logger *slog.Logger, r *http.Request, w http.ResponseWriter, err error
 		"error", err,
 	)
 	payload := map[string]any{"error": publicErrorMessage(err)}
-	var validation validationError
-	if errors.As(err, &validation) {
+	if validation, ok := errors.AsType[validationError](err); ok {
 		payload["problems"] = validation.Problems
 	}
 	respond(logger, w, status, payload)
