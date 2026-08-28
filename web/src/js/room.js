@@ -374,9 +374,11 @@ function renderRoomMain(container, state) {
 
 // appendSwipeCandidate adds the active card and swipe controls to the room view.
 function appendSwipeCandidate(container, item) {
-  const showDetails = () => showItemDetails(item);
   const { fragment, refs } = instantiateTemplate("swipe-view-template");
-  const card = itemCard(item, showDetails);
+  let card;
+  const showDetails = () =>
+    showItemDetails(item, (liked) => vote(item, liked, card));
+  card = itemCard(item, showDetails);
   refs.deck.append(card);
   refs.no.onclick = () => vote(item, false, card);
   refs.details.onclick = showDetails;
@@ -760,7 +762,7 @@ function itemCard(item, showDetails) {
 }
 
 // showItemDetails opens the complete metadata and synopsis for a title.
-function showItemDetails(item) {
+function showItemDetails(item, onVote) {
   document.querySelector(".item-dialog")?.remove();
   const { element: dialog, refs } = templateElement("item-dialog-template");
   refs.close.onclick = () => dialog.close();
@@ -778,6 +780,18 @@ function showItemDetails(item) {
         return chip;
       }),
     );
+  }
+  if (onVote) {
+    dialog.classList.add("votable");
+    refs.actions.hidden = false;
+    const submitVote = (liked) => {
+      if (voting) return;
+      dialog.close();
+      onVote(liked);
+    };
+    refs.no.onclick = () => submitVote(false);
+    refs.yes.onclick = () => submitVote(true);
+    enableDetailsSwipe(dialog, submitVote);
   }
   showModalDialog(dialog, showNextMatch);
 }
@@ -904,50 +918,106 @@ function itemMetadata(item) {
 
 // enableSwipe adds pointer-driven voting gestures to a card.
 function enableSwipe(card, item) {
+  enableHorizontalSwipe(card, {
+    onMove: (delta) => {
+      card.style.transition = "none";
+      card.style.transform = `translateX(${delta}px) rotate(${delta / 18}deg)`;
+      card.querySelector(delta > 0 ? ".like" : ".nope").style.opacity =
+        Math.min(Math.abs(delta) / 100, 1);
+    },
+    onReset: () => {
+      card.style.transition = "";
+      card.style.transform = "";
+      card
+        .querySelectorAll(".stamp")
+        .forEach((stamp) => (stamp.style.opacity = 0));
+    },
+    onSwipe: (liked) => vote(item, liked, card),
+    suppressClick: true,
+  });
+}
+
+// enableDetailsSwipe lets the active title be voted on without closing its details first.
+function enableDetailsSwipe(dialog, onSwipe) {
+  enableHorizontalSwipe(dialog.querySelector(".item-dialog-layout"), {
+    onMove: (delta) => {
+      dialog.style.transition = "none";
+      dialog.style.transform = `translateX(${delta}px) rotate(${delta / 30}deg)`;
+      dialog.querySelector(delta > 0 ? ".like" : ".nope").style.opacity =
+        Math.min(Math.abs(delta) / 100, 1);
+    },
+    onReset: () => {
+      dialog.style.transition = "";
+      dialog.style.transform = "";
+      dialog
+        .querySelectorAll(".stamp")
+        .forEach((stamp) => (stamp.style.opacity = 0));
+    },
+    onSwipe,
+  });
+}
+
+// enableHorizontalSwipe manages a cancellation-safe horizontal pointer gesture.
+function enableHorizontalSwipe(
+  target,
+  { onMove, onReset, onSwipe, suppressClick = false },
+) {
+  let pointerID;
   let start = 0;
   let delta = 0;
-  let active = false;
-  let suppressClick = false;
-  card.onpointerdown = (event) => {
-    active = true;
-    start = event.clientX;
+  let preventClick = false;
+
+  const cancel = (event) => {
+    if (event.pointerId !== pointerID) return;
+    pointerID = undefined;
     delta = 0;
-    suppressClick = false;
-    card.setPointerCapture(event.pointerId);
+    onReset();
   };
-  card.onpointermove = (event) => {
-    if (!active) return;
-    delta = event.clientX - start;
-    if (Math.abs(delta) > 6) suppressClick = true;
-    card.style.transition = "none";
-    card.style.transform = `translateX(${delta}px) rotate(${delta / 18}deg)`;
-    card.querySelector(delta > 0 ? ".like" : ".nope").style.opacity = Math.min(
-      Math.abs(delta) / 100,
-      1,
-    );
-  };
-  card.onpointerup = () => {
-    if (!active) return;
-    active = false;
-    if (Math.abs(delta) > 90) {
-      vote(item, delta > 0, card);
+
+  target.onpointerdown = (event) => {
+    if (
+      pointerID !== undefined ||
+      !event.isPrimary ||
+      (event.pointerType === "mouse" && event.button !== 0) ||
+      event.target.closest("button, a, input, select, textarea")
+    ) {
       return;
     }
-    card.style.transition = "";
-    card.style.transform = "";
-    card
-      .querySelectorAll(".stamp")
-      .forEach((stamp) => (stamp.style.opacity = 0));
+    pointerID = event.pointerId;
+    start = event.clientX;
+    delta = 0;
+    preventClick = false;
+    target.setPointerCapture(pointerID);
   };
-  card.addEventListener(
-    "click",
-    (event) => {
-      if (!suppressClick) return;
-      event.stopImmediatePropagation();
-      suppressClick = false;
-    },
-    { capture: true },
-  );
+  target.onpointermove = (event) => {
+    if (event.pointerId !== pointerID) return;
+    delta = event.clientX - start;
+    if (Math.abs(delta) > 6) preventClick = true;
+    onMove(delta);
+  };
+  target.onpointerup = (event) => {
+    if (event.pointerId !== pointerID) return;
+    pointerID = undefined;
+    if (Math.abs(delta) > 90) {
+      onSwipe(delta > 0);
+      return;
+    }
+    onReset();
+  };
+  target.onpointercancel = cancel;
+  target.onlostpointercapture = cancel;
+
+  if (suppressClick) {
+    target.addEventListener(
+      "click",
+      (event) => {
+        if (!preventClick) return;
+        event.stopImmediatePropagation();
+        preventClick = false;
+      },
+      { capture: true },
+    );
+  }
 }
 
 // vote records a choice and advances to the next candidate.

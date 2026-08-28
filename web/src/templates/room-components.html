@@ -222,7 +222,11 @@
 <template id="item-dialog-template">
   <dialog class="item-dialog">
     <div class="item-dialog-layout">
-      <img class="dialog-poster" data-ref="poster" />
+      <div class="dialog-poster-wrap">
+        <img class="dialog-poster" data-ref="poster" draggable="false" />
+        <div class="stamp nope">NOPE</div>
+        <div class="stamp like">LIKE</div>
+      </div>
       <div class="dialog-content">
         <button
           class="dialog-close"
@@ -237,6 +241,26 @@
         <div class="meta" data-ref="meta"></div>
         <div class="item-dialog-genres" data-ref="genres" hidden></div>
         <p class="dialog-summary" data-ref="summary"></p>
+        <div class="item-dialog-actions" data-ref="actions" hidden>
+          <button
+            class="btn icon no"
+            type="button"
+            title="Pass"
+            aria-label="Pass"
+            data-ref="no"
+          >
+            ×
+          </button>
+          <button
+            class="btn icon yes"
+            type="button"
+            title="Like"
+            aria-label="Like"
+            data-ref="yes"
+          >
+            ♥
+          </button>
+        </div>
       </div>
     </div>
   </dialog>

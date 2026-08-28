@@ -777,6 +777,12 @@ select option {
   gap: 18px;
   padding: 18px;
 }
+.item-dialog.votable {
+  transition: transform 0.25s ease;
+}
+.item-dialog.votable .item-dialog-layout {
+  touch-action: pan-y;
+}
 .dialog-close {
   position: absolute;
   z-index: 2;
@@ -790,12 +796,19 @@ select option {
   background: #111014d9;
   font-size: 26px;
 }
+.dialog-poster-wrap {
+  position: relative;
+  width: 100%;
+}
 .dialog-poster {
   width: 100%;
   aspect-ratio: 2/3;
+  display: block;
   object-fit: cover;
   border-radius: 16px;
   background: var(--soft);
+  pointer-events: none;
+  user-select: none;
 }
 .dialog-content {
   display: flex;
@@ -836,6 +849,17 @@ select option {
   color: var(--muted);
   font-size: 12px;
   font-weight: 750;
+}
+.item-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  margin-top: auto;
+  padding-top: 24px;
+}
+.item-dialog-actions[hidden] {
+  display: none;
 }
 .dialog-genres {
   color: var(--muted);
@@ -1427,6 +1451,13 @@ select option {
   .dialog-summary {
     max-width: none;
     overflow: visible;
+  }
+  .item-dialog-actions {
+    position: sticky;
+    bottom: 0;
+    margin: 18px -10px -14px;
+    padding: 12px 10px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, #1b191f 18%);
   }
   .match-dialog {
     width: calc(100vw - 24px);
