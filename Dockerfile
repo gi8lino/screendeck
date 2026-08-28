@@ -40,7 +40,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
   GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
   go build \
   -ldflags="$LDFLAGS" \
-  -a \
   -o screendeck \
   ./cmd
 
