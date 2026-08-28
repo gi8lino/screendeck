@@ -1,6 +1,6 @@
 module github.com/gi8lino/screendeck
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/containeroo/httpgrace v0.1.2
