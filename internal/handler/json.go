@@ -36,15 +36,15 @@ func decode[T any](r *http.Request) (T, error) {
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&value); err != nil {
-		return value, fmt.Errorf("invalid request: %w", err)
+		return value, invalidRequestf(err, "invalid request: %v", err)
 	}
 
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return value, errors.New("invalid request: body must contain exactly one JSON value")
+			return value, invalidRequest("invalid request: body must contain exactly one JSON value", nil)
 		}
-		return value, fmt.Errorf("invalid request: %w", err)
+		return value, invalidRequestf(err, "invalid request: %v", err)
 	}
 
 	return value, nil

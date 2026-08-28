@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -12,10 +13,32 @@ import (
 	"github.com/gi8lino/screendeck/internal/room"
 )
 
+// requestError represents malformed or otherwise invalid HTTP request input.
+type requestError struct {
+	message string
+	cause   error
+}
+
+// Error returns the public request error message.
+func (e requestError) Error() string { return e.message }
+
+// Unwrap exposes the decoding or validation failure for diagnostics.
+func (e requestError) Unwrap() error { return e.cause }
+
+// invalidRequest creates a typed client-input error without changing its public message.
+func invalidRequest(message string, cause error) error {
+	return requestError{message: message, cause: cause}
+}
+
+// invalidRequestf creates a formatted typed client-input error.
+func invalidRequestf(cause error, format string, args ...any) error {
+	return invalidRequest(fmt.Sprintf(format, args...), cause)
+}
+
 // statusForError maps application errors to their public HTTP status.
 func statusForError(err error) int {
 	switch {
-	case isValidationError(err):
+	case isValidationError(err), isRequestError(err):
 		return http.StatusBadRequest
 	case errors.Is(err, errBrowserIdentityUnavailable):
 		return http.StatusInternalServerError
@@ -40,6 +63,12 @@ func statusForError(err error) int {
 
 func isValidationError(err error) bool {
 	_, ok := errors.AsType[validationError](err)
+	return ok
+}
+
+// isRequestError reports whether an error was caused by malformed client input.
+func isRequestError(err error) bool {
+	_, ok := errors.AsType[requestError](err)
 	return ok
 }
 

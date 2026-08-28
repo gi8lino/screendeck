@@ -20,6 +20,10 @@ func TestStatusForError(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, statusForError(jellyfin.ErrAuthenticationFailed))
 	})
 
+	t.Run("request error", func(t *testing.T) {
+		assert.Equal(t, http.StatusBadRequest, statusForError(invalidRequest("invalid request", nil)))
+	})
+
 	t.Run("unexpected server error", func(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, statusForError(errors.New("database unavailable")))
 	})

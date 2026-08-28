@@ -58,6 +58,7 @@ func TestDecode(t *testing.T) {
 		_, err := decode[decodeTestRequest](request)
 
 		require.Error(t, err)
+		assert.Equal(t, http.StatusBadRequest, statusForError(err))
 		assert.Contains(t, err.Error(), `unknown field "unexpected"`)
 	})
 
@@ -70,6 +71,7 @@ func TestDecode(t *testing.T) {
 		_, err := decode[decodeTestRequest](request)
 
 		require.Error(t, err)
+		assert.Equal(t, http.StatusBadRequest, statusForError(err))
 		assert.Contains(t, err.Error(), "exactly one JSON value")
 	})
 }

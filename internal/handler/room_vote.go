@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 )
@@ -22,7 +21,7 @@ func Vote(rooms roomVoter, logger *slog.Logger) http.HandlerFunc {
 			return
 		}
 		if input.ItemID == "" {
-			fail(logger, r, w, errors.New("itemId is required"))
+			fail(logger, r, w, invalidRequest("itemId is required", nil))
 			return
 		}
 		matched, err := rooms.Vote(r.Context(), r.PathValue("code"), participantToken(r), input.ItemID, input.Liked)
