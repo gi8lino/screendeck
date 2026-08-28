@@ -5,7 +5,7 @@ hide:
 
 # Development
 
-ScreenDeck is a Go application with an embedded, dependency-free browser frontend. The module currently targets Go 1.25.
+ScreenDeck is a Go application with an embedded, dependency-free browser frontend. The module currently targets Go 1.27.
 
 See [Architecture](architecture.md) for package boundaries, dependency rules, and extension guidance.
 
