@@ -29,43 +29,58 @@ func (s *Store) SetRoundReady(
 	participantID string,
 	expectedRound int,
 	ready bool,
-) (round, titles, readyCount, required int, advanced bool, err error) {
+) (roomdomain.RoundResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, 0, 0, 0, false, err
+		return roomdomain.RoundResult{}, err
 	}
 	defer tx.Rollback() // nolint:errcheck
 
 	request, err := prepareRoundReadinessTx(ctx, tx, code, participantID, expectedRound)
 	if err != nil {
-		return 0, 0, 0, 0, false, err
+		return roomdomain.RoundResult{}, err
 	}
 	if request.stale {
-		return request.round, request.titles, 0, request.required, true, nil
+		return roomdomain.RoundResult{
+			Round:    request.round,
+			Titles:   request.titles,
+			Required: request.required,
+			Advanced: true,
+		}, nil
 	}
 
-	readyCount, err = recordRoundReadinessTx(ctx, tx, code, request.round, participantID, ready)
+	readyCount, err := recordRoundReadinessTx(ctx, tx, code, request.round, participantID, ready)
 	if err != nil {
-		return 0, 0, 0, 0, false, err
+		return roomdomain.RoundResult{}, err
 	}
 	if readyCount == request.required {
 		nextRound, nextTitles, err := advanceRoundTx(ctx, tx, code, request.round)
 		if err != nil {
-			return 0, 0, 0, 0, false, err
+			return roomdomain.RoundResult{}, err
 		}
 		if err := tx.Commit(); err != nil {
-			return 0, 0, 0, 0, false, err
+			return roomdomain.RoundResult{}, err
 		}
-		return nextRound, nextTitles, request.required, request.required, true, nil
+		return roomdomain.RoundResult{
+			Round:    nextRound,
+			Titles:   nextTitles,
+			Ready:    request.required,
+			Required: request.required,
+			Advanced: true,
+		}, nil
 	}
 
 	if err := reconcileRoomPhaseTx(ctx, tx, code); err != nil {
-		return 0, 0, 0, 0, false, err
+		return roomdomain.RoundResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, 0, 0, 0, false, err
+		return roomdomain.RoundResult{}, err
 	}
-	return request.round, 0, readyCount, request.required, false, nil
+	return roomdomain.RoundResult{
+		Round:    request.round,
+		Ready:    readyCount,
+		Required: request.required,
+	}, nil
 }
 
 // prepareRoundReadinessTx validates the room, round, participant, and consensus size.

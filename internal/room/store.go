@@ -18,7 +18,7 @@ type Store interface {
 	RemoveParticipant(context.Context, string, string, string) error
 	LeaveRoom(context.Context, string, string) error
 	AddMoreTitles(context.Context, string, string, int) (int, int, error)
-	SetRoundReady(context.Context, string, string, int, bool) (int, int, int, int, bool, error)
+	SetRoundReady(context.Context, string, string, int, bool) (RoundResult, error)
 	SaveLibrary(context.Context, media.Library, []media.Item) error
 	ItemPoster(context.Context, string) (string, error)
 	RoomMemberships(context.Context, string) ([]Membership, error)

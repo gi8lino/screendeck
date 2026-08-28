@@ -254,7 +254,7 @@ func TestRemoveParticipant(t *testing.T) {
 		require.NoError(t, err)
 		_, err = database.Vote(ctx, "RMHOST", "p3", "b", true)
 		require.NoError(t, err)
-		_, _, _, _, _, err = database.SetRoundReady(ctx, "RMHOST", "p1", 1, true)
+		_, err = database.SetRoundReady(ctx, "RMHOST", "p1", 1, true)
 		require.NoError(t, err)
 
 		require.NoError(t, database.RemoveParticipant(ctx, "RMHOST", "hash1", "p2"))

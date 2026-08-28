@@ -115,12 +115,7 @@ func (s *Service) SetNextRoundReady(
 		return RoundResult{}, err
 	}
 
-	round,
-		titles,
-		readyCount,
-		required,
-		advanced,
-		err := s.store.SetRoundReady(
+	result, err := s.store.SetRoundReady(
 		ctx,
 		code,
 		participant.ID,
@@ -132,14 +127,7 @@ func (s *Service) SetNextRoundReady(
 	}
 
 	s.Notify(code)
-
-	return RoundResult{
-		Round:    round,
-		Titles:   titles,
-		Ready:    readyCount,
-		Required: required,
-		Advanced: advanced,
-	}, nil
+	return result, nil
 }
 
 // Leave removes a participant from a room.

@@ -46,13 +46,13 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	assert.True(t, state.NextRound.Available)
 	assert.Equal(t, 0, state.NextRound.Ready)
 
-	round, titles, ready, required, advanced, err := database.SetRoundReady(ctx, "ROUND1", "p1", 1, true)
+	result, err := database.SetRoundReady(ctx, "ROUND1", "p1", 1, true)
 	require.NoError(t, err)
-	assert.False(t, advanced)
-	assert.Equal(t, 1, round)
-	assert.Equal(t, 0, titles)
-	assert.Equal(t, 1, ready)
-	assert.Equal(t, 2, required)
+	assert.False(t, result.Advanced)
+	assert.Equal(t, 1, result.Round)
+	assert.Equal(t, 0, result.Titles)
+	assert.Equal(t, 1, result.Ready)
+	assert.Equal(t, 2, result.Required)
 
 	state, err = database.RoomState(ctx, "ROUND1", "p1")
 	require.NoError(t, err)
@@ -63,25 +63,25 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	assert.Equal(t, "p1", state.NextRound.RequestedBy.ID)
 	assert.Equal(t, "One", state.NextRound.RequestedBy.Name)
 
-	_, _, ready, required, advanced, err = database.SetRoundReady(ctx, "ROUND1", "p1", 1, false)
+	result, err = database.SetRoundReady(ctx, "ROUND1", "p1", 1, false)
 	require.NoError(t, err)
-	assert.False(t, advanced)
-	assert.Equal(t, 0, ready)
-	assert.Equal(t, 2, required)
+	assert.False(t, result.Advanced)
+	assert.Equal(t, 0, result.Ready)
+	assert.Equal(t, 2, result.Required)
 
-	_, _, ready, required, advanced, err = database.SetRoundReady(ctx, "ROUND1", "p1", 1, true)
+	result, err = database.SetRoundReady(ctx, "ROUND1", "p1", 1, true)
 	require.NoError(t, err)
-	assert.False(t, advanced)
-	assert.Equal(t, 1, ready)
-	assert.Equal(t, 2, required)
+	assert.False(t, result.Advanced)
+	assert.Equal(t, 1, result.Ready)
+	assert.Equal(t, 2, result.Required)
 
-	round, titles, ready, required, advanced, err = database.SetRoundReady(ctx, "ROUND1", "p2", 1, true)
+	result, err = database.SetRoundReady(ctx, "ROUND1", "p2", 1, true)
 	require.NoError(t, err)
-	assert.True(t, advanced)
-	assert.Equal(t, 2, round)
-	assert.Equal(t, 2, titles)
-	assert.Equal(t, 2, ready)
-	assert.Equal(t, 2, required)
+	assert.True(t, result.Advanced)
+	assert.Equal(t, 2, result.Round)
+	assert.Equal(t, 2, result.Titles)
+	assert.Equal(t, 2, result.Ready)
+	assert.Equal(t, 2, result.Required)
 
 	state, err = database.RoomState(ctx, "ROUND1", "p1")
 	require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestRoundReadinessNarrowsBeforeDeckCompletion(t *testing.T) {
 	require.Len(t, state.Matches, 1)
 	assert.Equal(t, "a", state.Matches[0].ID)
 
-	_, _, _, _, _, err = database.SetRoundReady(ctx, "ROUND1", "p1", 2, true)
+	_, err = database.SetRoundReady(ctx, "ROUND1", "p1", 2, true)
 	require.Error(t, err)
 }
 
@@ -172,7 +172,7 @@ func TestNextRoundRequestCancelsWhenMatchesDropBelowTwo(t *testing.T) {
 	require.NoError(t, err)
 	_, err = database.Vote(ctx, "CANCEL", "p2", "b", true)
 	require.NoError(t, err)
-	_, _, _, _, _, err = database.SetRoundReady(ctx, "CANCEL", "p1", 1, true)
+	_, err = database.SetRoundReady(ctx, "CANCEL", "p1", 1, true)
 	require.NoError(t, err)
 
 	_, err = database.Vote(ctx, "CANCEL", "p1", "b", false)
@@ -207,7 +207,7 @@ func TestMembershipChangeCancelsNextRoundRequest(t *testing.T) {
 	require.NoError(t, err)
 	_, err = database.Vote(ctx, "MEMBER", "p2", "b", true)
 	require.NoError(t, err)
-	_, _, _, _, _, err = database.SetRoundReady(ctx, "MEMBER", "p1", 1, true)
+	_, err = database.SetRoundReady(ctx, "MEMBER", "p1", 1, true)
 	require.NoError(t, err)
 
 	require.NoError(t, joinTestRoom(database, ctx, "MEMBER", roomdomain.Participant{ID: "p3", Name: "Three"}, "hash3"))
@@ -238,13 +238,13 @@ func TestConcurrentReadinessAdvancesExactlyOneRound(t *testing.T) {
 	results := make(chan readyResult, 2)
 	go func() {
 		<-start
-		round, _, _, _, advanced, readyErr := database.SetRoundReady(ctx, "RACE02", "p1", 1, true)
-		results <- readyResult{round: round, advanced: advanced, err: readyErr}
+		result, readyErr := database.SetRoundReady(ctx, "RACE02", "p1", 1, true)
+		results <- readyResult{round: result.Round, advanced: result.Advanced, err: readyErr}
 	}()
 	go func() {
 		<-start
-		round, _, _, _, advanced, readyErr := database.SetRoundReady(ctx, "RACE02", "p2", 1, true)
-		results <- readyResult{round: round, advanced: advanced, err: readyErr}
+		result, readyErr := database.SetRoundReady(ctx, "RACE02", "p2", 1, true)
+		results <- readyResult{round: result.Round, advanced: result.Advanced, err: readyErr}
 	}()
 	close(start)
 	first := <-results
@@ -278,13 +278,13 @@ func TestConcurrentDuplicateReadinessIsIdempotent(t *testing.T) {
 	results := make(chan readyResult, 2)
 	go func() {
 		<-start
-		_, _, ready, _, _, readyErr := database.SetRoundReady(ctx, "RACE03", "p1", 1, true)
-		results <- readyResult{ready: ready, err: readyErr}
+		result, readyErr := database.SetRoundReady(ctx, "RACE03", "p1", 1, true)
+		results <- readyResult{ready: result.Ready, err: readyErr}
 	}()
 	go func() {
 		<-start
-		_, _, ready, _, _, readyErr := database.SetRoundReady(ctx, "RACE03", "p1", 1, true)
-		results <- readyResult{ready: ready, err: readyErr}
+		result, readyErr := database.SetRoundReady(ctx, "RACE03", "p1", 1, true)
+		results <- readyResult{ready: result.Ready, err: readyErr}
 	}()
 	close(start)
 	first := <-results
@@ -306,9 +306,9 @@ func TestConcurrentFinalReadyRequestIsIdempotent(t *testing.T) {
 	ctx := t.Context()
 	database := seedReadyConcurrencyRoom(t, "RACE04")
 	defer database.Close() // nolint:errcheck
-	_, _, _, _, advanced, err := database.SetRoundReady(ctx, "RACE04", "p1", 1, true)
+	result, err := database.SetRoundReady(ctx, "RACE04", "p1", 1, true)
 	require.NoError(t, err)
-	assert.False(t, advanced)
+	assert.False(t, result.Advanced)
 
 	// readyResult captures the outcome of a concurrent readiness update in tests.
 	type readyResult struct {
@@ -323,13 +323,13 @@ func TestConcurrentFinalReadyRequestIsIdempotent(t *testing.T) {
 	results := make(chan readyResult, 2)
 	go func() {
 		<-start
-		round, _, _, _, didAdvance, readyErr := database.SetRoundReady(ctx, "RACE04", "p2", 1, true)
-		results <- readyResult{round: round, advanced: didAdvance, err: readyErr}
+		result, readyErr := database.SetRoundReady(ctx, "RACE04", "p2", 1, true)
+		results <- readyResult{round: result.Round, advanced: result.Advanced, err: readyErr}
 	}()
 	go func() {
 		<-start
-		round, _, _, _, didAdvance, readyErr := database.SetRoundReady(ctx, "RACE04", "p2", 1, true)
-		results <- readyResult{round: round, advanced: didAdvance, err: readyErr}
+		result, readyErr := database.SetRoundReady(ctx, "RACE04", "p2", 1, true)
+		results <- readyResult{round: result.Round, advanced: result.Advanced, err: readyErr}
 	}()
 	close(start)
 	first := <-results
@@ -355,16 +355,16 @@ func TestReadyParticipantDepartureCancelsConsensus(t *testing.T) {
 	defer database.Close() // nolint:errcheck
 	require.NoError(t, joinTestRoom(database, ctx, "RACE05", roomdomain.Participant{ID: "p3", Name: "Three"}, "hash3"))
 
-	_, _, _, _, _, err := database.SetRoundReady(ctx, "RACE05", "p1", 1, true)
+	_, err := database.SetRoundReady(ctx, "RACE05", "p1", 1, true)
 	require.Error(t, err)
 	// The new participant invalidated existing matches, so recreate two unanimous matches.
 	_, err = database.Vote(ctx, "RACE05", "p3", "a", true)
 	require.NoError(t, err)
 	_, err = database.Vote(ctx, "RACE05", "p3", "b", true)
 	require.NoError(t, err)
-	_, _, _, _, _, err = database.SetRoundReady(ctx, "RACE05", "p1", 1, true)
+	_, err = database.SetRoundReady(ctx, "RACE05", "p1", 1, true)
 	require.NoError(t, err)
-	_, _, _, _, _, err = database.SetRoundReady(ctx, "RACE05", "p2", 1, true)
+	_, err = database.SetRoundReady(ctx, "RACE05", "p2", 1, true)
 	require.NoError(t, err)
 
 	require.NoError(t, database.LeaveRoom(ctx, "RACE05", "hash3"))
