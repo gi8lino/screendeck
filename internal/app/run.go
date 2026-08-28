@@ -128,7 +128,13 @@ func Run(
 		"media_server", mediaStatus.ServerName,
 	)
 
-	if err := server.Run(ctx, cfg.ListenAddress, router, serverLogger); err != nil {
+	if err := server.Run(
+		ctx,
+		cfg.ListenAddress,
+		router,
+		serverLogger,
+		server.WithMaxHeaderValueCount(100),
+	); err != nil {
 		setupLogger.Error("application failed",
 			"event", "app_failed",
 			"stage", "run_server",
