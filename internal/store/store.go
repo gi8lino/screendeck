@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	encryptionKeySize    = 32
-	inMemoryDatabasePath = ":memory:"
+	encryptionKeySize      = 32
+	inMemoryDatabasePath   = ":memory:"
+	persistentMaxOpenConns = 4
+	persistentMaxIdleConns = 4
 )
 
 // Store owns the SQLite database and the cipher used for stored secrets.
@@ -74,8 +76,17 @@ func openSQLite(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	// Keep :memory: databases coherent and serialize SQLite writes through one connection.
-	db.SetMaxOpenConns(1)
+	if path == inMemoryDatabasePath {
+		// Every SQLite :memory: connection has its own database, so keep tests and
+		// ephemeral deployments on exactly one connection.
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	} else {
+		// WAL permits concurrent readers while SQLite still serializes writers.
+		// Keep the pool deliberately small to avoid excessive writer contention.
+		db.SetMaxOpenConns(persistentMaxOpenConns)
+		db.SetMaxIdleConns(persistentMaxIdleConns)
+	}
 	return db, nil
 }
 
