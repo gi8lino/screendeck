@@ -57,6 +57,16 @@ func TestParse(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("rejects non-absolute public URL", func(t *testing.T) {
+		_, err := Parse([]string{"--base-url", "/screendeck"}, "test")
+		require.Error(t, err)
+	})
+
+	t.Run("rejects non-HTTP public URL", func(t *testing.T) {
+		_, err := Parse([]string{"--base-url", "mailto:host@example.test"}, "test")
+		require.Error(t, err)
+	})
+
 	t.Run("rejects zero room TTL", func(t *testing.T) {
 		_, err := Parse([]string{"--room-ttl", "0s"}, "test")
 		require.Error(t, err)

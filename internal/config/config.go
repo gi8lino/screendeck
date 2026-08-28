@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"net"
-	"net/url"
 	"strings"
 	"time"
 
@@ -65,8 +64,8 @@ func Parse(args []string, version string) (Config, error) {
 	// Application
 	tf.StringVar(&cfg.BaseURL, "base-url", "http://localhost:8080", "Public URL used for room links").
 		Validate(func(u string) error {
-			if _, err := url.ParseRequestURI(u); err != nil {
-				return err
+			if !validAbsoluteHTTPURL(u) {
+				return fmt.Errorf("must be an absolute HTTP or HTTPS URL")
 			}
 			return nil
 		}).
