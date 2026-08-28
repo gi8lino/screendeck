@@ -7,62 +7,34 @@ import (
 	"time"
 )
 
-// createRoomOptions contains normalized input for creating a room.
-type createRoomOptions struct {
-	// name is the host display name.
-	name string
-	// libraryKeys identifies the media libraries included in the room.
-	libraryKeys []string
-	// filters contains room-wide catalog filters.
-	filters Filters
-	// genres contains the host's personal genre preferences.
-	genres []string
-	// genreMode controls how host genres are matched.
-	genreMode GenreMode
-	// sampling controls first-round ordering.
-	sampling SamplingStrategy
-	// roundSize limits the first-round deck when non-zero.
-	roundSize int
-	// lifetimeHours overrides the configured room lifetime when non-zero.
-	lifetimeHours int
-	// identityToken identifies the host's persistent browser membership.
-	identityToken string
+// CreateOptions contains the inputs required to create a room.
+type CreateOptions struct {
+	Name          string
+	LibraryKeys   []string
+	Filters       Filters
+	Genres        []string
+	GenreMode     GenreMode
+	Sampling      SamplingStrategy
+	RoundSize     int
+	LifetimeHours int
+	IdentityToken string
 }
 
 // CreateForIdentity creates a room and associates the host with a persistent browser identity.
 func (s *Service) CreateForIdentity(
 	ctx context.Context,
-	name string,
-	libraryKeys []string,
-	filters Filters,
-	genres []string,
-	genreMode GenreMode,
-	sampling SamplingStrategy,
-	roundSize int,
-	lifetimeHours int,
-	identityToken string,
+	options CreateOptions,
 ) (Session, error) {
-	if strings.TrimSpace(identityToken) == "" {
+	if strings.TrimSpace(options.IdentityToken) == "" {
 		return Session{}, InvalidInput("browser identity is required")
 	}
-
-	return s.create(ctx, createRoomOptions{
-		name:          name,
-		libraryKeys:   libraryKeys,
-		filters:       filters,
-		genres:        genres,
-		genreMode:     genreMode,
-		sampling:      sampling,
-		roundSize:     roundSize,
-		lifetimeHours: lifetimeHours,
-		identityToken: identityToken,
-	})
+	return s.create(ctx, options)
 }
 
 // create creates a room with a persistent browser identity association.
 func (s *Service) create(
 	ctx context.Context,
-	options createRoomOptions,
+	options CreateOptions,
 ) (Session, error) {
 	// Normalize and validate room input before touching the catalog or store.
 	options, err := normalizeCreateRoomOptions(options)
@@ -71,30 +43,30 @@ func (s *Service) create(
 	}
 
 	// Build the complete eligible pool, then apply the first-round limit.
-	_, items, err := s.loadItems(ctx, options.libraryKeys)
+	_, items, err := s.loadItems(ctx, options.LibraryKeys)
 	if err != nil {
 		return Session{}, err
 	}
 
-	eligible := filterEligibleItems(items, options.filters)
+	eligible := filterEligibleItems(items, options.Filters)
 	if len(eligible) == 0 {
 		return Session{}, InvalidInput("the selected libraries contain no matching titles")
 	}
 
-	pool, err := orderInitialItems(eligible, options.sampling)
+	pool, err := orderInitialItems(eligible, options.Sampling)
 	if err != nil {
 		return Session{}, err
 	}
 
 	participantGenres, err := canonicalGenres(
-		options.genres,
+		options.Genres,
 		genresFromItems(pool),
 	)
 	if err != nil {
 		return Session{}, err
 	}
 
-	selected := limitItems(pool, options.roundSize)
+	selected := limitItems(pool, options.RoundSize)
 
 	// Create the room and host credentials only after the candidate pool is valid.
 	code, err := roomCode()
@@ -116,18 +88,18 @@ func (s *Service) create(
 			Code:      code,
 			Round:     1,
 			CreatedAt: now,
-			ExpiresAt: now.Add(s.roomLifetime(options.lifetimeHours)),
+			ExpiresAt: now.Add(s.roomLifetime(options.LifetimeHours)),
 		},
 		Participant{
 			ID:        participantID,
-			Name:      options.name,
+			Name:      options.Name,
 			Genres:    participantGenres,
-			GenreMode: string(options.genreMode),
+			GenreMode: string(options.GenreMode),
 		},
 		tokenHash,
 		itemIDs(selected),
 		itemIDs(pool),
-		membershipCredential(options.identityToken, token),
+		membershipCredential(options.IdentityToken, token),
 	); err != nil {
 		return Session{}, err
 	}
@@ -147,48 +119,48 @@ func (s *Service) roomLifetime(hours int) time.Duration {
 }
 
 // normalizeCreateRoomOptions validates and canonicalizes room creation input.
-func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, error) {
-	options.name = cleanName(options.name)
+func normalizeCreateRoomOptions(options CreateOptions) (CreateOptions, error) {
+	options.Name = cleanName(options.Name)
 
-	if options.name == "" {
-		return createRoomOptions{}, InvalidInput("name is required")
+	if options.Name == "" {
+		return CreateOptions{}, InvalidInput("name is required")
 	}
 
-	if len(options.libraryKeys) == 0 {
-		return createRoomOptions{}, InvalidInput("select at least one library")
+	if len(options.LibraryKeys) == 0 {
+		return CreateOptions{}, InvalidInput("select at least one library")
 	}
 
-	if err := validateFilters(options.filters); err != nil {
-		return createRoomOptions{}, err
+	if err := validateFilters(options.Filters); err != nil {
+		return CreateOptions{}, err
 	}
 
-	if !ValidRoundSize(options.roundSize) {
-		return createRoomOptions{}, InvalidInputf(
+	if !ValidRoundSize(options.RoundSize) {
+		return CreateOptions{}, InvalidInputf(
 			"round size must be between 0 and %d titles",
 			maxRoundSize,
 		)
 	}
 
-	if !ValidRoomLifetimeHours(options.lifetimeHours) {
-		return createRoomOptions{}, InvalidInputf(
+	if !ValidRoomLifetimeHours(options.LifetimeHours) {
+		return CreateOptions{}, InvalidInputf(
 			"room lifetime must be between %d and %d hours",
 			minimumRoomLifetimeHours,
 			maximumRoomLifetimeHours,
 		)
 	}
 
-	options.genreMode = normalizeGenreMode(options.genreMode)
+	options.GenreMode = normalizeGenreMode(options.GenreMode)
 
-	if options.genreMode == "" {
-		return createRoomOptions{}, InvalidInput(
+	if options.GenreMode == "" {
+		return CreateOptions{}, InvalidInput(
 			"genre mode must be any or all",
 		)
 	}
 
-	options.sampling = cmp.Or(options.sampling, SamplingRandom)
+	options.Sampling = cmp.Or(options.Sampling, SamplingRandom)
 
-	if !ValidSamplingStrategy(options.sampling) {
-		return createRoomOptions{}, InvalidInput(
+	if !ValidSamplingStrategy(options.Sampling) {
+		return CreateOptions{}, InvalidInput(
 			"invalid first-round selection strategy",
 		)
 	}

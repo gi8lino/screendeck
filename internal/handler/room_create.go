@@ -83,15 +83,17 @@ func CreateRoom(rooms roomCreator, logger *slog.Logger) http.HandlerFunc {
 		}
 		session, err := rooms.CreateForIdentity(
 			r.Context(),
-			input.Name,
-			input.LibraryKeys,
-			input.Filters,
-			input.Genres,
-			input.GenreMode,
-			input.SamplingStrategy,
-			input.RoundSize,
-			input.LifetimeHours,
-			identityToken,
+			room.CreateOptions{
+				Name:          input.Name,
+				LibraryKeys:   input.LibraryKeys,
+				Filters:       input.Filters,
+				Genres:        input.Genres,
+				GenreMode:     input.GenreMode,
+				Sampling:      input.SamplingStrategy,
+				RoundSize:     input.RoundSize,
+				LifetimeHours: input.LifetimeHours,
+				IdentityToken: identityToken,
+			},
 		)
 		if err != nil {
 			fail(logger, r, w, err)

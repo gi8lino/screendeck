@@ -8,18 +8,7 @@ import (
 
 // roomCreator creates rooms for persistent browser identities.
 type roomCreator interface {
-	CreateForIdentity(
-		context.Context,
-		string,
-		[]string,
-		room.Filters,
-		[]string,
-		room.GenreMode,
-		room.SamplingStrategy,
-		int,
-		int,
-		string,
-	) (room.Session, error)
+	CreateForIdentity(context.Context, room.CreateOptions) (room.Session, error)
 }
 
 // roomSettingsUpdater changes host-controlled room settings.

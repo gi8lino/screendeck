@@ -3,31 +3,11 @@ package room
 import "context"
 
 // TestCreateRoomOptions exposes room creation inputs to external integration tests.
-type TestCreateRoomOptions struct {
-	Name          string
-	LibraryKeys   []string
-	Filters       Filters
-	Genres        []string
-	GenreMode     GenreMode
-	Sampling      SamplingStrategy
-	RoundSize     int
-	LifetimeHours int
-	IdentityToken string
-}
+type TestCreateRoomOptions = CreateOptions
 
 // CreateForTest exercises room creation without requiring an HTTP handler.
 func (s *Service) CreateForTest(ctx context.Context, options TestCreateRoomOptions) (Session, error) {
-	return s.create(ctx, createRoomOptions{
-		name:          options.Name,
-		libraryKeys:   options.LibraryKeys,
-		filters:       options.Filters,
-		genres:        options.Genres,
-		genreMode:     options.GenreMode,
-		sampling:      options.Sampling,
-		roundSize:     options.RoundSize,
-		lifetimeHours: options.LifetimeHours,
-		identityToken: options.IdentityToken,
-	})
+	return s.create(ctx, options)
 }
 
 // JoinForTest exercises room joining without requiring an HTTP handler.
