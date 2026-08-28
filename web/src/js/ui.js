@@ -168,3 +168,20 @@ export function showFieldErrors(form, error, fields) {
   });
   return rendered;
 }
+
+// showModalDialog opens a dialog and removes it after backdrop or explicit closure.
+export function showModalDialog(dialog, onClose) {
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener(
+    "close",
+    () => {
+      dialog.remove();
+      onClose?.();
+    },
+    { once: true },
+  );
+  document.body.append(dialog);
+  dialog.showModal();
+}

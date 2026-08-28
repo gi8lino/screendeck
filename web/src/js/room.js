@@ -1,4 +1,26 @@
 import { api } from "./api.js";
+import {
+  connectRoomEvents,
+  renderConnectionState,
+  roomGeneration,
+  stopLiveRoomEvents,
+} from "./room-live.js";
+import {
+  enableSwipe,
+  itemCard,
+  itemMetadata,
+  preloadRoomPosters,
+  resetPosterPreloads,
+  setPoster,
+  showItemDetails,
+} from "./room-media.js";
+import {
+  matchSummary,
+  queueMatch,
+  resetMatchTracking,
+  showNextMatch,
+  trackMatches,
+} from "./room-matches.js";
 import { qrcode } from "./vendor/qrcode.mjs";
 import { getConfig, getSession, saveSession } from "./state.js";
 import {
@@ -7,47 +29,33 @@ import {
   loadingElement,
   messageElement,
   root,
+  showModalDialog,
   showToast,
   templateElement,
   topbar,
 } from "./ui.js";
 
-const reconnectIndicatorDelay = 5000;
-const reconnectWarningDelay = 30000;
-
-let roomEventController;
 let voting = false;
 let navigation;
-let trackedRoomCode = "";
-let trackedRound = 0;
-let knownMatchIDs = new Set();
-let matchQueue = [];
-let matchDialogOpen = false;
-let roomViewGeneration = 0;
-let posterPreloads = new Map();
-let roomConnectionState = "connecting";
-let roomConnectionIndicatorVisible = false;
-let reconnectIndicatorTimer;
-let reconnectWarningTimer;
 
 // renderRoom loads and displays the current room.
 export async function renderRoom(nextNavigation) {
   if (nextNavigation) navigation = nextNavigation;
   const session = getSession();
   if (!session) return navigation.renderHome();
-  const generation = roomViewGeneration;
+  const generation = roomGeneration();
   if (!root.querySelector(".room-head")) {
     root.replaceChildren(topbar(), loadingElement("Loading your room…"));
   }
   try {
     const state = await api(`/api/rooms/${encodeURIComponent(session.code)}`);
-    if (generation !== roomViewGeneration) return;
+    if (generation !== roomGeneration()) return;
     preloadRoomPosters(state);
     drawRoom(state);
     trackMatches(state);
-    connectEvents();
+    void connectRoomEvents({ onUpdate: renderRoom, isVoting: () => voting });
   } catch (error) {
-    if (generation !== roomViewGeneration) return;
+    if (generation !== roomGeneration()) return;
     resetMatchTracking();
     saveSession(null);
     navigation.renderHome();
@@ -57,32 +65,8 @@ export async function renderRoom(nextNavigation) {
 
 // stopRoomEvents closes the active room event stream.
 export function stopRoomEvents() {
-  roomViewGeneration += 1;
-  roomEventController?.abort();
-  roomEventController = null;
-  posterPreloads = new Map();
-  clearReconnectTimers();
-  roomConnectionState = "connecting";
-  roomConnectionIndicatorVisible = false;
-}
-
-// preloadRoomPosters keeps the current and upcoming poster requests warm.
-function preloadRoomPosters(state) {
-  const itemIDs = [
-    state.candidate?.id,
-    ...(state.posterLookahead || []),
-  ].filter(Boolean);
-  const wanted = new Set(itemIDs);
-
-  for (const itemID of posterPreloads.keys()) {
-    if (!wanted.has(itemID)) posterPreloads.delete(itemID);
-  }
-  for (const itemID of itemIDs) {
-    if (posterPreloads.has(itemID)) continue;
-    const image = new Image();
-    image.src = `/api/posters/${encodeURIComponent(itemID)}`;
-    posterPreloads.set(itemID, image);
-  }
+  stopLiveRoomEvents();
+  resetPosterPreloads();
 }
 
 // drawRoom fills the static room shell with live room state.
@@ -152,51 +136,6 @@ async function toggleRoomLock(state, button) {
     button.disabled = false;
     button.textContent = state.room.locked ? "Unlock room" : "Lock room";
   }
-}
-
-// renderConnectionState displays connection progress only while live updates are unavailable.
-function renderConnectionState(node) {
-  node.hidden =
-    roomConnectionState !== "reconnecting" || !roomConnectionIndicatorVisible;
-}
-
-// setRoomConnectionState updates the connection indicator in the active room.
-function setRoomConnectionState(state) {
-  if (state === roomConnectionState) return;
-  roomConnectionState = state;
-  if (state === "reconnecting") {
-    scheduleReconnectFeedback();
-  } else {
-    clearReconnectTimers();
-    roomConnectionIndicatorVisible = false;
-  }
-  const node = root.querySelector('[data-ref="connection"]');
-  if (node) renderConnectionState(node);
-}
-
-// scheduleReconnectFeedback delays visible feedback for transient connection failures.
-function scheduleReconnectFeedback() {
-  reconnectIndicatorTimer = setTimeout(() => {
-    reconnectIndicatorTimer = undefined;
-    if (roomConnectionState !== "reconnecting") return;
-    roomConnectionIndicatorVisible = true;
-    const node = root.querySelector('[data-ref="connection"]');
-    if (node) renderConnectionState(node);
-  }, reconnectIndicatorDelay);
-  reconnectWarningTimer = setTimeout(() => {
-    reconnectWarningTimer = undefined;
-    if (roomConnectionState === "reconnecting") {
-      showToast("Live updates unavailable. Retrying…");
-    }
-  }, reconnectWarningDelay);
-}
-
-// clearReconnectTimers cancels pending connection feedback.
-function clearReconnectTimers() {
-  clearTimeout(reconnectIndicatorTimer);
-  clearTimeout(reconnectWarningTimer);
-  reconnectIndicatorTimer = undefined;
-  reconnectWarningTimer = undefined;
 }
 
 // roomTopbar creates navigation actions for the active room.
@@ -377,14 +316,19 @@ function appendSwipeCandidate(container, item) {
   const { fragment, refs } = instantiateTemplate("swipe-view-template");
   let card;
   const showDetails = () =>
-    showItemDetails(item, (liked) => vote(item, liked, card));
+    showItemDetails(
+      item,
+      (liked) => vote(item, liked, card),
+      showNextMatch,
+      () => !voting,
+    );
   card = itemCard(item, showDetails);
   refs.deck.append(card);
   refs.no.onclick = () => vote(item, false, card);
   refs.details.onclick = showDetails;
   refs.yes.onclick = () => vote(item, true, card);
   container.append(fragment);
-  enableSwipe(card, item);
+  enableSwipe(card, (liked) => vote(item, liked, card));
 }
 
 // roomProgressText returns the personal progress labels shown below the deck.
@@ -413,62 +357,6 @@ function phaseLabel(phase) {
     default:
       return "swiping";
   }
-}
-
-// matchSummary renders a compact stack instead of every matched poster.
-function matchSummary(state) {
-  const matches = state.matches || [];
-  if (!matches.length) {
-    return messageElement(
-      "empty-template",
-      state.participants.length < 2
-        ? "Invite someone with the room code. Matches need at least two people."
-        : "A shared yes will appear here.",
-    );
-  }
-
-  const { element: pile, refs } = templateElement("match-pile-template");
-  pile.setAttribute(
-    "aria-label",
-    `Show ${matches.length} ${matches.length === 1 ? "match" : "matches"}`,
-  );
-  pile.onclick = () => showMatches(matches, state.room.round);
-
-  matches.slice(0, 3).forEach((item) => {
-    const { element: image, refs: imageRefs } = templateElement(
-      "match-pile-poster-template",
-    );
-    setPoster(imageRefs.poster, item, true);
-    refs.count.before(image);
-  });
-  refs.count.textContent = String(matches.length);
-  refs.label.textContent = `${matches.length} ${matches.length === 1 ? "match" : "matches"}`;
-  return pile;
-}
-
-// showMatches expands the current match pile in a scrollable dialog.
-function showMatches(matches, round) {
-  document.querySelector(".matches-dialog")?.remove();
-  const { element: dialog, refs } = templateElement("matches-dialog-template");
-  refs.close.onclick = () => dialog.close();
-  refs.round.textContent = `Round ${round}`;
-  refs.heading.textContent = `${matches.length} ${matches.length === 1 ? "match" : "matches"}`;
-
-  matches.forEach((item) => {
-    const { element: button, refs: itemRefs } = templateElement(
-      "match-grid-item-template",
-    );
-    button.title = `View details for ${item.title}`;
-    setPoster(itemRefs.poster, item);
-    itemRefs.title.textContent = item.title;
-    button.onclick = () => {
-      dialog.close();
-      showItemDetails(item);
-    };
-    refs.list.append(button);
-  });
-
-  showModalDialog(dialog, showNextMatch);
 }
 
 // moreTitlesPanel lets the room expand the first round from its unused reserve.
@@ -733,293 +621,6 @@ function roomURL(roomCode) {
   return url.toString();
 }
 
-// itemCard builds a swipeable card for one media item.
-function itemCard(item, showDetails) {
-  const { element: card, refs } = templateElement("item-card-template");
-  card.setAttribute("aria-label", `View details for ${item.title}`);
-  card.title = "View details";
-  card.onclick = showDetails;
-  card.onkeydown = (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    showDetails();
-  };
-  setPoster(refs.poster, item);
-  refs.title.textContent = item.title;
-  refs.meta.textContent = [
-    item.type === "show" ? "TV series" : "Movie",
-    item.year || null,
-    item.type === "movie" && item.duration
-      ? `${Math.round(item.duration / 60000)} min`
-      : null,
-    item.rating ? `★ ${item.rating.toFixed(1)}` : null,
-  ]
-    .filter(Boolean)
-    .join("  ·  ");
-  refs.summary.textContent =
-    item.summary || item.genres?.join(" · ") || "No synopsis available.";
-  return card;
-}
-
-// showItemDetails opens the complete metadata and synopsis for a title.
-function showItemDetails(item, onVote) {
-  document.querySelector(".item-dialog")?.remove();
-  const { element: dialog, refs } = templateElement("item-dialog-template");
-  refs.close.onclick = () => dialog.close();
-  setPoster(refs.poster, item);
-  refs.type.textContent = item.type === "show" ? "TV series" : "Movie";
-  refs.title.textContent = item.title;
-  refs.meta.textContent = itemMetadata(item).join("  ·  ");
-  refs.summary.textContent = item.summary || "No synopsis available.";
-  if (item.genres?.length) {
-    refs.genres.hidden = false;
-    refs.genres.replaceChildren(
-      ...item.genres.map((genre) => {
-        const chip = document.createElement("span");
-        chip.textContent = genre;
-        return chip;
-      }),
-    );
-  }
-  if (onVote) {
-    dialog.classList.add("votable");
-    refs.actions.hidden = false;
-    const submitVote = (liked) => {
-      if (voting) return;
-      dialog.close();
-      onVote(liked);
-    };
-    refs.no.onclick = () => submitVote(false);
-    refs.yes.onclick = () => submitVote(true);
-    enableDetailsSwipe(dialog, submitVote);
-  }
-  showModalDialog(dialog, showNextMatch);
-}
-
-// trackMatches notices matches created by other participants without interrupting swiping.
-function trackMatches(state) {
-  const matches = state.matches || [];
-  const matchIDs = new Set(matches.map((item) => item.id));
-
-  if (
-    trackedRoomCode !== state.room.code ||
-    trackedRound !== state.room.round
-  ) {
-    trackedRoomCode = state.room.code;
-    trackedRound = state.room.round;
-    knownMatchIDs = matchIDs;
-    matchQueue = [];
-    return;
-  }
-
-  const newMatches = matches.filter((item) => !knownMatchIDs.has(item.id));
-  knownMatchIDs = matchIDs;
-  if (newMatches.length === 1) {
-    showToast(`New match: ${newMatches[0].title}`);
-  } else if (newMatches.length > 1) {
-    showToast(`${newMatches.length} new matches`);
-  }
-}
-
-// queueMatch adds a locally completed match to the full-screen reveal queue.
-function queueMatch(item, markKnown) {
-  if (markKnown) knownMatchIDs.add(item.id);
-  if (
-    matchQueue.some((queued) => queued.id === item.id) ||
-    [...document.querySelectorAll(".match-dialog")].some(
-      (dialog) => dialog.dataset.itemId === item.id,
-    )
-  ) {
-    return;
-  }
-  matchQueue.push(item);
-}
-
-// resetMatchTracking clears match notification state when leaving a room.
-function resetMatchTracking() {
-  trackedRoomCode = "";
-  trackedRound = 0;
-  knownMatchIDs = new Set();
-  matchQueue = [];
-  for (const selector of [".match-dialog", ".matches-dialog"]) {
-    const dialog = document.querySelector(selector);
-    if (dialog?.open) dialog.close();
-    else dialog?.remove();
-  }
-  matchDialogOpen = false;
-}
-
-// showNextMatch displays a prominent reveal only for the participant whose swipe completed it.
-function showNextMatch() {
-  if (
-    matchDialogOpen ||
-    matchQueue.length === 0 ||
-    document.querySelector(".item-dialog[open], .matches-dialog[open]")
-  ) {
-    return;
-  }
-
-  matchDialogOpen = true;
-  const item = matchQueue.shift();
-  const { element: dialog, refs } = templateElement("match-dialog-template");
-  dialog.dataset.itemId = item.id;
-  refs.close.onclick = () => dialog.close();
-  setPoster(refs.poster, item);
-  refs.title.textContent = item.title;
-
-  const metadata = itemMetadata(item);
-  if (metadata.length) {
-    refs.meta.hidden = false;
-    refs.meta.textContent = metadata.join("  ·  ");
-  }
-  if (item.genres?.length) {
-    refs.genres.hidden = false;
-    refs.genres.textContent = item.genres.join(" · ");
-  }
-  if (item.summary) {
-    refs.summary.hidden = false;
-    refs.summary.textContent = item.summary;
-  }
-  refs.continue.onclick = () => dialog.close();
-
-  showModalDialog(dialog, () => {
-    matchDialogOpen = false;
-    showNextMatch();
-  });
-}
-
-// showModalDialog opens a dialog and removes it after backdrop or explicit closure.
-function showModalDialog(dialog, onClose) {
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) dialog.close();
-  });
-  dialog.addEventListener(
-    "close",
-    () => {
-      dialog.remove();
-      onClose?.();
-    },
-    { once: true },
-  );
-  document.body.append(dialog);
-  dialog.showModal();
-}
-
-// itemMetadata returns display-ready metadata for a media item.
-function itemMetadata(item) {
-  return [
-    item.year || null,
-    item.type === "movie" && item.duration
-      ? `${Math.round(item.duration / 60000)} min`
-      : null,
-    item.rating ? `★ ${item.rating.toFixed(1)}` : null,
-  ].filter(Boolean);
-}
-
-// enableSwipe adds pointer-driven voting gestures to a card.
-function enableSwipe(card, item) {
-  enableHorizontalSwipe(card, {
-    onMove: (delta) => {
-      card.style.transition = "none";
-      card.style.transform = `translateX(${delta}px) rotate(${delta / 18}deg)`;
-      card.querySelector(delta > 0 ? ".like" : ".nope").style.opacity =
-        Math.min(Math.abs(delta) / 100, 1);
-    },
-    onReset: () => {
-      card.style.transition = "";
-      card.style.transform = "";
-      card
-        .querySelectorAll(".stamp")
-        .forEach((stamp) => (stamp.style.opacity = 0));
-    },
-    onSwipe: (liked) => vote(item, liked, card),
-    suppressClick: true,
-  });
-}
-
-// enableDetailsSwipe lets the active title be voted on without closing its details first.
-function enableDetailsSwipe(dialog, onSwipe) {
-  enableHorizontalSwipe(dialog.querySelector(".item-dialog-layout"), {
-    onMove: (delta) => {
-      dialog.style.transition = "none";
-      dialog.style.transform = `translateX(${delta}px) rotate(${delta / 30}deg)`;
-      dialog.querySelector(delta > 0 ? ".like" : ".nope").style.opacity =
-        Math.min(Math.abs(delta) / 100, 1);
-    },
-    onReset: () => {
-      dialog.style.transition = "";
-      dialog.style.transform = "";
-      dialog
-        .querySelectorAll(".stamp")
-        .forEach((stamp) => (stamp.style.opacity = 0));
-    },
-    onSwipe,
-  });
-}
-
-// enableHorizontalSwipe manages a cancellation-safe horizontal pointer gesture.
-function enableHorizontalSwipe(
-  target,
-  { onMove, onReset, onSwipe, suppressClick = false },
-) {
-  let pointerID;
-  let start = 0;
-  let delta = 0;
-  let preventClick = false;
-
-  const cancel = (event) => {
-    if (event.pointerId !== pointerID) return;
-    pointerID = undefined;
-    delta = 0;
-    onReset();
-  };
-
-  target.onpointerdown = (event) => {
-    if (
-      pointerID !== undefined ||
-      !event.isPrimary ||
-      (event.pointerType === "mouse" && event.button !== 0) ||
-      event.target.closest("button, a, input, select, textarea")
-    ) {
-      return;
-    }
-    pointerID = event.pointerId;
-    start = event.clientX;
-    delta = 0;
-    preventClick = false;
-    target.setPointerCapture(pointerID);
-  };
-  target.onpointermove = (event) => {
-    if (event.pointerId !== pointerID) return;
-    delta = event.clientX - start;
-    if (Math.abs(delta) > 6) preventClick = true;
-    onMove(delta);
-  };
-  target.onpointerup = (event) => {
-    if (event.pointerId !== pointerID) return;
-    pointerID = undefined;
-    if (Math.abs(delta) > 90) {
-      onSwipe(delta > 0);
-      return;
-    }
-    onReset();
-  };
-  target.onpointercancel = cancel;
-  target.onlostpointercapture = cancel;
-
-  if (suppressClick) {
-    target.addEventListener(
-      "click",
-      (event) => {
-        if (!preventClick) return;
-        event.stopImmediatePropagation();
-        preventClick = false;
-      },
-      { capture: true },
-    );
-  }
-}
-
 // vote records a choice and advances to the next candidate.
 async function vote(item, liked, card) {
   if (voting) return;
@@ -1048,101 +649,4 @@ async function vote(item, liked, card) {
   } finally {
     voting = false;
   }
-}
-
-// connectEvents subscribes to changes from other room participants.
-async function connectEvents() {
-  const session = getSession();
-  if (!session || roomEventController) return;
-
-  const generation = roomViewGeneration;
-  const controller = new AbortController();
-  roomEventController = controller;
-  if (roomConnectionState !== "reconnecting") {
-    setRoomConnectionState("connecting");
-  }
-
-  try {
-    const response = await fetch(
-      `/api/rooms/${encodeURIComponent(session.code)}/events`,
-      {
-        headers: {
-          Accept: "text/event-stream",
-          "X-Participant-Token": session.token,
-        },
-        signal: controller.signal,
-      },
-    );
-    if (!response.ok || !response.body) {
-      throw new Error(`Live updates failed (${response.status})`);
-    }
-    if (
-      generation !== roomViewGeneration ||
-      controller !== roomEventController
-    ) {
-      return;
-    }
-    setRoomConnectionState("connected");
-
-    await consumeRoomEvents(response.body, controller, generation);
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      console.debug("Room live updates interrupted; reconnecting.", error);
-    }
-  } finally {
-    if (controller !== roomEventController) return;
-    roomEventController = null;
-    if (controller.signal.aborted || generation !== roomViewGeneration) return;
-    setRoomConnectionState("reconnecting");
-    setTimeout(() => {
-      if (generation === roomViewGeneration) connectEvents();
-    }, 3000);
-  }
-}
-
-// consumeRoomEvents parses the data fields from a server-sent event stream.
-async function consumeRoomEvents(stream, controller, generation) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffered = "";
-  let eventData = [];
-
-  while (!controller.signal.aborted) {
-    const { value, done } = await reader.read();
-    buffered += decoder.decode(value, { stream: !done });
-
-    let lineEnd;
-    while ((lineEnd = buffered.indexOf("\n")) >= 0) {
-      const line = buffered.slice(0, lineEnd).replace(/\r$/, "");
-      buffered = buffered.slice(lineEnd + 1);
-
-      if (line.startsWith("data:")) {
-        eventData.push(line.slice(5).trimStart());
-      } else if (line === "") {
-        const data = eventData.join("\n");
-        eventData = [];
-        if (
-          generation === roomViewGeneration &&
-          (data === "changed" || data === "connected") &&
-          !voting
-        ) {
-          void renderRoom();
-        }
-      }
-    }
-
-    if (done) return;
-  }
-}
-
-// setPoster loads an item poster and substitutes the ScreenDeck mark after failures.
-function setPoster(image, item, decorative = false) {
-  image.onerror = () => {
-    image.onerror = null;
-    image.classList.add("poster-fallback");
-    image.src = "/favicon.svg";
-    if (!decorative) image.alt = `Poster unavailable for ${item.title}`;
-  };
-  image.src = `/api/posters/${encodeURIComponent(item.id)}`;
-  image.alt = decorative ? "" : `Poster for ${item.title}`;
 }
