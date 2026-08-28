@@ -13,6 +13,8 @@ on:
       - "go.sum"
       - "web/**"
       - "scripts/web/**"
+      - "scripts/e2e/**"
+      - "test/e2e/**"
       - "Makefile"
       - ".github/workflows/**"
   workflow_dispatch:
@@ -53,3 +55,9 @@ jobs:
 
       - name: Run unit tests
         run: make test
+
+      - name: Install browser test dependencies
+        run: make playwright-browser-ci
+
+      - name: Run browser behavior tests
+        run: make test-e2e

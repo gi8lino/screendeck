@@ -48,6 +48,9 @@ PLAYWRIGHT_BROWSER_STAMP := $(PLAYWRIGHT_BROWSERS_PATH)/.chromium-installed
 
 IMAGE_CONVERT ?= magick
 
+## Browser behavior tests
+E2E_RUN := scripts/e2e/run.sh
+
 ## Documentation Screenshots
 SCREENSHOT_MANIFEST := $(DOCS_DIR)/screenshots/screenshots.manifest
 SCREENSHOT_RAW_DIR := $(DOCS_DIR)/screenshots/raw
@@ -179,6 +182,10 @@ test: vet ## Run backend unit tests.
 test-race: vet ## Run backend unit tests with the race detector.
 	go test -race -count=1 -parallel=4 -timeout=5m ./...
 
+.PHONY: test-e2e
+test-e2e: web node-dependencies playwright-browser ## Run browser behavior tests against deterministic fixtures.
+	@PLAYWRIGHT_BROWSERS_PATH="$(abspath $(PLAYWRIGHT_BROWSERS_PATH))" $(E2E_RUN)
+
 .PHONY: cover
 cover: web ## Display test coverage.
 	go test -coverprofile=coverage.out -covermode=atomic -count=1 -parallel=4 -timeout=5m ./...
@@ -277,6 +284,13 @@ $(PLAYWRIGHT_BROWSER_STAMP): $(DOCS_DIR)/package-lock.json $(NODE_DEPENDENCIES_S
 	PLAYWRIGHT_BROWSERS_PATH="$(abspath $(PLAYWRIGHT_BROWSERS_PATH))" \
 		"$(abspath $(PLAYWRIGHT))" install chromium
 	@touch "$@"
+
+.PHONY: playwright-browser-ci
+playwright-browser-ci: node-dependencies ## Install Chromium and system dependencies for browser tests in CI.
+	@mkdir -p "$(PLAYWRIGHT_BROWSERS_PATH)"
+	PLAYWRIGHT_BROWSERS_PATH="$(abspath $(PLAYWRIGHT_BROWSERS_PATH))" \
+		"$(abspath $(PLAYWRIGHT))" install --with-deps chromium
+	@touch "$(PLAYWRIGHT_BROWSER_STAMP)"
 
 $(DOCS_PYTHON):
 	$(PYTHON) -m venv $(DOCS_VENV)

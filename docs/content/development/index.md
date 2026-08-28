@@ -31,6 +31,7 @@ Useful development targets:
 ```sh
 make build
 make test-race
+make test-e2e
 make cover
 make lint
 make lint-fix
@@ -102,6 +103,18 @@ make smoke-reset
 ```
 
 Use `make smoke-logs` to follow all three services. See `test/smoke/README.md` for first-run Jellyfin and Plex setup details and the smoke checklist.
+
+## Browser behavior tests
+
+`make test-e2e` runs a small Chromium suite against the real built frontend and a deterministic stateful API fixture. It covers Jellyfin setup, room creation, joining from another browser context, voting through shared matches, unanimous next-round advancement, and reconnection of the room event stream.
+
+The fixture server lives under `scripts/e2e/` and never contacts Plex or Jellyfin or writes to the normal ScreenDeck database. The tests live under `test/e2e/` and reuse the repository-local Playwright Chromium installation. GitHub Actions installs the browser plus its Linux dependencies and runs the same suite after the Go tests.
+
+Run it locally with:
+
+```sh
+make test-e2e
+```
 
 ## Frontend rendering
 
