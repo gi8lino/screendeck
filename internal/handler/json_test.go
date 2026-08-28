@@ -37,7 +37,9 @@ func (input decodeValidTestRequest) Valid(context.Context) map[string]string {
 
 // TestDecode verifies strict JSON request decoding.
 func TestDecode(t *testing.T) {
+	t.Parallel()
 	t.Run("accepts valid request", func(t *testing.T) {
+		t.Parallel()
 		request := httptest.NewRequest(
 			http.MethodPost,
 			"/",
@@ -50,6 +52,7 @@ func TestDecode(t *testing.T) {
 	})
 
 	t.Run("rejects unknown field", func(t *testing.T) {
+		t.Parallel()
 		request := httptest.NewRequest(
 			http.MethodPost,
 			"/",
@@ -63,6 +66,7 @@ func TestDecode(t *testing.T) {
 	})
 
 	t.Run("rejects multiple JSON values", func(t *testing.T) {
+		t.Parallel()
 		request := httptest.NewRequest(
 			http.MethodPost,
 			"/",
@@ -76,6 +80,7 @@ func TestDecode(t *testing.T) {
 	})
 
 	t.Run("rejects duplicate fields", func(t *testing.T) {
+		t.Parallel()
 		request := httptest.NewRequest(
 			http.MethodPost,
 			"/",
@@ -89,6 +94,7 @@ func TestDecode(t *testing.T) {
 	})
 
 	t.Run("rejects invalid UTF-8", func(t *testing.T) {
+		t.Parallel()
 		body := []byte{'{', '"', 'i', 't', 'e', 'm', 'I', 'd', '"', ':', '"', 0xff, '"', '}'}
 		request := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
 		_, err := decode[decodeTestRequest](request)
@@ -101,6 +107,7 @@ func TestDecode(t *testing.T) {
 
 // TestDecodeValidCollectsFieldProblems verifies validation returns every field problem.
 func TestDecodeValidCollectsFieldProblems(t *testing.T) {
+	t.Parallel()
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/",
@@ -118,6 +125,7 @@ func TestDecodeValidCollectsFieldProblems(t *testing.T) {
 
 // TestEncode verifies typed values are written as JSON responses.
 func TestEncode(t *testing.T) {
+	t.Parallel()
 	response := httptest.NewRecorder()
 
 	err := encode(response, http.StatusCreated, struct {

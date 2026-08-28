@@ -8,6 +8,7 @@ import (
 
 // TestJoinRoomRequestValidation verifies every invalid room joining field is reported.
 func TestJoinRoomRequestValidation(t *testing.T) {
+	t.Parallel()
 	input := joinRoomRequest{Code: "IO10", GenreMode: "invalid"}
 
 	problems := input.Valid(t.Context())

@@ -9,6 +9,7 @@ import (
 
 // TestCreateRoomRequestValidation verifies every invalid room creation field is reported.
 func TestCreateRoomRequestValidation(t *testing.T) {
+	t.Parallel()
 	input := createRoomRequest{
 		Filters: room.Filters{
 			YearFrom:           2030,
