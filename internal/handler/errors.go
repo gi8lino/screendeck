@@ -15,6 +15,8 @@ import (
 // statusForError maps application errors to their public HTTP status.
 func statusForError(err error) int {
 	switch {
+	case isValidationError(err):
+		return http.StatusBadRequest
 	case errors.Is(err, errBrowserIdentityUnavailable):
 		return http.StatusInternalServerError
 	case errors.Is(err, room.ErrMembershipConflict),
@@ -25,13 +27,41 @@ func statusForError(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, room.ErrNotFound):
 		return http.StatusNotFound
+	case errors.Is(err, room.ErrInvalidInput), isClientMediaError(err):
+		return http.StatusBadRequest
 	case errors.Is(err, media.ErrNotConfigured), errors.Is(err, plex.ErrNotConfigured):
 		return http.StatusServiceUnavailable
 	case isMediaUpstreamError(err):
 		return http.StatusBadGateway
 	default:
-		return http.StatusBadRequest
+		return http.StatusInternalServerError
 	}
+}
+
+func isValidationError(err error) bool {
+	var validation validationError
+	return errors.As(err, &validation)
+}
+
+// isClientMediaError reports whether media setup rejected client-supplied state.
+func isClientMediaError(err error) bool {
+	return errors.Is(err, jellyfin.ErrInvalidServerURL) ||
+		errors.Is(err, jellyfin.ErrInvalidClientConfig) ||
+		errors.Is(err, jellyfin.ErrInvalidLibrary) ||
+		errors.Is(err, jellyfin.ErrInvalidPosterReference) ||
+		errors.Is(err, jellyfin.ErrAuthenticationFailed) ||
+		errors.Is(err, plex.ErrAlreadyConfigured) ||
+		errors.Is(err, plex.ErrInvalidAuthMethod) ||
+		errors.Is(err, plex.ErrExperimentalAuthDisabled) ||
+		errors.Is(err, plex.ErrAuthorizationExpired) ||
+		errors.Is(err, plex.ErrAuthorizationIncomplete) ||
+		errors.Is(err, plex.ErrServerUnavailable) ||
+		errors.Is(err, plex.ErrNoUsableConnection) ||
+		errors.Is(err, plex.ErrInvalidClientConfig) ||
+		errors.Is(err, plex.ErrInvalidClientID) ||
+		errors.Is(err, plex.ErrInvalidServerURL) ||
+		errors.Is(err, plex.ErrInvalidLibrary) ||
+		errors.Is(err, plex.ErrInvalidPosterPath)
 }
 
 // isMediaUpstreamError reports whether an error represents a media-provider upstream failure.
@@ -53,6 +83,9 @@ func isMediaUpstreamError(err error) bool {
 func publicErrorMessage(err error) string {
 	if isMediaUpstreamError(err) {
 		return "media server unavailable; check that Plex or Jellyfin is running and reachable"
+	}
+	if statusForError(err) == http.StatusInternalServerError {
+		return "internal server error"
 	}
 	return err.Error()
 }

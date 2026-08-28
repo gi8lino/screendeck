@@ -3,8 +3,6 @@ package room
 import (
 	"cmp"
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -45,7 +43,7 @@ func (s *Service) CreateForIdentity(
 	identityToken string,
 ) (Session, error) {
 	if strings.TrimSpace(identityToken) == "" {
-		return Session{}, errors.New("browser identity is required")
+		return Session{}, InvalidInput("browser identity is required")
 	}
 
 	return s.create(ctx, createRoomOptions{
@@ -80,7 +78,7 @@ func (s *Service) create(
 
 	eligible := filterEligibleItems(items, options.filters)
 	if len(eligible) == 0 {
-		return Session{}, errors.New("the selected libraries contain no matching titles")
+		return Session{}, InvalidInput("the selected libraries contain no matching titles")
 	}
 
 	pool, err := orderInitialItems(eligible, options.sampling)
@@ -153,11 +151,11 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 	options.name = cleanName(options.name)
 
 	if options.name == "" {
-		return createRoomOptions{}, errors.New("name is required")
+		return createRoomOptions{}, InvalidInput("name is required")
 	}
 
 	if len(options.libraryKeys) == 0 {
-		return createRoomOptions{}, errors.New("select at least one library")
+		return createRoomOptions{}, InvalidInput("select at least one library")
 	}
 
 	if err := validateFilters(options.filters); err != nil {
@@ -165,14 +163,14 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 	}
 
 	if !ValidRoundSize(options.roundSize) {
-		return createRoomOptions{}, fmt.Errorf(
+		return createRoomOptions{}, InvalidInputf(
 			"round size must be between 0 and %d titles",
 			maxRoundSize,
 		)
 	}
 
 	if !ValidRoomLifetimeHours(options.lifetimeHours) {
-		return createRoomOptions{}, fmt.Errorf(
+		return createRoomOptions{}, InvalidInputf(
 			"room lifetime must be between %d and %d hours",
 			minimumRoomLifetimeHours,
 			maximumRoomLifetimeHours,
@@ -182,7 +180,7 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 	options.genreMode = normalizeGenreMode(options.genreMode)
 
 	if options.genreMode == "" {
-		return createRoomOptions{}, errors.New(
+		return createRoomOptions{}, InvalidInput(
 			"genre mode must be any or all",
 		)
 	}
@@ -190,7 +188,7 @@ func normalizeCreateRoomOptions(options createRoomOptions) (createRoomOptions, e
 	options.sampling = cmp.Or(options.sampling, SamplingRandom)
 
 	if !ValidSamplingStrategy(options.sampling) {
-		return createRoomOptions{}, errors.New(
+		return createRoomOptions{}, InvalidInput(
 			"invalid first-round selection strategy",
 		)
 	}

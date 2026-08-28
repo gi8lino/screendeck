@@ -3,8 +3,6 @@ package room
 import (
 	"cmp"
 	"context"
-	"errors"
-	"fmt"
 	"slices"
 	"strings"
 )
@@ -17,7 +15,7 @@ func (s *Service) Genres(
 	code = strings.ToUpper(strings.TrimSpace(code))
 
 	if len(code) != 6 {
-		return nil, errors.New(
+		return nil, InvalidInput(
 			"a six-character room code is required",
 		)
 	}
@@ -55,7 +53,7 @@ func canonicalGenres(
 
 		value, ok := canonical[key]
 		if !ok {
-			return nil, fmt.Errorf(
+			return nil, InvalidInputf(
 				"genre %q is not available in this room",
 				trimmed,
 			)

@@ -27,7 +27,7 @@ func (s *Store) RemoveParticipant(
 		return err
 	}
 	if requesterID == participantID {
-		return errors.New("the room host cannot remove themselves")
+		return roomdomain.InvalidInput("the room host cannot remove themselves")
 	}
 
 	if err := removeParticipantTx(ctx, tx, code, participantID); err != nil {

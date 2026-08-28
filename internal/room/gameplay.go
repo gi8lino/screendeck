@@ -2,7 +2,6 @@ package room
 
 import (
 	"context"
-	"errors"
 	"strings"
 )
 
@@ -185,7 +184,7 @@ func (s *Service) RemoveParticipant(
 	participantID = strings.TrimSpace(participantID)
 
 	if participantID == "" {
-		return errors.New("participant id is required")
+		return InvalidInput("participant id is required")
 	}
 
 	if err := s.store.RemoveParticipant(

@@ -17,7 +17,7 @@ func (s *Store) AddMoreTitles(
 	count int,
 ) (added, remaining int, err error) {
 	if count <= 0 || count > 1000 {
-		return 0, 0, errors.New("add-more count must be between 1 and 1000")
+		return 0, 0, roomdomain.InvalidInput("add-more count must be between 1 and 1000")
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -34,7 +34,7 @@ func (s *Store) AddMoreTitles(
 		return 0, 0, err
 	}
 	if len(itemIDs) == 0 {
-		return 0, 0, errors.New("no more titles are available")
+		return 0, 0, roomdomain.InvalidInput("no more titles are available")
 	}
 
 	nextPosition, err := nextRoomItemPositionTx(ctx, tx, code)
@@ -87,10 +87,10 @@ WHERE r.code = ?
 		return err
 	}
 	if ownerID != participantID {
-		return errors.New("only the room host can add more titles")
+		return roomdomain.InvalidInput("only the room host can add more titles")
 	}
 	if round != 1 {
-		return errors.New("more titles can only be added during the first round")
+		return roomdomain.InvalidInput("more titles can only be added during the first round")
 	}
 	return nil
 }
@@ -281,7 +281,7 @@ WHERE room_code = ?
 		return err
 	}
 	if matches < 2 {
-		return errors.New("another round requires at least two matches")
+		return roomdomain.InvalidInput("another round requires at least two matches")
 	}
 
 	const readyQuery = `

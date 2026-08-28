@@ -3,7 +3,6 @@ package room
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -137,7 +136,7 @@ func (s *Service) loadItems(
 	libraryKeys []string,
 ) (selected []media.Library, items []media.Item, err error) {
 	if len(libraryKeys) == 0 {
-		return nil, nil, errors.New("select at least one library")
+		return nil, nil, InvalidInput("select at least one library")
 	}
 
 	libraries, err := s.Libraries(ctx)
@@ -152,7 +151,7 @@ func (s *Service) loadItems(
 	for _, key := range libraryKeys {
 		library, ok := available[key]
 		if !ok {
-			return nil, nil, fmt.Errorf(
+			return nil, nil, InvalidInputf(
 				"media library %q not found",
 				key,
 			)

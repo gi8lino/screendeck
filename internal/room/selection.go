@@ -2,7 +2,6 @@ package room
 
 import (
 	"cmp"
-	"errors"
 	"maps"
 	mathrand "math/rand/v2"
 	"slices"
@@ -77,7 +76,7 @@ func limitItems(
 // validateFilters verifies room-wide catalog filter bounds.
 func validateFilters(filters Filters) error {
 	if hasNegativeFilterValue(filters) || ReversedYearRange(filters) {
-		return errors.New("invalid catalog filters")
+		return InvalidInput("invalid catalog filters")
 	}
 
 	return nil
@@ -131,7 +130,7 @@ func orderInitialItems(
 	case SamplingRandomUnwatched:
 		selected = unwatchedItems(selected)
 		if len(selected) == 0 {
-			return nil, errors.New(
+			return nil, InvalidInput(
 				"no unwatched titles match the selected room filters",
 			)
 		}
@@ -139,7 +138,7 @@ func orderInitialItems(
 		shuffleItems(selected)
 
 	default:
-		return nil, errors.New(
+		return nil, InvalidInput(
 			"invalid first-round selection strategy",
 		)
 	}

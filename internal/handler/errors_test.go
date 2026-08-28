@@ -16,7 +16,12 @@ import (
 // TestStatusForError verifies application errors map to stable public HTTP statuses.
 func TestStatusForError(t *testing.T) {
 	t.Run("bad request", func(t *testing.T) {
-		assert.Equal(t, http.StatusBadRequest, statusForError(errors.New("invalid input")))
+		assert.Equal(t, http.StatusBadRequest, statusForError(room.InvalidInput("invalid input")))
+		assert.Equal(t, http.StatusBadRequest, statusForError(jellyfin.ErrAuthenticationFailed))
+	})
+
+	t.Run("unexpected server error", func(t *testing.T) {
+		assert.Equal(t, http.StatusInternalServerError, statusForError(errors.New("database unavailable")))
 	})
 
 	t.Run("identity unavailable", func(t *testing.T) {
@@ -79,8 +84,13 @@ func TestPublicErrorMessage(t *testing.T) {
 		)
 	})
 
-	t.Run("application error", func(t *testing.T) {
-		err := errors.New("room is full")
+	t.Run("public application error", func(t *testing.T) {
+		err := room.InvalidInput("room is full")
 		assert.Equal(t, "room is full", publicErrorMessage(err))
+	})
+
+	t.Run("internal error", func(t *testing.T) {
+		err := errors.New("database path /secret failed")
+		assert.Equal(t, "internal server error", publicErrorMessage(err))
 	})
 }

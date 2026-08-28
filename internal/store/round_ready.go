@@ -94,7 +94,7 @@ func prepareRoundReadinessTx(
 		}, nil
 	}
 	if futureRoundReadinessRequest(round, expectedRound) {
-		return roundReadinessRequestState{}, errors.New("room round changed")
+		return roundReadinessRequestState{}, roomdomain.InvalidInput("room round changed")
 	}
 
 	if err := ensureParticipantExistsTx(ctx, tx, code, participantID); err != nil {
@@ -105,7 +105,7 @@ func prepareRoundReadinessTx(
 		return roundReadinessRequestState{}, err
 	}
 	if required < 2 {
-		return roundReadinessRequestState{}, errors.New("another round needs at least two participants")
+		return roundReadinessRequestState{}, roomdomain.InvalidInput("another round needs at least two participants")
 	}
 
 	return roundReadinessRequestState{round: round, required: required}, nil
@@ -200,7 +200,7 @@ func advanceRoundTx(
 		return 0, 0, err
 	}
 	if len(itemIDs) < 2 {
-		return 0, 0, errors.New("another round requires at least two matches")
+		return 0, 0, roomdomain.InvalidInput("another round requires at least two matches")
 	}
 	mathrand.Shuffle(len(itemIDs), func(i, j int) {
 		itemIDs[i], itemIDs[j] = itemIDs[j], itemIDs[i]

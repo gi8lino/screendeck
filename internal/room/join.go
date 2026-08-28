@@ -16,7 +16,7 @@ func (s *Service) JoinForIdentity(
 	identityToken string,
 ) (Session, error) {
 	if strings.TrimSpace(identityToken) == "" {
-		return Session{}, errors.New("browser identity is required")
+		return Session{}, InvalidInput("browser identity is required")
 	}
 
 	normalizedCode := strings.ToUpper(strings.TrimSpace(code))
@@ -123,7 +123,7 @@ func normalizeJoinInput(
 	normalizedName = cleanName(name)
 
 	if len(normalizedCode) != 6 || normalizedName == "" {
-		return "", "", "", errors.New(
+		return "", "", "", InvalidInput(
 			"a six-character room code and name are required",
 		)
 	}
@@ -131,7 +131,7 @@ func normalizeJoinInput(
 	normalizedGenreMode = normalizeGenreMode(genreMode)
 
 	if normalizedGenreMode == "" {
-		return "", "", "", errors.New(
+		return "", "", "", InvalidInput(
 			"genre mode must be any or all",
 		)
 	}
