@@ -138,6 +138,7 @@ func (s *Service) loadItems(
 	if len(libraryKeys) == 0 {
 		return nil, nil, InvalidInput("select at least one library")
 	}
+	libraryKeys = uniqueLibraryKeys(libraryKeys)
 
 	libraries, err := s.Libraries(ctx)
 	if err != nil {
@@ -173,6 +174,20 @@ func (s *Service) loadItems(
 	return selected, items, nil
 }
 
+// uniqueLibraryKeys removes repeated library keys while preserving selection order.
+func uniqueLibraryKeys(keys []string) []string {
+	seen := make(map[string]struct{}, len(keys))
+	unique := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, key)
+	}
+	return unique
+}
+
 // librariesByKey indexes media libraries by their stable provider key.
 func librariesByKey(
 	libraries []media.Library,
@@ -191,31 +206,49 @@ func (s *Service) libraryItems(
 	ctx context.Context,
 	library media.Library,
 ) ([]media.Item, error) {
-	s.mu.Lock()
-	cached, ok := s.cache[library.Key]
-	s.mu.Unlock()
-
-	if cacheEntryFresh(cached, ok) {
-		return cached.items, nil
+	if items, ok := s.cachedLibraryItems(library.Key); ok {
+		return items, nil
 	}
 
-	items, err := s.catalog.Items(ctx, library)
+	value, err, _ := s.libraryLoads.Do(library.Key, func() (any, error) {
+		if items, ok := s.cachedLibraryItems(library.Key); ok {
+			return items, nil
+		}
+
+		items, err := s.catalog.Items(ctx, library)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := s.catalogStore.SaveLibrary(ctx, library, items); err != nil {
+			return nil, err
+		}
+
+		s.mu.Lock()
+		s.cache[library.Key] = cacheEntry{
+			items:     items,
+			fetchedAt: time.Now(),
+		}
+		s.mu.Unlock()
+
+		return items, nil
+	})
 	if err != nil {
 		return nil, err
 	}
+	return value.([]media.Item), nil
+}
 
-	if err := s.catalogStore.SaveLibrary(ctx, library, items); err != nil {
-		return nil, err
-	}
-
+// cachedLibraryItems returns a fresh cached library result when available.
+func (s *Service) cachedLibraryItems(key string) ([]media.Item, bool) {
 	s.mu.Lock()
-	s.cache[library.Key] = cacheEntry{
-		items:     items,
-		fetchedAt: time.Now(),
-	}
+	cached, ok := s.cache[key]
 	s.mu.Unlock()
 
-	return items, nil
+	if cacheEntryFresh(cached, ok) {
+		return cached.items, true
+	}
+	return nil, false
 }
 
 // cacheEntryFresh reports whether a cached library result can still be reused.

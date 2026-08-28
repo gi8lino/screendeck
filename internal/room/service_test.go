@@ -355,6 +355,16 @@ func TestCacheEntryFresh(t *testing.T) {
 	})
 }
 
+func TestUniqueLibraryKeys(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(
+		t,
+		[]string{"movies", "shows", "kids"},
+		uniqueLibraryKeys([]string{"movies", "shows", "movies", "kids", "shows"}),
+	)
+}
+
 func TestMatchesWatchFilter(t *testing.T) {
 	t.Parallel()
 

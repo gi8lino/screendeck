@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gi8lino/screendeck/internal/media"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -34,6 +35,8 @@ type Service struct {
 	events map[string]map[chan struct{}]struct{}
 	// cache stores recently loaded library contents.
 	cache map[string]cacheEntry
+	// libraryLoads coalesces concurrent cache misses for the same library.
+	libraryLoads singleflight.Group
 }
 
 // Filters contains room-wide catalog filtering criteria.
