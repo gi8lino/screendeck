@@ -88,6 +88,15 @@ func Run(
 		cfg.ExcludeLibraries,
 	)
 
+	networkWarning := !config.ListenAddressIsLoopback(cfg.ListenAddress)
+	if networkWarning {
+		setupLogger.Warn("ScreenDeck is listening beyond loopback without built-in access control",
+			"event", "network_exposure_warning",
+			"address", cfg.ListenAddress,
+			"guidance", "keep ScreenDeck on a trusted private network or protect it with HTTPS and upstream access control",
+		)
+	}
+
 	serverLogger := logger.With("component", "server")
 	router := routes.NewRouter(
 		appFS,
@@ -95,6 +104,7 @@ func Run(
 		commit,
 		cfg.BaseURL,
 		cfg.Experimental,
+		networkWarning,
 		roomService,
 		mediaServices.Media,
 		mediaServices.Plex,

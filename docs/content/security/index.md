@@ -35,7 +35,11 @@ Rooms expire according to `room-ttl`, which defaults to 24 hours. Leaving a room
 
 ## Network exposure
 
-The default deployment is intended for a trusted LAN or private network. For remote use, put ScreenDeck behind HTTPS and access control, or use a private mesh VPN.
+The default deployment is intended for a trusted LAN or private network. ScreenDeck does not provide built-in user authentication for setup, catalog, poster, or room-creation endpoints. A fresh instance can therefore be configured by anyone who can reach it, and Jellyfin setup can make outbound requests to the server URL supplied in the setup form.
+
+When ScreenDeck listens on anything other than a loopback address, it logs a startup warning and displays the same boundary in the browser, including on the media-server setup screen. These warnings are informational; ScreenDeck cannot detect whether a reverse proxy, VPN, firewall, or other upstream control already protects the listener.
+
+For remote use, put ScreenDeck behind HTTPS and upstream access control, or use a private mesh VPN. Do not expose the plain ScreenDeck listener directly to the public internet.
 
 ## Logs
 

@@ -30,6 +30,7 @@ function renderHome() {
   const config = getConfig();
   const { fragment, refs } = instantiateTemplate("home-template");
 
+  refs.networkWarning.hidden = !config.networkWarning;
   refs.mediaNotice.hidden = config.mediaConfigured;
   refs.primaryAction.textContent = config.mediaConfigured
     ? "Create a room"

@@ -92,6 +92,6 @@ Persistent storage is therefore recommended for normal deployments.
 
 ScreenDeck is primarily intended for a trusted home or private network.
 
-If ScreenDeck is reachable remotely, put it behind HTTPS and appropriate access controls or use a private mesh VPN. Avoid exposing the plain HTTP listener directly to the public internet.
+If ScreenDeck is reachable remotely, put it behind HTTPS and appropriate access controls or use a private mesh VPN. Avoid exposing the plain HTTP listener directly to the public internet. ScreenDeck has no built-in user authentication for setup and room APIs, so it emits a startup/browser warning whenever its listener is bound beyond loopback.
 
 If ScreenDeck is exposed through a reverse proxy, set `SCREENDECK__BASE_URL` to the external HTTPS URL, for example `https://screendeck.example.com`.
