@@ -16,8 +16,12 @@ const (
 
 // Service orchestrates room behavior, catalog access, caching, and live notifications.
 type Service struct {
-	// store persists rooms and catalog metadata.
-	store Store
+	// rooms persists room lifecycle and gameplay state.
+	rooms RoomStore
+	// catalogStore persists cached provider-neutral metadata.
+	catalogStore CatalogStore
+	// memberships restores persistent browser room associations.
+	memberships MembershipStore
 	// catalog provides media metadata and poster access.
 	catalog media.Catalog
 	// roomTTL controls expiration for newly created rooms.
@@ -126,7 +130,9 @@ func NewService(
 	excludedLibraries []string,
 ) *Service {
 	return &Service{
-		store:             database,
+		rooms:             database,
+		catalogStore:      database,
+		memberships:       database,
 		catalog:           catalog,
 		roomTTL:           roomTTL,
 		excludedLibraries: normalizeLibraryExclusions(excludedLibraries),

@@ -17,7 +17,7 @@ func (s *Service) Poster(
 		return nil, media.ErrNotConfigured
 	}
 
-	path, err := s.store.ItemPoster(ctx, itemID)
+	path, err := s.catalogStore.ItemPoster(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}

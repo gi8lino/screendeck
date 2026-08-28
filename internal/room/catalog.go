@@ -204,7 +204,7 @@ func (s *Service) libraryItems(
 		return nil, err
 	}
 
-	if err := s.store.SaveLibrary(ctx, library, items); err != nil {
+	if err := s.catalogStore.SaveLibrary(ctx, library, items); err != nil {
 		return nil, err
 	}
 

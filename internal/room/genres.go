@@ -20,7 +20,7 @@ func (s *Service) Genres(
 		)
 	}
 
-	return s.store.RoomGenres(ctx, code)
+	return s.rooms.RoomGenres(ctx, code)
 }
 
 // normalizeGenreMode returns a supported personal genre matching mode.

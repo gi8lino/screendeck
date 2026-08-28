@@ -13,7 +13,7 @@ func (s *Service) RoomsForIdentity(
 	if strings.TrimSpace(identityToken) == "" {
 		return nil, InvalidInput("browser identity is required")
 	}
-	return s.store.RoomMemberships(ctx, hashToken(identityToken))
+	return s.memberships.RoomMemberships(ctx, hashToken(identityToken))
 }
 
 // ResumeIdentity restores the participant session associated with a browser identity and room.
@@ -27,7 +27,7 @@ func (s *Service) ResumeIdentity(ctx context.Context, identityToken, code string
 		return Session{}, InvalidInput("a six-character room code is required")
 	}
 
-	session, err := s.store.RoomMembershipSession(ctx, hashToken(identityToken), code)
+	session, err := s.memberships.RoomMembershipSession(ctx, hashToken(identityToken), code)
 	if err != nil {
 		return Session{}, err
 	}

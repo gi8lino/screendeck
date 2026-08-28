@@ -82,7 +82,7 @@ func (s *Service) create(
 	// Persist both the active first-round deck and the full original pool.
 	now := time.Now().UTC()
 
-	if err := s.store.CreateRoom(
+	if err := s.rooms.CreateRoom(
 		ctx,
 		Room{
 			Code:      code,

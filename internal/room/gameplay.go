@@ -11,7 +11,7 @@ func (s *Service) State(
 	code,
 	token string,
 ) (State, error) {
-	participant, err := s.store.ParticipantByToken(
+	participant, err := s.rooms.ParticipantByToken(
 		ctx,
 		strings.ToUpper(code),
 		hashToken(token),
@@ -20,7 +20,7 @@ func (s *Service) State(
 		return State{}, err
 	}
 
-	return s.store.RoomState(
+	return s.rooms.RoomState(
 		ctx,
 		strings.ToUpper(code),
 		participant.ID,
@@ -37,7 +37,7 @@ func (s *Service) Vote(
 ) (matched bool, err error) {
 	code = strings.ToUpper(code)
 
-	participant, err := s.store.ParticipantByToken(
+	participant, err := s.rooms.ParticipantByToken(
 		ctx,
 		code,
 		hashToken(token),
@@ -46,7 +46,7 @@ func (s *Service) Vote(
 		return false, err
 	}
 
-	matched, err = s.store.Vote(
+	matched, err = s.rooms.Vote(
 		ctx,
 		code,
 		participant.ID,
@@ -69,7 +69,7 @@ func (s *Service) AddMoreTitles(
 ) (MoreTitlesResult, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
 
-	participant, err := s.store.ParticipantByToken(
+	participant, err := s.rooms.ParticipantByToken(
 		ctx,
 		code,
 		hashToken(token),
@@ -78,7 +78,7 @@ func (s *Service) AddMoreTitles(
 		return MoreTitlesResult{}, err
 	}
 
-	added, remaining, err := s.store.AddMoreTitles(
+	added, remaining, err := s.rooms.AddMoreTitles(
 		ctx,
 		code,
 		participant.ID,
@@ -106,7 +106,7 @@ func (s *Service) SetNextRoundReady(
 ) (RoundResult, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
 
-	participant, err := s.store.ParticipantByToken(
+	participant, err := s.rooms.ParticipantByToken(
 		ctx,
 		code,
 		hashToken(token),
@@ -115,7 +115,7 @@ func (s *Service) SetNextRoundReady(
 		return RoundResult{}, err
 	}
 
-	result, err := s.store.SetRoundReady(
+	result, err := s.rooms.SetRoundReady(
 		ctx,
 		code,
 		participant.ID,
@@ -138,7 +138,7 @@ func (s *Service) Leave(
 ) error {
 	code = strings.ToUpper(code)
 
-	if err := s.store.LeaveRoom(
+	if err := s.rooms.LeaveRoom(
 		ctx,
 		code,
 		hashToken(token),
@@ -154,7 +154,7 @@ func (s *Service) Leave(
 // SetRoomLocked changes whether a room accepts new participants.
 func (s *Service) SetRoomLocked(ctx context.Context, code, token string, locked bool) error {
 	code = strings.ToUpper(strings.TrimSpace(code))
-	if err := s.store.SetRoomLocked(ctx, code, hashToken(token), locked); err != nil {
+	if err := s.rooms.SetRoomLocked(ctx, code, hashToken(token), locked); err != nil {
 		return err
 	}
 	s.Notify(code)
@@ -175,7 +175,7 @@ func (s *Service) RemoveParticipant(
 		return InvalidInput("participant id is required")
 	}
 
-	if err := s.store.RemoveParticipant(
+	if err := s.rooms.RemoveParticipant(
 		ctx,
 		code,
 		hashToken(token),

@@ -64,7 +64,7 @@ func (s *Service) join(
 	}
 
 	// Resolve the participant's personal genres against the room deck.
-	availableGenres, err := s.store.RoomGenres(ctx, code)
+	availableGenres, err := s.rooms.RoomGenres(ctx, code)
 	if err != nil {
 		return Session{}, err
 	}
@@ -90,7 +90,7 @@ func (s *Service) join(
 		GenreMode: string(genreMode),
 	}
 
-	if err := s.store.JoinRoom(
+	if err := s.rooms.JoinRoom(
 		ctx,
 		code,
 		participant,
