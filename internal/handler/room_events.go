@@ -12,7 +12,7 @@ import (
 // Events returns the room server-sent events handler.
 func Events(rooms roomEventSource, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		code, token := strings.ToUpper(r.PathValue("code")), r.URL.Query().Get("token")
+		code, token := strings.ToUpper(r.PathValue("code")), participantToken(r)
 		if _, err := rooms.State(r.Context(), code, token); err != nil {
 			fail(logger, r, w, err)
 			return

@@ -15,7 +15,7 @@ import {
 const reconnectIndicatorDelay = 5000;
 const reconnectWarningDelay = 30000;
 
-let eventSource;
+let roomEventController;
 let voting = false;
 let navigation;
 let trackedRoomCode = "";
@@ -58,8 +58,8 @@ export async function renderRoom(nextNavigation) {
 // stopRoomEvents closes the active room event stream.
 export function stopRoomEvents() {
   roomViewGeneration += 1;
-  eventSource?.close();
-  eventSource = null;
+  roomEventController?.abort();
+  roomEventController = null;
   posterPreloads = new Map();
   clearReconnectTimers();
   roomConnectionState = "connecting";
@@ -1051,38 +1051,88 @@ async function vote(item, liked, card) {
 }
 
 // connectEvents subscribes to changes from other room participants.
-function connectEvents() {
+async function connectEvents() {
   const session = getSession();
-  if (!session || eventSource) return;
+  if (!session || roomEventController) return;
 
   const generation = roomViewGeneration;
-  const source = new EventSource(
-    `/api/rooms/${encodeURIComponent(session.code)}/events?token=${encodeURIComponent(session.token)}`,
-  );
-  eventSource = source;
+  const controller = new AbortController();
+  roomEventController = controller;
   if (roomConnectionState !== "reconnecting") {
     setRoomConnectionState("connecting");
   }
-  source.onopen = () => {
-    if (generation !== roomViewGeneration || source !== eventSource) return;
-    setRoomConnectionState("connected");
-  };
-  source.addEventListener("update", (event) => {
-    if (generation !== roomViewGeneration || source !== eventSource) return;
-    if ((event.data === "changed" || event.data === "connected") && !voting) {
-      renderRoom();
+
+  try {
+    const response = await fetch(
+      `/api/rooms/${encodeURIComponent(session.code)}/events`,
+      {
+        headers: {
+          Accept: "text/event-stream",
+          "X-Participant-Token": session.token,
+        },
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok || !response.body) {
+      throw new Error(`Live updates failed (${response.status})`);
     }
-  });
-  source.onerror = () => {
-    if (generation !== roomViewGeneration || source !== eventSource) return;
-    console.debug("Room live updates interrupted; reconnecting.");
-    source.close();
-    eventSource = null;
+    if (
+      generation !== roomViewGeneration ||
+      controller !== roomEventController
+    ) {
+      return;
+    }
+    setRoomConnectionState("connected");
+
+    await consumeRoomEvents(response.body, controller, generation);
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      console.debug("Room live updates interrupted; reconnecting.", error);
+    }
+  } finally {
+    if (controller !== roomEventController) return;
+    roomEventController = null;
+    if (controller.signal.aborted || generation !== roomViewGeneration) return;
     setRoomConnectionState("reconnecting");
     setTimeout(() => {
       if (generation === roomViewGeneration) connectEvents();
     }, 3000);
-  };
+  }
+}
+
+// consumeRoomEvents parses the data fields from a server-sent event stream.
+async function consumeRoomEvents(stream, controller, generation) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  let eventData = [];
+
+  while (!controller.signal.aborted) {
+    const { value, done } = await reader.read();
+    buffered += decoder.decode(value, { stream: !done });
+
+    let lineEnd;
+    while ((lineEnd = buffered.indexOf("\n")) >= 0) {
+      const line = buffered.slice(0, lineEnd).replace(/\r$/, "");
+      buffered = buffered.slice(lineEnd + 1);
+
+      if (line.startsWith("data:")) {
+        eventData.push(line.slice(5).trimStart());
+      } else if (line === "") {
+        const data = eventData.join("\n");
+        eventData = [];
+        if (
+          generation === roomViewGeneration &&
+          (data === "changed" || data === "connected") &&
+          !voting
+        ) {
+          void renderRoom();
+        }
+      }
+    }
+
+    if (done) return;
+  }
 }
 
 // setPoster loads an item poster and substitutes the ScreenDeck mark after failures.
