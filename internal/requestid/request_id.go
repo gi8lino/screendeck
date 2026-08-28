@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"io"
 	"log/slog"
 )
 
@@ -16,7 +15,7 @@ type requestIDKey struct{}
 // New creates a random request identifier.
 func New() string {
 	var value [16]byte
-	if _, err := io.ReadFull(rand.Reader, value[:]); err != nil {
+	if _, err := rand.Read(value[:]); err != nil {
 		return ""
 	}
 	return hex.EncodeToString(value[:])
