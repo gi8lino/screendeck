@@ -2,10 +2,8 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	json "encoding/json/v2"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 
@@ -27,26 +25,14 @@ func (e validationError) Error() string {
 	return "request validation failed"
 }
 
-// decode reads a strictly formatted JSON request body into T.
+// decode reads one strictly formatted JSON request body into T.
 func decode[T any](r *http.Request) (T, error) {
 	var value T
 	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20)
 
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(&value); err != nil {
+	if err := json.UnmarshalRead(r.Body, &value, json.RejectUnknownMembers(true)); err != nil {
 		return value, invalidRequestf(err, "invalid request: %v", err)
 	}
-
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return value, invalidRequest("invalid request: body must contain exactly one JSON value", nil)
-		}
-		return value, invalidRequestf(err, "invalid request: %v", err)
-	}
-
 	return value, nil
 }
 
@@ -66,7 +52,7 @@ func decodeValid[T validator](r *http.Request) (T, error) {
 func encode[T any](w http.ResponseWriter, status int, value T) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(value); err != nil {
+	if err := json.MarshalWrite(w, value); err != nil {
 		return fmt.Errorf("encode JSON response: %w", err)
 	}
 	return nil

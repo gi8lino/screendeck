@@ -59,7 +59,7 @@ func TestDecode(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Equal(t, http.StatusBadRequest, statusForError(err))
-		assert.Contains(t, err.Error(), `unknown field "unexpected"`)
+		assert.Contains(t, err.Error(), "unexpected")
 	})
 
 	t.Run("rejects multiple JSON values", func(t *testing.T) {
@@ -72,7 +72,30 @@ func TestDecode(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Equal(t, http.StatusBadRequest, statusForError(err))
-		assert.Contains(t, err.Error(), "exactly one JSON value")
+		assert.Contains(t, err.Error(), "invalid request")
+	})
+
+	t.Run("rejects duplicate fields", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/",
+			bytes.NewBufferString(`{"itemId":"42","itemId":"43"}`),
+		)
+		_, err := decode[decodeTestRequest](request)
+
+		require.Error(t, err)
+		assert.Equal(t, http.StatusBadRequest, statusForError(err))
+		assert.Contains(t, err.Error(), "itemId")
+	})
+
+	t.Run("rejects invalid UTF-8", func(t *testing.T) {
+		body := []byte{'{', '"', 'i', 't', 'e', 'm', 'I', 'd', '"', ':', '"', 0xff, '"', '}'}
+		request := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+		_, err := decode[decodeTestRequest](request)
+
+		require.Error(t, err)
+		assert.Equal(t, http.StatusBadRequest, statusForError(err))
+		assert.Contains(t, err.Error(), "invalid request")
 	})
 }
 
