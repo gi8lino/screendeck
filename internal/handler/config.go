@@ -18,7 +18,6 @@ func Config(
 	commit string,
 	baseURL string,
 	experimental bool,
-	networkWarning bool,
 	mediaManager mediaStatusReader,
 	logger *slog.Logger,
 ) http.HandlerFunc {
@@ -29,7 +28,6 @@ func Config(
 			"commit":          commit,
 			"baseUrl":         baseURL,
 			"experimental":    experimental,
-			"networkWarning":  networkWarning,
 			"mediaConfigured": status.Configured,
 			"mediaProvider":   status.Provider,
 			"mediaServerName": status.ServerName,

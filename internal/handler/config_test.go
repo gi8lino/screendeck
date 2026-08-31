@@ -32,7 +32,6 @@ func TestConfig(t *testing.T) {
 		"abc123",
 		"https://movies.test",
 		true,
-		true,
 		fakeMediaStatusReader{status: media.Status{
 			Configured: true,
 			Provider:   media.ProviderJellyfin,
@@ -47,7 +46,6 @@ func TestConfig(t *testing.T) {
 		"commit":"abc123",
 		"baseUrl":"https://movies.test",
 		"experimental":true,
-		"networkWarning":true,
 		"mediaConfigured":true,
 		"mediaProvider":"jellyfin",
 		"mediaServerName":"Home Jellyfin"

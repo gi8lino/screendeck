@@ -20,7 +20,6 @@ func NewRouter(
 	commit string,
 	baseURL string,
 	experimental bool,
-	networkWarning bool,
 	rooms *room.Service,
 	mediaManager *media.Manager,
 	plexAuth *plex.AuthManager,
@@ -38,7 +37,6 @@ func NewRouter(
 		commit,
 		baseURL,
 		experimental,
-		networkWarning,
 		mediaManager,
 		logger,
 	))
