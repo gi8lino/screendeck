@@ -1,9 +1,12 @@
-# Makefile
+.DEFAULT_GOAL := help
 
-## Location to install Go dependencies to
-LOCALBIN ?= $(shell pwd)/bin
+## Location to install local development tools to
+LOCALBIN ?= bin
 
 ## Tool Versions
+# renovate: datasource=github-releases depName=golangci/golangci-lint
+GOLANGCI_LINT_VERSION ?= v2.13.2
+
 # renovate: datasource=github-releases depName=gi8lino/dev-tools
 DEV_TOOLS_VERSION ?= v0.5.0
 
@@ -17,6 +20,7 @@ OPEN_BROWSER := $(LOCALBIN)/open-browser
 DEV_TAG := $(LOCALBIN)/dev-tag
 MAKE_HELP := $(LOCALBIN)/make-help
 GO_INSTALL_TOOL := $(LOCALBIN)/go-install-tool
+GOLANGCI_LINT := $(LOCALBIN)/golangci-lint
 
 # Run a local tool while displaying only its executable name.
 define run-tool
@@ -25,7 +29,7 @@ define run-tool
 endef
 
 $(LOCALBIN):
-	mkdir -p $(LOCALBIN)
+	@mkdir -p "$@"
 
 ## Documentation Configuration
 DOCS_DIR := docs
@@ -91,15 +95,6 @@ PRETTIER_YAML_SOURCES := \
 	"docs/content/**/.nav.yml"
 PRETTIER_JSON_SOURCES := ".github/**/*.json"
 
-## Tool Binaries
-
-
-GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
-
-## Tool Versions
-# renovate: datasource=github-releases depName=golangci/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.13.2
-
 ## Build Configuration
 BINARY ?= screendeck
 COMMAND ?= ./cmd
@@ -107,12 +102,9 @@ BUILD_VERSION ?= dev
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS ?= -s -w -X main.Version=$(BUILD_VERSION) -X main.Commit=$(BUILD_COMMIT)
 
-# Default tag prefix. Override with an empty value for unprefixed tags.
 VERSION_PREFIX ?= v
 
 ##@ Tagging
-
-VERSION_PREFIX ?= v
 
 .PHONY: current
 current: $(DEV_TAG) ## Show the current semantic version tag.
@@ -150,7 +142,7 @@ ports: $(DEV_PORT) ## Print the saved local application port.
 	@echo "ScreenDeck: http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/"
 
 ports-reset: $(DEV_PORT) ## Clear saved ports after stopping local services.
-	$(DEV_PORT) --reset
+	$(call run-tool,$(DEV_PORT),--reset)
 
 dev-build: ports
 	$(MAKE) web
@@ -195,7 +187,7 @@ download: node-dependencies dev-tools ## Download Go and Node.js dependencies.
 	go mod download
 
 .PHONY: run
-run: dev-build ## Build and run ScreenDeck using its saved port.
+run: dev-build $(OPEN_BROWSER) ## Build and run ScreenDeck using its saved port.
 	@$(OPEN_BROWSER) "http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/" & \
 	browser_pid=$$!; \
 	trap 'kill "$$browser_pid" 2>/dev/null || true' EXIT; \
@@ -264,11 +256,11 @@ lint: check-web lint-go lint-md lint-yaml lint-json ## Run all linters and forma
 
 .PHONY: lint-go
 lint-go: web golangci-lint ## Run golangci-lint.
-	$(GOLANGCI_LINT) run
+	$(call run-tool,$(GOLANGCI_LINT),run)
 
 .PHONY: lint-fix
 lint-fix: web golangci-lint ## Run golangci-lint and apply fixes.
-	$(GOLANGCI_LINT) run --fix
+	$(call run-tool,$(GOLANGCI_LINT),run --fix)
 
 .PHONY: lint-md
 lint-md: node-dependencies ## Check Markdown formatting.
@@ -342,20 +334,6 @@ $(DOCS_DEPENDENCIES_STAMP): $(DOCS_REQUIREMENTS) | $(DOCS_PYTHON)
 	$(DOCS_PYTHON) -m pip install -r $(DOCS_REQUIREMENTS)
 	@touch $(DOCS_DEPENDENCIES_STAMP)
 
-
-
-##@ General
-
-.PHONY: help
-help: $(MAKE_HELP) ## Display this help.
-	@$(MAKE_HELP) $(MAKEFILE_LIST)
-
-.PHONY: open
-open: ports ## Open the browser once the application responds.
-	$(OPEN_BROWSER) "http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/"
-
-##@ Development tools
-
 .PHONY: dev-tools
 dev-tools: $(DEV_TOOL_TARGETS) ## Download the pinned development tools.
 
@@ -387,3 +365,14 @@ golangci-lint: $(GO_INSTALL_TOOL) ## Download golangci-lint locally if necessary
 		--target "$(GOLANGCI_LINT)" \
 		--package github.com/golangci/golangci-lint/v2/cmd/golangci-lint \
 		--tool-version "$(GOLANGCI_LINT_VERSION)"
+
+
+##@ General
+
+.PHONY: help
+help: $(MAKE_HELP) ## Display this help.
+	@$(MAKE_HELP) $(MAKEFILE_LIST)
+
+.PHONY: open
+open: ports $(OPEN_BROWSER) ## Open the browser once the application responds.
+	$(call run-tool,$(OPEN_BROWSER),"http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/")
