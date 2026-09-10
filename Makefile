@@ -70,6 +70,18 @@ PRETTIER_YAML_SOURCES := \
 PRETTIER_JSON_SOURCES := ".github/**/*.json"
 
 ## Tool Binaries
+DEV_PORT := $(LOCALBIN)/dev-port
+OPEN_BROWSER := $(LOCALBIN)/open-browser
+DEV_TAG := $(LOCALBIN)/dev-tag
+GO_INSTALL_TOOL := $(LOCALBIN)/go-install-tool
+
+# renovate: datasource=github-releases depName=gi8lino/dev-tools
+DEV_TOOLS_VERSION ?= v0.3.0
+DEV_PORT_VERSIONED := $(DEV_PORT)-$(DEV_TOOLS_VERSION)
+OPEN_BROWSER_VERSIONED := $(OPEN_BROWSER)-$(DEV_TOOLS_VERSION)
+DEV_TAG_VERSIONED := $(DEV_TAG)-$(DEV_TOOLS_VERSION)
+GO_INSTALL_TOOL_VERSIONED := $(GO_INSTALL_TOOL)-$(DEV_TOOLS_VERSION)
+
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
@@ -88,37 +100,44 @@ VERSION_PREFIX ?= v
 
 ##@ Tagging
 
-# Find the latest tag with the configured prefix, or use 0.0.0 when none exists.
-LATEST_TAG = $(shell git tag --list "$(VERSION_PREFIX)*" --sort=-v:refname | head -n 1)
-VERSION = $(shell [ -n "$(LATEST_TAG)" ] && echo $(LATEST_TAG) | sed "s/^$(VERSION_PREFIX)//" || echo "0.0.0")
-
 .PHONY: patch
-patch: ## Create a new patch release (x.y.Z+1)
-	@NEW_VERSION=$$(echo "$(VERSION)" | awk -F. '{printf "%d.%d.%d", $$1, $$2, $$3+1}') && \
-	git tag "$(VERSION_PREFIX)$${NEW_VERSION}" && \
-	echo "Tagged $(VERSION_PREFIX)$${NEW_VERSION}"
+patch: dev-tools ## Create a new patch release (x.y.Z+1).
+	$(DEV_TAG) --prefix "$(VERSION_PREFIX)" patch
 
 .PHONY: minor
-minor: ## Create a new minor release (x.Y+1.0)
-	@NEW_VERSION=$$(echo "$(VERSION)" | awk -F. '{printf "%d.%d.0", $$1, $$2+1}') && \
-	git tag "$(VERSION_PREFIX)$${NEW_VERSION}" && \
-	echo "Tagged $(VERSION_PREFIX)$${NEW_VERSION}"
+minor: dev-tools ## Create a new minor release (x.Y+1.0).
+	$(DEV_TAG) --prefix "$(VERSION_PREFIX)" minor
 
 .PHONY: major
-major: ## Create a new major release (X+1.0.0)
-	@NEW_VERSION=$$(echo "$(VERSION)" | awk -F. '{printf "%d.0.0", $$1+1}') && \
-	git tag "$(VERSION_PREFIX)$${NEW_VERSION}" && \
-	echo "Tagged $(VERSION_PREFIX)$${NEW_VERSION}"
+major: dev-tools ## Create a new major release (X+1.0.0).
+	$(DEV_TAG) --prefix "$(VERSION_PREFIX)" major
 
 .PHONY: tag
-tag: ## Show the latest tag.
-	@echo "Latest version: $(LATEST_TAG)"
+tag: dev-tools ## Show the latest tag.
+	@echo "Latest version: $$($(DEV_TAG) --prefix "$(VERSION_PREFIX)" current)"
 
 .PHONY: push
 push: ## Push tags to the configured remote.
 	git push --tags
 
 ##@ Development
+
+# Persistent application port; SQLite itself does not need a network port.
+dev-port = $(or $(shell $(DEV_PORT) $(1)),$(error Could not resolve port for $(1)))
+SCREENDECK_ASSIGNED_PORT ?= $(call dev-port,app)
+RUN_ARGS ?=
+
+.PHONY: ports ports-reset dev-build serve
+ports: dev-tools ## Print the saved local application port.
+	@$(DEV_PORT) app --port "$(SCREENDECK_ASSIGNED_PORT)" > /dev/null
+	@echo "ScreenDeck: http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/"
+
+ports-reset: dev-tools ## Clear saved ports after stopping local services.
+	$(DEV_PORT) --reset
+
+dev-build: ports
+	$(MAKE) web
+
 
 .PHONY: smoke-media
 smoke-media: ## Generate deterministic synthetic media for local provider smoke tests.
@@ -155,16 +174,22 @@ check-web: web ## Build the frontend and verify JavaScript parses.
 	@find web/src/js -type f \( -name '*.js' -o -name '*.mjs' \) -exec $(NODE) --check {} \;
 
 .PHONY: download
-download: node-dependencies ## Download Go and Node.js dependencies.
+download: node-dependencies dev-tools ## Download Go and Node.js dependencies.
 	go mod download
 
 .PHONY: run
-run: web ## Run ScreenDeck locally.
+run: dev-build ## Build and run ScreenDeck using its saved port.
+	@$(OPEN_BROWSER) "http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/" & \
+	browser_pid=$$!; \
+	trap 'kill "$$browser_pid" 2>/dev/null || true' EXIT; \
+	$(MAKE) serve
+
+serve: ports ## Run ScreenDeck using its saved port (build must already be ready).
 	go run $(COMMAND) \
-    --plex-url-override http://127.0.0.1:32400 \
-    --debug \
-    --access-log \
-    --log-format text
+		--listen-address="127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)" \
+		--base-url="http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)" \
+		--plex-url-override http://127.0.0.1:32400 \
+		--debug --access-log --log-format text $(RUN_ARGS)
 
 .PHONY: build
 build: web ## Build the ScreenDeck binary.
@@ -300,30 +325,58 @@ $(DOCS_DEPENDENCIES_STAMP): $(DOCS_REQUIREMENTS) | $(DOCS_PYTHON)
 	$(DOCS_PYTHON) -m pip install -r $(DOCS_REQUIREMENTS)
 	@touch $(DOCS_DEPENDENCIES_STAMP)
 
-.PHONY: golangci-lint
-golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+.PHONY: dev-tools
+dev-tools: \
+	$(DEV_PORT_VERSIONED) \
+	$(OPEN_BROWSER_VERSIONED) \
+	$(DEV_TAG_VERSIONED) \
+	$(GO_INSTALL_TOOL_VERSIONED) ## Download the pinned development tools.
+	@ln -sf "$(notdir $(DEV_PORT_VERSIONED))" "$(DEV_PORT)"
+	@ln -sf "$(notdir $(OPEN_BROWSER_VERSIONED))" "$(OPEN_BROWSER)"
+	@ln -sf "$(notdir $(DEV_TAG_VERSIONED))" "$(DEV_TAG)"
+	@ln -sf "$(notdir $(GO_INSTALL_TOOL_VERSIONED))" "$(GO_INSTALL_TOOL)"
 
-$(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+$(DEV_PORT_VERSIONED): | $(LOCALBIN)
+	$(call download-dev-tool,dev-port,$@)
 
-# go-install-tool installs a versioned tool and links its stable binary name.
-# $1 - target path with name of binary
-# $2 - package URL
-# $3 - version
-define go-install-tool
-@[ -f "$(1)-$(3)" ] || { \
-set -e; \
-package=$(2)@$(3) ;\
-echo "Downloading $${package}" ;\
-rm -f $(1) || true ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
-mv $(1) $(1)-$(3) ;\
-} ;\
-ln -sf $(1)-$(3) $(1)
+$(OPEN_BROWSER_VERSIONED): | $(LOCALBIN)
+	$(call download-dev-tool,open-browser,$@)
+
+$(DEV_TAG_VERSIONED): | $(LOCALBIN)
+	$(call download-dev-tool,dev-tag,$@)
+
+$(GO_INSTALL_TOOL_VERSIONED): | $(LOCALBIN)
+	$(call download-dev-tool,go-install-tool,$@)
+
+# download-dev-tool downloads a versioned tool from gi8lino/dev-tools.
+# $1 - release asset name
+# $2 - versioned destination path
+define download-dev-tool
+	@set -eu; \
+	tmp="$(2).tmp"; \
+	trap 'rm -f "$$tmp"' EXIT INT TERM; \
+	echo "Downloading gi8lino/dev-tools $(DEV_TOOLS_VERSION) $(1)"; \
+	curl --fail --silent --show-error --location \
+		"https://github.com/gi8lino/dev-tools/releases/download/$(DEV_TOOLS_VERSION)/$(1)" \
+		-o "$$tmp"; \
+	chmod +x "$$tmp"; \
+	mv "$$tmp" "$(2)"; \
+	trap - EXIT INT TERM
 endef
+
+.PHONY: golangci-lint
+golangci-lint: dev-tools ## Download golangci-lint locally if necessary.
+	$(GO_INSTALL_TOOL) \
+		--target "$(GOLANGCI_LINT)" \
+		--package github.com/golangci/golangci-lint/v2/cmd/golangci-lint \
+		--tool-version "$(GOLANGCI_LINT_VERSION)"
 
 ##@ General
 
 .PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
+
+.PHONY: open
+open: ports ## Open the browser once the application responds.
+	$(OPEN_BROWSER) "http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/"

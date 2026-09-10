@@ -15,3 +15,7 @@ coverage.out
 /web/dist/
 /test/smoke/media/*
 !/test/smoke/media/.gitkeep
+
+# Local development port assignments
+/.dev-ports.json
+/.dev-ports.json.lock
