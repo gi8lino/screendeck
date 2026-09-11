@@ -1,8 +1,3 @@
----
-hide:
-  - navigation
----
-
 # Deployment
 
 ScreenDeck is designed to run as a single application instance. By default, its SQLite database and authentication encryption key are stored persistently, while an in-memory database can be used for temporary deployments.

@@ -1,0 +1,19 @@
+site_name = "ScreenDeck"
+site_url = "https://gi8lino.github.io/screendeck/"
+source_dir = "docs/content"
+output_dir = "docs/site"
+theme = "Light"
+language = "en"
+navigation_style = "topbar"
+mermaid = true
+robots = "allow"
+
+logo = "content/assets/favicon.svg"
+favicon = "content/assets/favicon.svg"
+
+[[external_links]]
+label = "Repository"
+url = "https://github.com/gi8lino/screendeck"
+icon = "github-simple"
+description = "GitHub"
+hover_text = "{{label}} | {{description}}"

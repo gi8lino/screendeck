@@ -1,8 +1,3 @@
----
-hide:
-  - navigation
----
-
 # Security
 
 ## Media-server credentials

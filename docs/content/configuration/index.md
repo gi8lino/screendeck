@@ -1,8 +1,3 @@
----
-hide:
-  - navigation
----
-
 # Configuration
 
 ScreenDeck accepts command-line flags and environment variables. Environment variables use the `SCREENDECK__` prefix followed by the upper-case flag name with hyphens replaced by underscores.

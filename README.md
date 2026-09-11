@@ -58,24 +58,22 @@ Rooms you create or join are remembered for the current browser profile. Return 
 
 ## Local development ports
 
-With Python 3 installed, `bin/dev-port` saves named ports in the
-Git-ignored `.dev-ports.json`. Separate Make commands reuse the same ports:
+ScreenDeck uses `dev-port` from [gi8lino/dev-tools](https://github.com/gi8lino/dev-tools) to save named ports in the Git-ignored `.dev-ports.json`. Separate Make commands reuse the same assignment:
 
 ```sh
 make dev-build
 make serve
 ```
 
-`make run` starts the application with its dependencies; `make ports` prints
-saved addresses. `bin/dev-port app` retrieves an assignment;
-`--port 8080` saves an explicit port. Stop local services before `make ports-reset`.
-Saved ports are reused even when occupied, and are not reserved between runs.
+`make run` starts the application and opens it in the browser; `make ports` prints the saved address. To pin the application to a specific port, save it through the Make target:
 
-Shared development tools come from [gi8lino/dev-tools](https://github.com/gi8lino/dev-tools).
-`make dev-tools` downloads the pinned `DEV_TOOLS_VERSION` into `bin/`; startup
-targets install them automatically. To upgrade, change that version in the
-Makefile and run `make dev-tools`. `make open` opens the browser once the app responds.
-`make run` starts the app and opens the browser automatically.
+```sh
+SCREENDECK_ASSIGNED_PORT=8080 make ports
+```
+
+Stop local services before `make ports-reset`. Saved ports are reused even when occupied and are not reserved between runs.
+
+The tracked `bin/dev-tools.mk` bootstrap downloads the feature modules and executables for the pinned `DEV_TOOLS_VERSION` as Make needs them.
 
 ## How it works
 
@@ -145,7 +143,9 @@ See the [configuration guide](https://gi8lino.github.io/screendeck/configuration
 
 ## Documentation
 
-The full documentation is published at:
+The documentation is built from `docs/content/` with [Lore](https://github.com/gi8lino/lore). Build it with `make site` or preview it locally with `make site-serve`.
+
+The published documentation is available at:
 
 **[gi8lino.github.io/screendeck](https://gi8lino.github.io/screendeck/)**
 

@@ -1,15 +1,10 @@
----
-hide:
-  - navigation
----
-
 # Development
 
 ScreenDeck is a Go application with an embedded, dependency-free browser frontend. The module currently targets Go 1.27.
 
 See [Architecture](architecture.md) for package boundaries, dependency rules, and extension guidance.
 
-Python 3 with `venv` support is only needed for the MkDocs documentation site. Node.js is used for Prettier and Playwright-based screenshot capture. ImageMagick normalizes the committed documentation screenshots.
+Python 3 is used by the shared development helpers and to serve the generated documentation locally. Node.js is used for Prettier and Playwright-based screenshot capture. ImageMagick normalizes the committed documentation screenshots.
 
 ## Get started
 
@@ -57,7 +52,7 @@ internal/store       SQLite schema and persistence
 web/src              canonical frontend source: HTML, templates, CSS, JavaScript, and favicon
 web/dist             generated, ignored browser assets embedded by Go
 deploy               deployment examples
-docs                 documentation project, sources, assets, and tooling dependencies
+docs                 Lore site config, documentation sources, assets, and frontend tooling
 scripts/web          frontend distribution build
 scripts/screenshots  documentation screenshot capture and normalization helpers
 test/smoke           local ScreenDeck, Jellyfin, and Plex smoke environment
@@ -170,35 +165,32 @@ Pre-release databases from before the migration system are intentionally not mig
 
 ## Documentation site
 
-All MkDocs-specific files live under `docs/`:
+ScreenDeck uses [Lore](https://github.com/gi8lino/lore) to build the Markdown under `docs/content/` into a read-only static site. The Lore release is pinned in the Makefile and installed locally with `github-release-install` from [gi8lino/dev-tools](https://github.com/gi8lino/dev-tools).
 
 ```text
 docs/
-├── mkdocs.yml
-├── requirements.txt
+├── site.toml
 ├── package.json
 ├── package-lock.json
 ├── content/
 └── screenshots/
 ```
 
-The Makefile creates the documentation virtual environment at `docs/.venv/` and the generated site at `docs/.site/`.
+`docs/site.toml` defines the public site URL, navigation style, branding, crawler policy, and the `docs/site/` output directory. Node.js development dependencies remain under `docs/node_modules/` for Prettier and Playwright.
 
-Node.js development dependencies are installed into `docs/node_modules/`.
-
-Start the local documentation server:
+Build the same static site used by GitHub Pages:
 
 ```sh
-make docs
+make site
 ```
 
-Build the same strict static site used by GitHub Pages:
+Build it for a local URL, serve it, and open it in the browser:
 
 ```sh
-make docs-build
+make site-serve
 ```
 
-GitHub Actions validates documentation changes on pull requests and publishes changes from `main` to:
+The local preview uses a persistent port from `dev-port`. GitHub Actions validates the Lore output on pull requests and publishes changes from `main` to:
 
 ```text
 https://gi8lino.github.io/screendeck/
@@ -208,9 +200,7 @@ The repository must have **Settings → Pages → Build and deployment → Sourc
 
 ## Documentation navigation
 
-The main ScreenDeck documentation sections are already available as tabs in the MkDocs Material header. The top-level pages therefore hide Material's left navigation sidebar with page metadata so the current section title is not repeated in a one-item sidebar.
-
-Nested documentation sections can still enable normal navigation when they eventually contain multiple pages.
+Lore derives the documentation hierarchy directly from the Markdown paths. `docs/site.toml` uses top-bar navigation so Configuration, Deployment, Development, and Security stay available as the main sections without a separate navigation manifest. Nested Markdown files automatically appear below their parent section.
 
 ## Documentation screenshots
 
