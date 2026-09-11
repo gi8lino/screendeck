@@ -8,7 +8,7 @@ GOLANGCI_LINT_VERSION ?= v2.13.2
 DEV_TOOLS_VERSION ?= v0.7.0
 
 # renovate: datasource=github-releases depName=gi8lino/lore
-LORE_VERSION ?= v0.14.0
+LORE_VERSION ?= v0.16.0
 
 ## Shared development tools
 include bin/dev-tools.mk
