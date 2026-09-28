@@ -7,8 +7,8 @@ GOLANGCI_LINT_VERSION ?= v2.13.2
 # renovate: datasource=github-releases depName=gi8lino/dev-tools
 DEV_TOOLS_VERSION ?= v0.9.0
 
-# renovate: datasource=github-releases depName=gi8lino/lore
-LORE_VERSION ?= v0.17.0
+# renovate: datasource=github-releases depName=kumbuka-me/kumbuka
+KUMBUKA_VERSION ?= v0.12.0
 
 ## Shared development tools
 include bin/dev-tools.mk
@@ -19,8 +19,8 @@ include $(call dev-tools-module,help)
 
 ## Project-local tools
 GOLANGCI_LINT := bin/golangci-lint
-LORE := bin/lore
-LORE_ASSET ?= lore_{version}_{os}_{arch}.tar.gz
+KUMBUKA := bin/kumbuka
+KUMBUKA_ASSET ?= kumbuka_{version}_{os}_{arch}.tar.gz
 
 ## Documentation
 DOCS_DIR := docs
@@ -242,22 +242,22 @@ lint-json: node-dependencies ## Check JSON configuration files with Prettier.
 
 ##@ Documentation
 
-.PHONY: lore
-lore: $(GITHUB_RELEASE_INSTALL) ## Install the pinned Lore static-site generator.
+.PHONY: kumbuka
+kumbuka: $(GITHUB_RELEASE_INSTALL) ## Install the pinned Lore static-site generator.
 	@$(GITHUB_RELEASE_INSTALL) \
-		--repo gi8lino/lore \
-		--tag "$(LORE_VERSION)" \
-		--asset "$(LORE_ASSET)" \
-		--binary lore \
-		--target "$(LORE)"
+		--repo gi8lino/kumbuka \
+		--tag "$(KUMBUKA_VERSION)" \
+		--asset "$(KUMBUKA_ASSET)" \
+		--binary kumbuka \
+		--target "$(KUMBUKA)"
 
 .PHONY: site
-site: lore ## Build the documentation site with Lore.
-	$(LORE) build --config "$(SITE_CONFIG)"
+site: kumbuka ## Build the documentation site with Lore.
+	$(KUMBUKA) build --config "$(SITE_CONFIG)"
 
 .PHONY: site-serve
-site-serve: lore $(DEV_PORT) $(OPEN_BROWSER) ## Build, serve, and open the documentation site locally.
-	$(LORE) build \
+site-serve: kumbuka $(DEV_PORT) $(OPEN_BROWSER) ## Build, serve, and open the documentation site locally.
+	$(KUMBUKA) build \
 		--config "$(SITE_CONFIG)" \
 		--site-url "$(SITE_URL)"
 	@echo "Serving ScreenDeck documentation at $(SITE_URL)"
