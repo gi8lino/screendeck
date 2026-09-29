@@ -7,7 +7,7 @@ require (
 	github.com/containeroo/tinyflags v0.2.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.23.0
-	modernc.org/sqlite v1.60.0
+	modernc.org/sqlite v1.60.1
 )
 
 require (
