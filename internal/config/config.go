@@ -37,7 +37,7 @@ type Config struct {
 	// ExcludeLibraries contains media library titles or keys excluded from room creation.
 	ExcludeLibraries []string
 	// Overridden records configuration values explicitly overridden by flags or environment variables.
-	Overridden map[string]any
+	Overrides tinyflags.Overrides
 }
 
 // Parse reads command-line and environment configuration.
@@ -121,8 +121,14 @@ func Parse(args []string, version string) (Config, error) {
 		Value()
 	tf.BoolVar(&cfg.AccessLog, "access-log", false, "Enable HTTP request access logging").Value()
 
-	logFormat := tf.String("log-format", "json", "Log output format").
-		Choices(string(logging.LogFormatText), string(logging.LogFormatJSON)).
+	logFormat := tinyflags.Enum(
+		tf,
+		"log-format",
+		logging.LogFormatJSON,
+		"Log output format",
+		logging.LogFormatText,
+		logging.LogFormatJSON,
+	).
 		Short("l").
 		Placeholder("FORMAT").
 		Value()
@@ -134,8 +140,8 @@ func Parse(args []string, version string) (Config, error) {
 		return Config{}, err
 	}
 	cfg.ListenAddress = (*listen).String()
-	cfg.LogFormat = logging.LogFormat(*logFormat)
-	cfg.Overridden = tf.OverriddenValues()
+	cfg.LogFormat = *logFormat
+	cfg.Overrides = tf.Overrides()
 
 	return cfg, nil
 }

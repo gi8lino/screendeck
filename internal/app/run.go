@@ -44,10 +44,10 @@ func Run(
 		"version", version,
 		"commit", commit,
 	)
-	if len(cfg.Overridden) > 0 {
+	if len(cfg.Overrides) > 0 {
 		setupLogger.Info("CLI overrides",
 			"event", "cli_overrides",
-			"overrides", cfg.Overridden,
+			"overrides", cfg.Overrides.Values(),
 		)
 	}
 
