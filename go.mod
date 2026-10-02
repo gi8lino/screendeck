@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/containeroo/httpgrace v0.2.1
-	github.com/containeroo/tinyflags v0.2.0
+	github.com/containeroo/tinyflags v0.4.1
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.23.0
 	modernc.org/sqlite v1.60.1
