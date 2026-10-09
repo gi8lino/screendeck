@@ -6,7 +6,7 @@ require (
 	github.com/containeroo/httpgrace v0.2.1
 	github.com/containeroo/tinyflags v0.5.0
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	modernc.org/sqlite v1.60.1
 )
 
