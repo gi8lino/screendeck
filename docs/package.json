@@ -3,6 +3,6 @@
   "private": true,
   "devDependencies": {
     "playwright": "1.64.0",
-    "prettier": "3.9.9"
+    "prettier": "3.9.10"
   }
 }
