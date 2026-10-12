@@ -1,5 +1,5 @@
-github.com/containeroo/httpgrace v0.2.0 h1:yw6NP3bYnTDbCNnGRSZzFddZWvPpb+FkRfu2dduEuxc=
-github.com/containeroo/httpgrace v0.2.0/go.mod h1:wVchVG6ETESS++4RdJr3O56MD6awm9CIOcms5Vl+9ps=
+github.com/containeroo/httpkit v0.0.1 h1:QAuvzTt5ueURo5LBpKG9HC5b/M40cM7Vh/jE3Yqcdlc=
+github.com/containeroo/httpkit v0.0.1/go.mod h1:2NRI1cA/PFtiM42RrEFcL6faKKLhI878X/R+pNLt+BA=
 github.com/containeroo/tinyflags v0.3.0 h1:XWArd7517jzgP0t7mcKidt+d0M8A80pwZ6GTpEiWwlE=
 github.com/containeroo/tinyflags v0.3.0/go.mod h1:5CGkQy0A+90ubNaEDJanfXOlE4+aYHp4OBwCpXM1yDM=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
