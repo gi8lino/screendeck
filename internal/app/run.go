@@ -6,7 +6,7 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/containeroo/httpgrace/server"
+	server "github.com/containeroo/httpkit/grace"
 	"github.com/containeroo/tinyflags"
 	"github.com/gi8lino/screendeck/internal/config"
 	"github.com/gi8lino/screendeck/internal/logging"
