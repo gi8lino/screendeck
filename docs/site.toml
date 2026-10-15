@@ -5,7 +5,6 @@ output_dir = "docs/site"
 theme = "Light"
 language = "en"
 navigation_style = "topbar"
-mermaid = true
 robots = "allow"
 
 logo = "content/assets/favicon.svg"

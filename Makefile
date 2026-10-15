@@ -7,10 +7,9 @@ GOLANGCI_LINT_VERSION ?= v2.14.0
 # renovate: datasource=github-releases depName=gi8lino/dev-tools
 DEV_TOOLS_VERSION ?= v0.9.0
 
-# renovate: datasource=github-releases depName=kumbuka-me/kumbuka
-KUMBUKA_VERSION ?= v0.12.0
+# renovate: datasource=github-releases depName=kumbuka-me/cli
+KUMBUKA_CLI_VERSION ?= v0.11.11
 
-## Shared development tools
 include bin/dev-tools.mk
 include $(call dev-tools-module,tag)
 include $(call dev-tools-module,port)
@@ -18,16 +17,18 @@ include $(call dev-tools-module,browser)
 include $(call dev-tools-module,help)
 
 ## Project-local tools
+# Keep the release version in the target path so a version bump cannot reuse
+# an older downloaded binary merely because it already exists on disk.
+KUMBUKA_CLI := bin/kumbuka-cli-$(KUMBUKA_CLI_VERSION)
+KUMBUKA_CLI_ASSET ?= kumbuka-cli_{version}_{os}_{arch}.tar.gz
 GOLANGCI_LINT := bin/golangci-lint
-KUMBUKA := bin/kumbuka
-KUMBUKA_ASSET ?= kumbuka_{version}_{os}_{arch}.tar.gz
 
 ## Documentation
 DOCS_DIR := docs
 SITE_CONFIG ?= $(DOCS_DIR)/site.toml
 SITE_OUTPUT := $(DOCS_DIR)/site
-SITE_PORT ?= $(call dev-port,site)
-SITE_URL := http://127.0.0.1:$(SITE_PORT)/
+SITE_PORT = $(call dev-port,site)
+SITE_URL = http://127.0.0.1:$(SITE_PORT)/
 PYTHON ?= python3
 
 ## Frontend
@@ -97,7 +98,7 @@ tag: current
 
 # Persistent application port; SQLite itself does not need a network port.
 SCREENDECK_ASSIGNED_PORT ?= $(call dev-port,app)
-SCREENDECK_URL := http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/
+SCREENDECK_URL = http://127.0.0.1:$(SCREENDECK_ASSIGNED_PORT)/
 RUN_ARGS ?=
 
 .PHONY: ports
@@ -242,27 +243,20 @@ lint-json: node-dependencies ## Check JSON configuration files with Prettier.
 
 ##@ Documentation
 
-.PHONY: kumbuka
-kumbuka: $(GITHUB_RELEASE_INSTALL) ## Install the pinned Lore static-site generator.
-	@$(GITHUB_RELEASE_INSTALL) \
-		--repo gi8lino/kumbuka \
-		--tag "$(KUMBUKA_VERSION)" \
-		--asset "$(KUMBUKA_ASSET)" \
-		--binary kumbuka \
-		--target "$(KUMBUKA)"
-
 .PHONY: site
-site: kumbuka ## Build the documentation site with Lore.
-	$(KUMBUKA) build --config "$(SITE_CONFIG)"
+site: kumbuka ## Build the documentation site.
+	$(KUMBUKA_CLI) build --config "$(SITE_CONFIG)"
 
 .PHONY: site-serve
 site-serve: kumbuka $(DEV_PORT) $(OPEN_BROWSER) ## Build, serve, and open the documentation site locally.
-	$(KUMBUKA) build \
-		--config "$(SITE_CONFIG)" \
-		--site-url "$(SITE_URL)"
-	@echo "Serving ScreenDeck documentation at $(SITE_URL)"
+	$(KUMBUKA_CLI) build --config "$(SITE_CONFIG)" "$(SITE_PLUGINS)" --site-url "$(SITE_URL)"
+	@echo "Serving appkit documentation at $(SITE_URL)"
 	@$(OPEN_BROWSER) "$(SITE_URL)" & \
-	$(PYTHON) -m http.server $(SITE_PORT) --bind 127.0.0.1 --directory $(SITE_OUTPUT)
+	$(PYTHON) -m http.server "$(SITE_PORT)" --bind 127.0.0.1 --directory "$(SITE_OUTPUT)"
+
+.PHONY: clean-site
+clean-site: ## Remove generated documentation output.
+	rm -rf "$(SITE_OUTPUT)"
 
 .PHONY: capture-screenshots
 capture-screenshots: web playwright-browser ## Capture raw demo screenshots with Playwright.
@@ -306,9 +300,6 @@ playwright-browser-ci: node-dependencies ## Install Chromium and system dependen
 		"$(abspath $(PLAYWRIGHT))" install --with-deps chromium
 	@touch "$(PLAYWRIGHT_BROWSER_STAMP)"
 
-.PHONY: dev-tools
-dev-tools: $(DEV_PORT) $(OPEN_BROWSER) $(DEV_TAG) $(MAKE_HELP) $(GO_INSTALL_TOOL) $(GITHUB_RELEASE_INSTALL) ## Download the pinned development tools.
-
 .PHONY: golangci-lint
 golangci-lint: $(GO_INSTALL_TOOL) ## Download golangci-lint locally if necessary.
 	@$(GO_INSTALL_TOOL) \
@@ -316,6 +307,16 @@ golangci-lint: $(GO_INSTALL_TOOL) ## Download golangci-lint locally if necessary
 		--package github.com/golangci/golangci-lint/v2/cmd/golangci-lint \
 		--tool-version "$(GOLANGCI_LINT_VERSION)"
 
-.PHONY: open
-open: ports $(OPEN_BROWSER) ## Open the browser once the application responds.
-	$(call run-tool,$(OPEN_BROWSER),"$(SCREENDECK_URL)")
+##@ Dependencies
+
+.PHONY: kumbuka
+kumbuka: $(KUMBUKA_CLI) ## Install the pinned Kumbuka static-site generator.
+
+$(KUMBUKA_CLI): $(GITHUB_RELEASE_INSTALL)
+	@$(GITHUB_RELEASE_INSTALL) \
+		--repo kumbuka-me/cli \
+		--tag "$(KUMBUKA_CLI_VERSION)" \
+		--asset "$(KUMBUKA_CLI_ASSET)" \
+		--binary kumbuka-cli \
+		--target "$(KUMBUKA_CLI)"
+

@@ -1,0 +1,6 @@
+[[plugin]]
+id = "me.kumbuka.simple-icons"
+repository = "kumbuka-me/plugins"
+tag_prefix = "simple-icons/v"
+asset = "simple-icons"
+version = "1.1.2"
