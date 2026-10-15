@@ -149,7 +149,7 @@ check-web: web ## Build the frontend and verify JavaScript parses.
 	@find web/src/js -type f \( -name '*.js' -o -name '*.mjs' \) -exec $(NODE) --check {} \;
 
 .PHONY: download
-download: node-dependencies dev-tools ## Download Go, Node.js, and shared development dependencies.
+download: node-dependencies ## Download Go, Node.js, and shared development dependencies.
 	go mod download
 
 .PHONY: run
