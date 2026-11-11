@@ -28,7 +28,7 @@ DOCS_DIR := docs
 SITE_CONFIG ?= $(DOCS_DIR)/site.toml
 SITE_OUTPUT := $(DOCS_DIR)/site
 SITE_PORT = $(call dev-port,site)
-SITE_URL = http://127.0.0.1:$(SITE_PORT)/
+SITE_URL = "http://127.0.0.1:$(SITE_PORT)/"
 PYTHON ?= python3
 
 ## Frontend
@@ -249,10 +249,15 @@ site: kumbuka ## Build the documentation site.
 
 .PHONY: site-serve
 site-serve: kumbuka $(DEV_PORT) $(OPEN_BROWSER) ## Build, serve, and open the documentation site locally.
-	$(KUMBUKA_CLI) build --config "$(SITE_CONFIG)" "$(SITE_PLUGINS)" --site-url "$(SITE_URL)"
-	@echo "Serving appkit documentation at $(SITE_URL)"
-	@$(OPEN_BROWSER) "$(SITE_URL)" & \
-	$(PYTHON) -m http.server "$(SITE_PORT)" --bind 127.0.0.1 --directory "$(SITE_OUTPUT)"
+	@(until curl --fail --silent --output /dev/null "$(SITE_URL)"; do sleep 0.2; done; \
+		$(OPEN_BROWSER) "$(SITE_URL)") & \
+	browser_pid=$$!; \
+	trap 'kill "$$browser_pid" 2>/dev/null || true' EXIT; \
+	$(KUMBUKA_CLI) serve \
+		--config "$(SITE_CONFIG)" \
+		--site-url "$(SITE_URL)" \
+		--listen-address "127.0.0.1:$(SITE_PORT)"
+
 
 .PHONY: clean-site
 clean-site: ## Remove generated documentation output.
