@@ -3,7 +3,7 @@ module github.com/gi8lino/screendeck
 go 1.27.0
 
 require (
-	github.com/containeroo/httpkit v0.1.1
+	github.com/containeroo/httpkit v0.2.0
 	github.com/containeroo/tinyflags v0.12.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.25.0
