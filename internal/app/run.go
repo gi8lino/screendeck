@@ -8,7 +8,7 @@ import (
 
 	server "github.com/containeroo/httpkit/grace"
 	"github.com/containeroo/tinyflags"
-	"github.com/gi8lino/screendeck/internal/config"
+	"github.com/gi8lino/screendeck/internal/cli"
 	"github.com/gi8lino/screendeck/internal/logging"
 	"github.com/gi8lino/screendeck/internal/maintenance"
 	"github.com/gi8lino/screendeck/internal/providers"
@@ -27,7 +27,7 @@ func Run(
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
-	cfg, err := config.Parse(args, version)
+	cfg, err := cli.Parse(args, version)
 	if err != nil {
 		if tinyflags.IsHelpRequested(err) || tinyflags.IsVersionRequested(err) {
 			fmt.Fprint(stdout, err.Error()) // nolint:errcheck

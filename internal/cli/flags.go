@@ -1,4 +1,4 @@
-package config
+package cli
 
 import (
 	"fmt"
@@ -10,8 +10,8 @@ import (
 	"github.com/gi8lino/screendeck/internal/logging"
 )
 
-// Config contains runtime configuration for ScreenDeck.
-type Config struct {
+// Flags contains runtime configuration for ScreenDeck.
+type Flags struct {
 	// ListenAddress is the TCP address used by the HTTP server.
 	ListenAddress string
 	// DatabasePath is the path to the SQLite database.
@@ -41,8 +41,7 @@ type Config struct {
 }
 
 // Parse reads command-line and environment configuration.
-func Parse(args []string, version string) (Config, error) {
-	cfg := Config{}
+func Parse(args []string, version string) (flags Flags, err error) {
 	tf := tinyflags.NewFlagSet("screendeck", tinyflags.ContinueOnError)
 	tf.Version(version)
 	tf.EnvPrefix("SCREENDECK_")
@@ -54,15 +53,15 @@ func Parse(args []string, version string) (Config, error) {
 		Value()
 
 	// Authentication
-	tf.StringVar(&cfg.DatabasePath, "database-path", "./data/screendeck.db", "Path to the SQLite database").
+	tf.StringVar(&flags.DatabasePath, "database-path", "./data/screendeck.db", "Path to the SQLite database").
 		Placeholder("PATH").
 		Value()
-	tf.StringVar(&cfg.AuthKeyPath, "auth-key-path", "./data/auth.key", "Path to the local authentication encryption key").
+	tf.StringVar(&flags.AuthKeyPath, "auth-key-path", "./data/auth.key", "Path to the local authentication encryption key").
 		Placeholder("PATH").
 		Value()
 
 	// Application
-	tf.StringVar(&cfg.BaseURL, "base-url", "http://localhost:8080", "Public URL used for room links").
+	tf.StringVar(&flags.BaseURL, "base-url", "http://localhost:8080", "Public URL used for room links").
 		Validate(func(u string) error {
 			if !validAbsoluteHTTPURL(u) {
 				return fmt.Errorf("must be an absolute HTTP or HTTPS URL")
@@ -75,7 +74,7 @@ func Parse(args []string, version string) (Config, error) {
 		Placeholder("URL").
 		Value()
 
-	tf.DurationVar(&cfg.RoomCleanupInterval, "room-cleanup-interval", time.Hour, "How often expired rooms are deleted").
+	tf.DurationVar(&flags.RoomCleanupInterval, "room-cleanup-interval", time.Hour, "How often expired rooms are deleted").
 		Validate(func(d time.Duration) error {
 			if d <= 0 {
 				return fmt.Errorf("room-cleanup-interval must be a positive duration")
@@ -85,7 +84,7 @@ func Parse(args []string, version string) (Config, error) {
 		Placeholder("DURATION").
 		Value()
 
-	tf.DurationVar(&cfg.RoomTTL, "room-ttl", 24*time.Hour, "How long rooms remain available").
+	tf.DurationVar(&flags.RoomTTL, "room-ttl", 24*time.Hour, "How long rooms remain available").
 		Validate(func(d time.Duration) error {
 			if d <= 0 {
 				return fmt.Errorf("room-ttl must be a positive duration")
@@ -94,12 +93,12 @@ func Parse(args []string, version string) (Config, error) {
 		}).
 		Placeholder("DURATION").Value()
 
-	tf.StringSliceVar(&cfg.ExcludeLibraries, "exclude-libraries", []string{}, "Media library titles or keys to exclude from room creation").
+	tf.StringSliceVar(&flags.ExcludeLibraries, "exclude-libraries", []string{}, "Media library titles or keys to exclude from room creation").
 		TrimSpace().
 		Placeholder("LIBRARY").
 		Value()
 
-	tf.StringVar(&cfg.PlexURLOverride, "plex-url-override", "", "Override the discovered Plex server URL").
+	tf.StringVar(&flags.PlexURLOverride, "plex-url-override", "", "Override the discovered Plex server URL").
 		Validate(func(rawURL string) error {
 			if rawURL == "" {
 				return nil
@@ -116,10 +115,10 @@ func Parse(args []string, version string) (Config, error) {
 		Value()
 
 	// Logging
-	tf.BoolVar(&cfg.Debug, "debug", false, "Enable verbose diagnostic logging").
+	tf.BoolVar(&flags.Debug, "debug", false, "Enable verbose diagnostic logging").
 		Short("d").
 		Value()
-	tf.BoolVar(&cfg.AccessLog, "access-log", false, "Enable HTTP request access logging").Value()
+	tf.BoolVar(&flags.AccessLog, "access-log", false, "Enable HTTP request access logging").Value()
 
 	logFormat := tinyflags.Enum(
 		tf,
@@ -134,14 +133,14 @@ func Parse(args []string, version string) (Config, error) {
 		Value()
 
 		// Experimental
-	tf.BoolVar(&cfg.Experimental, "experimental", false, "Show experimental features, including Plex JWT authentication").Value()
+	tf.BoolVar(&flags.Experimental, "experimental", false, "Show experimental features, including Plex JWT authentication").Value()
 
 	if err := tf.Parse(args); err != nil {
-		return Config{}, err
+		return Flags{}, err
 	}
-	cfg.ListenAddress = (*listen).String()
-	cfg.LogFormat = *logFormat
-	cfg.Overrides = tf.Overrides()
+	flags.ListenAddress = (*listen).String()
+	flags.LogFormat = *logFormat
+	flags.Overrides = tf.Overrides()
 
-	return cfg, nil
+	return flags, nil
 }
